@@ -16,7 +16,7 @@ struct Episode
       <<-SQL,
         INSERT INTO episodes (feed_id, guid, title, description, audio_url, duration_sec, published_at)
         VALUES ($1, $2, $3, $4, $5, $6, $7)
-        ON CONFLICT (guid) DO UPDATE
+        ON CONFLICT (feed_id, guid) DO UPDATE
           SET title = EXCLUDED.title,
               description = EXCLUDED.description,
               audio_url = EXCLUDED.audio_url,
