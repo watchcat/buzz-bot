@@ -33,7 +33,7 @@ module WebServer
     Web::Routes::App.register
     Web::Routes::Feeds.register
     Web::Routes::Episodes.register
-    Web::Routes::Recommendations.register
+    Web::Routes::Inbox.register
     Web::Routes::Search.register
   end
 

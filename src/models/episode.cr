@@ -83,39 +83,55 @@ struct Episode
     ids
   end
 
-  def self.recommended_for(user_id : Int64, limit : Int32 = 20) : Array(Episode)
+  def self.for_inbox(user_id : Int64, limit : Int32 = 100) : Array(Episode)
     episodes = [] of Episode
     AppDB.pool.query_each(
       <<-SQL,
-        WITH my_liked AS (
-          SELECT episode_id
+        SELECT e.id, e.feed_id, e.guid, e.title, e.description, e.audio_url, e.duration_sec, e.published_at
+        FROM episodes e
+        JOIN user_feeds uf ON uf.feed_id = e.feed_id
+        WHERE uf.user_id = $1
+        ORDER BY COALESCE(e.published_at, e.created_at) DESC
+        LIMIT $2
+      SQL
+      user_id, limit
+    ) { |rs| episodes << from_rs(rs) }
+    episodes
+  end
+
+  def self.completed_ids_for_user(user_id : Int64) : Set(Int64)
+    ids = Set(Int64).new
+    AppDB.pool.query_each(
+      "SELECT episode_id FROM user_episodes WHERE user_id = $1 AND completed = TRUE",
+      user_id
+    ) { |rs| ids << rs.read(Int64) }
+    ids
+  end
+
+  def self.recommended_for_episode(episode_id : Int64, limit : Int32 = 5) : Array(Episode)
+    episodes = [] of Episode
+    AppDB.pool.query_each(
+      <<-SQL,
+        WITH liked_users AS (
+          SELECT user_id
           FROM user_episodes
-          WHERE user_id = $1 AND liked = TRUE
+          WHERE episode_id = $1 AND liked = TRUE
         ),
-        similar_users AS (
-          SELECT DISTINCT ue.user_id
-          FROM user_episodes ue
-          JOIN my_liked ml ON ue.episode_id = ml.episode_id
-          WHERE ue.liked = TRUE AND ue.user_id != $1
-        ),
-        candidate_episodes AS (
+        candidates AS (
           SELECT ue.episode_id, COUNT(*) AS score
           FROM user_episodes ue
-          JOIN similar_users su ON ue.user_id = su.user_id
-          WHERE ue.liked = TRUE
-            AND ue.episode_id NOT IN (
-              SELECT episode_id FROM user_episodes WHERE user_id = $1
-            )
+          JOIN liked_users lu ON ue.user_id = lu.user_id
+          WHERE ue.liked = TRUE AND ue.episode_id != $1
           GROUP BY ue.episode_id
           ORDER BY score DESC
           LIMIT $2
         )
         SELECT e.id, e.feed_id, e.guid, e.title, e.description, e.audio_url, e.duration_sec, e.published_at
         FROM episodes e
-        JOIN candidate_episodes ce ON e.id = ce.episode_id
-        ORDER BY ce.score DESC
+        JOIN candidates c ON e.id = c.episode_id
+        ORDER BY c.score DESC
       SQL
-      user_id, limit
+      episode_id, limit
     ) { |rs| episodes << from_rs(rs) }
     episodes
   end

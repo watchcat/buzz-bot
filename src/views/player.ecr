@@ -93,5 +93,25 @@
       </button>
       <div id="send-result-<%= episode.id %>"></div>
     </div>
+
+    <% unless recs.empty? %>
+      <div class="recs-section">
+        <h3 class="recs-title">Listeners also liked</h3>
+        <ul class="recs-list">
+          <% recs.each do |rec| %>
+            <li class="rec-item"
+                hx-get="/episodes/<%= rec.id %>/player"
+                hx-target="#content"
+                hx-include="[name='initData']">
+              <div class="rec-info">
+                <span class="rec-feed"><%= HTML.escape(rec_feeds_map[rec.feed_id]? || "") %></span>
+                <span class="rec-title"><%= HTML.escape(rec.title) %></span>
+              </div>
+              <span class="rec-play">▶</span>
+            </li>
+          <% end %>
+        </ul>
+      </div>
+    <% end %>
   </div>
 </div>

@@ -23,7 +23,7 @@ require "./web/routes/webhook"
 require "./web/routes/app"
 require "./web/routes/feeds"
 require "./web/routes/episodes"
-require "./web/routes/recommendations"
+require "./web/routes/inbox"
 require "./web/routes/search"
 
 Log.setup(:info)

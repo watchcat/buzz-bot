@@ -430,6 +430,18 @@ main {
   flex-shrink: 0;
 }
 
+/* Podcast name label in Inbox */
+.episode-feed-name {
+  display: block;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--button-color);
+  margin-bottom: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 /* Listened (completed) episodes */
 .episode-item.listened {
   opacity: 0.45;
@@ -773,6 +785,70 @@ main {
 .autoplay-text {
   font-size: 13px;
   color: var(--text-color);
+}
+
+/* Recommendations on player page */
+.recs-section {
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid rgba(0,0,0,0.08);
+}
+
+.recs-title {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--hint-color);
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  margin-bottom: 10px;
+}
+
+.recs-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.rec-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  background: var(--bg-color);
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.rec-item:hover { background: rgba(0,0,0,0.05); }
+
+.rec-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.rec-feed {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--button-color);
+}
+
+.rec-title {
+  font-size: 13px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--text-color);
+}
+
+.rec-play {
+  color: var(--hint-color);
+  font-size: 14px;
+  flex-shrink: 0;
 }
 
 /* Send to Chat */
