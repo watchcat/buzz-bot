@@ -13,23 +13,35 @@ struct Feed
                  @etag, @last_modified, @ttl_minutes)
   end
 
+  private def self.from_rs(rs)
+    new(
+      rs.read(Int64),   # id
+      rs.read(String),  # url
+      rs.read(String?), # title
+      rs.read(String?), # description
+      rs.read(String?), # image_url
+      rs.read(Time?),   # last_fetched_at
+      rs.read(String?), # etag
+      rs.read(String?), # last_modified
+      rs.read(Int32?)   # ttl_minutes
+    )
+  end
+
   def self.upsert(url : String, title : String?, description : String?, image_url : String?) : Feed
     AppDB.pool.query_one(
       <<-SQL,
         INSERT INTO feeds (url, title, description, image_url, last_fetched_at)
         VALUES ($1, $2, $3, $4, NOW())
-        ON CONFLICT (url) DO UPDATE
-          SET title = COALESCE(EXCLUDED.title, feeds.title),
-              description = COALESCE(EXCLUDED.description, feeds.description),
-              image_url = COALESCE(EXCLUDED.image_url, feeds.image_url),
-              last_fetched_at = NOW()
+        ON CONFLICT (url) DO UPDATE SET
+          title           = COALESCE(EXCLUDED.title, feeds.title),
+          description     = COALESCE(EXCLUDED.description, feeds.description),
+          image_url       = COALESCE(EXCLUDED.image_url, feeds.image_url),
+          last_fetched_at = NOW()
         RETURNING id, url, title, description, image_url, last_fetched_at,
                   etag, last_modified, ttl_minutes
       SQL
       url, title, description, image_url
-    ) do |rs|
-      new(rs.read(Int64), rs.read(String), rs.read(String?), rs.read(String?), rs.read(String?), rs.read(Time?), rs.read(String?), rs.read(String?), rs.read(Int32?))
-    end
+    ) { |rs| from_rs(rs) }
   end
 
   def self.find(id : Int64) : Feed?
@@ -37,12 +49,11 @@ struct Feed
       <<-SQL,
         SELECT id, url, title, description, image_url, last_fetched_at,
                etag, last_modified, ttl_minutes
-        FROM feeds WHERE id = $1
+        FROM feeds
+        WHERE id = $1
       SQL
       id
-    ) do |rs|
-      new(rs.read(Int64), rs.read(String), rs.read(String?), rs.read(String?), rs.read(String?), rs.read(Time?), rs.read(String?), rs.read(String?), rs.read(Int32?))
-    end
+    ) { |rs| from_rs(rs) }
   end
 
   def self.for_user(user_id : Int64) : Array(Feed)
@@ -61,18 +72,10 @@ struct Feed
         ) DESC NULLS LAST
       SQL
       user_id
-    ) do |rs|
-      feeds << new(
-        rs.read(Int64), rs.read(String),
-        rs.read(String?), rs.read(String?), rs.read(String?), rs.read(Time?),
-        rs.read(String?), rs.read(String?), rs.read(Int32?)
-      )
-    end
+    ) { |rs| feeds << from_rs(rs) }
     feeds
   end
 
-  # Feeds with active subscribers whose TTL has elapsed since last fetch.
-  # Used by the periodic background loop.
   def self.due_for_refresh : Array(Feed)
     feeds = [] of Feed
     AppDB.pool.query_each(
@@ -87,26 +90,18 @@ struct Feed
           )
         ORDER BY f.last_fetched_at ASC NULLS FIRST
       SQL
-    ) do |rs|
-      feeds << new(
-        rs.read(Int64), rs.read(String),
-        rs.read(String?), rs.read(String?), rs.read(String?), rs.read(Time?),
-        rs.read(String?), rs.read(String?), rs.read(Int32?)
-      )
-    end
+    ) { |rs| feeds << from_rs(rs) }
     feeds
   end
 
-  # Called after a successful or 304 fetch to record HTTP caching headers
-  # and the feed's declared TTL. Pass nil for any value that didn't change.
   def self.update_refresh_metadata(id : Int64, etag : String?, last_modified : String?, ttl_minutes : Int32?)
     AppDB.pool.exec(
       <<-SQL,
-        UPDATE feeds
-        SET last_fetched_at = NOW(),
-            etag          = COALESCE($2, etag),
-            last_modified = COALESCE($3, last_modified),
-            ttl_minutes   = COALESCE($4, ttl_minutes)
+        UPDATE feeds SET
+          last_fetched_at = NOW(),
+          etag            = COALESCE($2, etag),
+          last_modified   = COALESCE($3, last_modified),
+          ttl_minutes     = COALESCE($4, ttl_minutes)
         WHERE id = $1
       SQL
       id, etag, last_modified, ttl_minutes
