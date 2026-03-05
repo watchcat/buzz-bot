@@ -1,18 +1,20 @@
 <div class="episodes-container">
   <div class="section-header">
-    <button class="btn-back"
-            hx-get="/feeds"
-            hx-target="#content"
-            hx-include="[name='initData']">← Back</button>
-    <h2><%= feed.title || "Episodes" %></h2>
-    <% unless episodes.empty? %>
-      <label class="filter-label">
-        <input type="checkbox" id="hide-listened-cb" class="filter-checkbox"
-               onchange="applyListenedFilter(this.checked)">
-        <span class="filter-switch"></span>
-        <span class="filter-text">Hide&nbsp;listened</span>
-      </label>
-    <% end %>
+    <div class="section-header-row">
+      <button class="btn-back"
+              hx-get="/feeds"
+              hx-target="#content"
+              hx-include="[name='initData']">← Back</button>
+      <h2><%= feed.title || "Episodes" %></h2>
+      <% unless episodes.empty? %>
+        <label class="filter-label">
+          <input type="checkbox" id="hide-listened-cb" class="filter-checkbox"
+                 onchange="applyListenedFilter(this.checked)">
+          <span class="filter-switch"></span>
+          <span class="filter-text">Hide&nbsp;listened</span>
+        </label>
+      <% end %>
+    </div>
   </div>
 
   <% if episodes.empty? %>

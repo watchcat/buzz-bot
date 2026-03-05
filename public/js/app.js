@@ -345,15 +345,172 @@ document.addEventListener('click', (e) => {
 });
 
 // ============================================================
-// Listened filter
+// Inbox filter state — listened, feed filter, compact mode
 // ============================================================
-const HIDE_LISTENED_KEY = 'buzz-hide-listened';
+const HIDE_LISTENED_KEY    = 'buzz-hide-listened';
+const FEED_FILTER_KEY      = 'buzz-inbox-excluded-feeds';
+const COMPACT_KEY          = 'buzz-inbox-compact';
+
+function getExcludedFeeds() {
+  try {
+    const stored = localStorage.getItem(FEED_FILTER_KEY);
+    if (stored) return new Set(JSON.parse(stored).map(String));
+  } catch (e) {}
+  return new Set();
+}
+
+function saveExcludedFeeds(set) {
+  localStorage.setItem(FEED_FILTER_KEY, JSON.stringify([...set]));
+}
+
+// Unified filter application: feed filter → listened filter → compact grouping
+function applyAllFilters() {
+  const list = document.getElementById('episode-list');
+  if (!list) return;
+
+  const hideListen   = localStorage.getItem(HIDE_LISTENED_KEY) === 'true';
+  const excludedFeeds = getExcludedFeeds();
+  const compact      = localStorage.getItem(COMPACT_KEY) === 'true';
+
+  // 1. Clear any previous compact grouping
+  clearCompactGrouping(list);
+
+  // 2. Apply base visibility: feed filter + listened filter
+  list.querySelectorAll('.episode-item').forEach(el => {
+    const feedExcluded  = excludedFeeds.has(el.dataset.feedId);
+    const listenedHidden = hideListen && el.classList.contains('listened');
+    el.style.display = (feedExcluded || listenedHidden) ? 'none' : '';
+  });
+
+  // 3. Compact grouping on top — groups visible consecutive same-feed items
+  if (compact) applyCompactGrouping(list);
+}
 
 function applyListenedFilter(hide) {
   localStorage.setItem(HIDE_LISTENED_KEY, hide ? 'true' : 'false');
-  document.querySelectorAll('#episode-list .episode-item.listened').forEach(el => {
-    el.style.display = hide ? 'none' : '';
+  applyAllFilters();
+}
+
+// ============================================================
+// Feed filter panel
+// ============================================================
+function updateFeedFilterBtn() {
+  const btn = document.getElementById('feed-filter-btn');
+  if (!btn) return;
+  btn.classList.toggle('has-filter', getExcludedFeeds().size > 0);
+}
+
+function toggleFeedFilterPanel() {
+  const panel = document.getElementById('inbox-filter-panel');
+  const btn   = document.getElementById('feed-filter-btn');
+  if (!panel) return;
+  const nowOpen = panel.hidden;
+  panel.hidden = !nowOpen;
+  btn?.classList.toggle('active', nowOpen);
+}
+
+function onFeedFilterChange() {
+  const excluded = new Set();
+  document.querySelectorAll('.feed-filter-cb').forEach(cb => {
+    if (!cb.checked) excluded.add(cb.dataset.feedId);
   });
+  saveExcludedFeeds(excluded);
+  updateFeedFilterBtn();
+  applyAllFilters();
+}
+
+// ============================================================
+// Compact mode
+// ============================================================
+function setCompactMode(compact) {
+  localStorage.setItem(COMPACT_KEY, compact ? 'true' : 'false');
+  applyAllFilters();
+}
+
+function clearCompactGrouping(list) {
+  list.querySelectorAll('.compact-expand-btn').forEach(el => el.remove());
+  list.querySelectorAll('.episode-item').forEach(el => {
+    el.classList.remove('compact-hidden', 'compact-first');
+    delete el.dataset.groupExpanded;
+    delete el.dataset.groupCount;
+  });
+}
+
+function applyCompactGrouping(list) {
+  // Work only on currently visible items (not hidden by other filters)
+  const visible = [...list.querySelectorAll('.episode-item')]
+    .filter(el => el.style.display !== 'none');
+
+  let i = 0;
+  while (i < visible.length) {
+    const feedId = visible[i].dataset.feedId;
+    let j = i + 1;
+    while (j < visible.length && visible[j].dataset.feedId === feedId) j++;
+
+    const group    = visible.slice(i, j);
+    const siblings = group.slice(1);
+
+    if (siblings.length > 0) {
+      const first = group[0];
+      first.classList.add('compact-first');
+      first.dataset.groupCount    = group.length;
+      first.dataset.groupExpanded = 'false';
+
+      // Hide the rest of the group
+      siblings.forEach(el => {
+        el.classList.add('compact-hidden');
+        el.style.display = 'none';
+      });
+
+      // Inject expand button into first item
+      const btn = document.createElement('button');
+      btn.className   = 'compact-expand-btn';
+      btn.textContent = `+${siblings.length} more`;
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation(); // don't trigger hx-get on the parent li
+        toggleCompactGroup(first, siblings);
+      });
+      first.appendChild(btn);
+    }
+
+    i = j;
+  }
+}
+
+function toggleCompactGroup(first, siblings) {
+  const expanded = first.dataset.groupExpanded === 'true';
+  siblings.forEach(el => {
+    el.classList.toggle('compact-hidden', expanded);
+    el.style.display = expanded ? 'none' : '';
+  });
+  first.dataset.groupExpanded = expanded ? 'false' : 'true';
+  const btn = first.querySelector('.compact-expand-btn');
+  if (btn) btn.textContent = expanded ? `+${siblings.length} more` : 'show less';
+}
+
+// ============================================================
+// Restore all inbox state after HTMX swap
+// ============================================================
+function initInboxState() {
+  // Restore compact toggle
+  const compactCb = document.getElementById('compact-mode-cb');
+  if (compactCb) compactCb.checked = localStorage.getItem(COMPACT_KEY) === 'true';
+
+  // Restore listened toggle
+  const listenedCb = document.getElementById('hide-listened-cb');
+  if (listenedCb) listenedCb.checked = localStorage.getItem(HIDE_LISTENED_KEY) === 'true';
+
+  // Restore feed filter checkboxes
+  const excluded = getExcludedFeeds();
+  document.querySelectorAll('.feed-filter-cb').forEach(cb => {
+    cb.checked = !excluded.has(cb.dataset.feedId);
+  });
+
+  // Reflect active-filter state on the button (dot badge)
+  updateFeedFilterBtn();
+
+  // Apply all filters (no-op if no episode list is present)
+  applyAllFilters();
 }
 
 // ============================================================
@@ -367,11 +524,5 @@ document.addEventListener('htmx:afterSwap', () => {
     syncPlayPauseAll();
   }
 
-  // Restore listened filter state when episode list is shown
-  const cb = document.getElementById('hide-listened-cb');
-  if (cb) {
-    const hide = localStorage.getItem(HIDE_LISTENED_KEY) === 'true';
-    cb.checked = hide;
-    applyListenedFilter(hide);
-  }
+  initInboxState();
 });

@@ -66,17 +66,139 @@ main {
   padding-bottom: 80px;
 }
 
-/* Section Headers */
+/* Section Headers — sticky below the tab bar */
 .section-header {
+  position: sticky;
+  top: 44px;           /* tab-bar height */
+  z-index: 5;
+  background: var(--bg-color);
+  /* Negative side margins + matching padding so the background
+     fills edge-to-edge despite main's padding */
+  margin: 0 calc(-1 * var(--gap)) var(--gap);
+  border-bottom: 1px solid rgba(0,0,0,0.07);
+}
+
+.section-header-row {
   display: flex;
   align-items: center;
   gap: 10px;
-  margin-bottom: 16px;
+  padding: 8px var(--gap);
 }
 
 .section-header h2 {
   font-size: 18px;
   font-weight: 600;
+}
+
+/* Right-side control group (compact + listened toggles + filter btn) */
+.section-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+/* Feed filter panel — inside sticky header, slides open below the row */
+.inbox-filter-panel {
+  padding: 6px var(--gap) 10px;
+  border-top: 1px solid rgba(0,0,0,0.07);
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.feed-filter-heading {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--hint-color);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 6px;
+}
+
+.feed-filter-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.feed-filter-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 0;
+  cursor: pointer;
+  border-bottom: 1px solid rgba(0,0,0,0.05);
+}
+
+.feed-filter-item:last-child {
+  border-bottom: none;
+}
+
+.feed-filter-name {
+  flex: 1;
+  font-size: 13px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.feed-filter-cb {
+  width: 18px;
+  height: 18px;
+  cursor: pointer;
+  accent-color: var(--button-color);
+  flex-shrink: 0;
+  margin: 0;
+}
+
+/* Feed filter button — highlights when panel is open or filter is active */
+.feed-filter-btn {
+  position: relative;
+  font-size: 18px;
+  padding: 4px 6px;
+}
+
+/* Panel is open */
+.feed-filter-btn.active {
+  color: var(--button-color);
+  background: rgba(36, 129, 204, 0.1);
+}
+
+/* Filter is applied (some feeds excluded) — icon turns accent color */
+.feed-filter-btn.has-filter {
+  color: var(--button-color);
+}
+
+/* Small dot badge indicating an active filter */
+.feed-filter-btn.has-filter::after {
+  content: '';
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  width: 7px;
+  height: 7px;
+  background: var(--button-color);
+  border-radius: 50%;
+  border: 1.5px solid var(--bg-color);
+}
+
+/* Compact mode — first item of a group wraps to show expand button */
+.episode-item.compact-first {
+  flex-wrap: wrap;
+}
+
+.compact-expand-btn {
+  width: 100%;
+  margin-top: 6px;
+  padding: 4px 0;
+  background: none;
+  border: none;
+  font-size: 12px;
+  color: var(--button-color);
+  cursor: pointer;
+  text-align: left;
+  font-weight: 500;
+  letter-spacing: 0.1px;
 }
 
 /* Buttons */
@@ -452,15 +574,20 @@ main {
   font-size: 16px;
 }
 
-/* Filter toggle — sits in section-header, pushed right */
+/* Filter toggle — toggle switch label */
 .filter-label {
   display: flex;
   align-items: center;
   gap: 6px;
   cursor: pointer;
   user-select: none;
-  margin-left: auto;
   flex-shrink: 0;
+}
+
+/* When filter-label is a direct child of section-header-row (episode list),
+   push it to the right automatically */
+.section-header-row > .filter-label {
+  margin-left: auto;
 }
 
 .filter-text {
