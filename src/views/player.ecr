@@ -21,7 +21,7 @@
     <h2 class="player-title"><%= HTML.escape(episode.title) %></h2>
 
     <% if (desc = episode.description) %>
-      <p class="player-description"><%= HTML.escape(desc[0, 300]) %><%= "..." if desc.size > 300 %></p>
+      <div class="player-description"><%= Sanitizer.podcast_description(desc) %></div>
     <% end %>
 
     <%# Custom playback controls — all wired to #episode-audio via JS %>

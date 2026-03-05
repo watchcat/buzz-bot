@@ -332,6 +332,19 @@ function syncPositionState() {
 }
 
 // ============================================================
+// Episode description links — open in external browser
+// ============================================================
+document.addEventListener('click', (e) => {
+  const link = e.target.closest('.player-description a');
+  if (!link) return;
+  const href = link.href;
+  if (!href || href === '#' || href.startsWith('javascript:')) return;
+  e.preventDefault();
+  if (tg) tg.openLink(href);
+  else window.open(href, '_blank', 'noopener');
+});
+
+// ============================================================
 // Listened filter
 // ============================================================
 const HIDE_LISTENED_KEY = 'buzz-hide-listened';

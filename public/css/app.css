@@ -510,9 +510,41 @@ main {
 
 .player-description {
   font-size: 13px;
-  color: var(--hint-color);
+  color: var(--text-color);
   margin-bottom: 16px;
-  line-height: 1.6;
+  line-height: 1.7;
+  word-wrap: break-word;
+}
+
+.player-description a {
+  color: var(--link-color);
+  text-decoration: none;
+}
+
+.player-description a:hover {
+  text-decoration: underline;
+}
+
+.player-description img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 8px;
+  margin: 8px 0;
+  display: block;
+}
+
+.player-description p {
+  margin-bottom: 8px;
+}
+
+.player-description ul,
+.player-description ol {
+  padding-left: 20px;
+  margin-bottom: 8px;
+}
+
+.player-description li {
+  margin-bottom: 4px;
 }
 
 /* Custom player controls */
