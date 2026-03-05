@@ -113,9 +113,21 @@ module RSS
 
   private def self.parse_rfc822(str : String) : Time?
     s = str.strip
+
+    # Replace named timezone abbreviations with numeric offsets.
+    # %z only handles +HHMM / -HHMM / Z, not names like UTC or GMT.
+    s = s
+      .sub(/\bUTC$/i, "+0000")
+      .sub(/\bGMT$/i, "+0000")
+      .sub(/\bEST$/i, "-0500").sub(/\bEDT$/i, "-0400")
+      .sub(/\bCST$/i, "-0600").sub(/\bCDT$/i, "-0500")
+      .sub(/\bMST$/i, "-0700").sub(/\bMDT$/i, "-0600")
+      .sub(/\bPST$/i, "-0800").sub(/\bPDT$/i, "-0700")
+
     [
-      "%a, %d %b %Y %H:%M:%S %z",
-      "%d %b %Y %H:%M:%S %z",
+      "%a, %d %b %Y %H:%M:%S %z", # Sat, 28 Feb 2026 17:16:03 +0000  (RFC 2822)
+      "%a, %b %d %Y %H:%M:%S %z", # Sun, Mar 01 2026 23:00:00 +0000  (non-standard)
+      "%d %b %Y %H:%M:%S %z",     # 28 Feb 2026 17:16:03 +0000       (no weekday)
     ].each do |fmt|
       return Time.parse(s, fmt, Time::Location::UTC)
     rescue

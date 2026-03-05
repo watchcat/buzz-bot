@@ -33,7 +33,8 @@ struct Episode
           title        = EXCLUDED.title,
           description  = EXCLUDED.description,
           audio_url    = EXCLUDED.audio_url,
-          duration_sec = COALESCE(EXCLUDED.duration_sec, episodes.duration_sec)
+          duration_sec = COALESCE(EXCLUDED.duration_sec, episodes.duration_sec),
+          published_at = COALESCE(episodes.published_at, EXCLUDED.published_at)
         RETURNING id, feed_id, guid, title, description, audio_url, duration_sec, published_at
       SQL
       feed_id, guid, title, description, audio_url, duration_sec, published_at
@@ -58,7 +59,7 @@ struct Episode
         SELECT id, feed_id, guid, title, description, audio_url, duration_sec, published_at
         FROM episodes
         WHERE feed_id = $1
-        ORDER BY published_at DESC NULLS LAST
+        ORDER BY COALESCE(published_at, created_at) DESC
         LIMIT $2
       SQL
       feed_id, limit
@@ -124,7 +125,7 @@ struct Episode
       <<-SQL,
         WITH ranked AS (
           SELECT id,
-                 LEAD(id) OVER (ORDER BY published_at DESC NULLS LAST, id DESC) AS next_id
+                 LEAD(id) OVER (ORDER BY COALESCE(published_at, created_at) DESC) AS next_id
           FROM episodes
           WHERE feed_id = $1
         )
