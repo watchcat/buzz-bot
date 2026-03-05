@@ -1,0 +1,38 @@
+<% if results.empty? %>
+  <div class="search-empty">No podcasts found. Try a different name.</div>
+<% else %>
+  <ul class="search-result-list">
+    <% results.each do |result| %>
+      <li class="search-result-item">
+        <% if (art = result.artwork_url) %>
+          <img src="<%= art %>" alt="" class="search-result-image" loading="lazy">
+        <% else %>
+          <div class="feed-image-placeholder">🎙️</div>
+        <% end %>
+
+        <div class="search-result-meta">
+          <strong class="search-result-name"><%= result.name %></strong>
+          <span class="search-result-author"><%= result.author %></span>
+          <div class="search-result-tags">
+            <% if (genre = result.genre) %>
+              <span class="tag"><%= genre %></span>
+            <% end %>
+            <% if (count = result.episode_count) %>
+              <span class="tag"><%= count %> eps</span>
+            <% end %>
+          </div>
+        </div>
+
+        <button class="btn-subscribe"
+                hx-post="/search/subscribe"
+                hx-vals="<%= HTML.escape({"url" => result.feed_url}.to_json) %>"
+                hx-target="this"
+                hx-swap="outerHTML"
+                hx-include="[name='initData']"
+                hx-disabled-elt="this">
+          + Subscribe
+        </button>
+      </li>
+    <% end %>
+  </ul>
+<% end %>

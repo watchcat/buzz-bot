@@ -1,0 +1,29 @@
+<div class="app-container">
+  <nav class="tab-bar">
+    <button class="tab-btn active"
+            hx-get="/feeds"
+            hx-target="#content"
+            hx-trigger="click"
+            hx-include="[name='initData']"
+            onclick="setActiveTab(this)">
+      📻 Feeds
+    </button>
+    <button class="tab-btn"
+            hx-get="/recommendations"
+            hx-target="#content"
+            hx-trigger="click"
+            hx-include="[name='initData']"
+            onclick="setActiveTab(this)">
+      ✨ For You
+    </button>
+  </nav>
+
+  <main id="content"
+        hx-get="/feeds"
+        hx-trigger="load"
+        hx-include="[name='initData']">
+    <div class="loading">Loading...</div>
+  </main>
+</div>
+
+<input type="hidden" name="initData" id="initData" value="">

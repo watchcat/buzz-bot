@@ -1,0 +1,149 @@
+require "http/client"
+require "json"
+
+# AudioSender handles sending podcast episodes to a user's Telegram chat.
+#
+# Strategy:
+#   1. Fast path — pass the episode URL directly to Telegram's sendAudio.
+#      Telegram fetches the file on its side. Works for publicly accessible
+#      URLs up to ~20 MB.
+#   2. Slow path — stream-download the file to a tempfile, then upload it
+#      as multipart/form-data. Handles up to 50 MB (Telegram Bot API limit).
+#   3. If the file exceeds 50 MB, notify the user via the bot.
+#
+# Both paths run inside a spawned fiber so the HTTP handler returns
+# immediately with a "Sending…" response.
+
+module AudioSender
+  TELEGRAM_API    = "https://api.telegram.org/bot#{Config.bot_token}"
+  MAX_UPLOAD_SIZE = 50 * 1024 * 1024  # 50 MB — hard Bot API limit
+  URL_SEND_TIMEOUT = 60.seconds
+
+  def self.send_to_user(telegram_id : Int64, episode : Episode, feed : Feed?)
+    if try_url_send(telegram_id, episode, feed)
+      Log.info { "AudioSender: sent episode #{episode.id} by URL to #{telegram_id}" }
+      return
+    end
+
+    # URL path failed — check size before attempting download+upload
+    size = probe_content_length(episode.audio_url)
+    if size && size > MAX_UPLOAD_SIZE
+      BotClient.client.send_message(
+        telegram_id,
+        "⚠️ \"#{episode.title}\" is too large to send (#{mb(size)} MB). " \
+        "Telegram bots can only deliver files up to 50 MB."
+      )
+      return
+    end
+
+    download_and_upload(telegram_id, episode, feed)
+  rescue ex
+    Log.error { "AudioSender unhandled error for episode #{episode.id}: #{ex.message}" }
+    notify_failure(telegram_id, episode.title, ex.message)
+  end
+
+  # --------------------------------------------------------------------------
+  # Fast path: send by URL
+  # --------------------------------------------------------------------------
+  private def self.try_url_send(telegram_id : Int64, episode : Episode, feed : Feed?) : Bool
+    body = JSON.build do |j|
+      j.object do
+        j.field "chat_id", telegram_id
+        j.field "audio",   episode.audio_url
+        j.field "title",   episode.title
+        j.field "performer", feed.try(&.title) || ""
+        episode.duration_sec.try { |d| j.field "duration", d }
+      end
+    end
+
+    uri    = URI.parse("#{TELEGRAM_API}/sendAudio")
+    client = HTTP::Client.new(uri)
+    client.read_timeout = URL_SEND_TIMEOUT
+    resp = client.post(uri.path, headers: HTTP::Headers{"Content-Type" => "application/json"}, body: body)
+    JSON.parse(resp.body)["ok"]?.try(&.as_bool?) || false
+  rescue ex
+    Log.warn { "AudioSender URL send failed: #{ex.message}" }
+    false
+  end
+
+  # --------------------------------------------------------------------------
+  # Slow path: stream-download then multipart-upload
+  # --------------------------------------------------------------------------
+  private def self.download_and_upload(telegram_id : Int64, episode : Episode, feed : Feed?)
+    tempfile = File.tempfile("buzz-episode", ".mp3")
+    downloaded = 0_i64
+
+    begin
+      HTTP::Client.get(episode.audio_url) do |resp|
+        raise "Remote returned HTTP #{resp.status_code}" unless resp.success?
+        buf = Bytes.new(65_536)
+        while (n = resp.body_io.read(buf)) > 0
+          tempfile.write(buf[0, n])
+          downloaded += n
+          if downloaded > MAX_UPLOAD_SIZE
+            raise "File exceeds #{mb(MAX_UPLOAD_SIZE)} MB Telegram limit " \
+                  "(stopped at #{mb(downloaded)} MB)"
+          end
+        end
+      end
+
+      tempfile.rewind
+      upload_multipart(telegram_id, episode, feed, tempfile)
+      Log.info { "AudioSender: uploaded episode #{episode.id} (#{mb(downloaded)} MB) to #{telegram_id}" }
+    rescue ex
+      Log.error { "AudioSender download/upload failed for episode #{episode.id}: #{ex.message}" }
+      notify_failure(telegram_id, episode.title, ex.message)
+    ensure
+      tempfile.delete
+    end
+  end
+
+  private def self.upload_multipart(telegram_id : Int64, episode : Episode, feed : Feed?, file : File)
+    boundary = "BuzzBot#{Random::Secure.hex(10)}"
+    buf = IO::Memory.new
+
+    builder = HTTP::FormData::Builder.new(buf, boundary)
+    builder.field("chat_id",   telegram_id.to_s)
+    builder.field("title",     episode.title)
+    builder.field("performer", feed.try(&.title) || "")
+    episode.duration_sec.try { |d| builder.field("duration", d.to_s) }
+    builder.file(
+      "audio", file,
+      HTTP::FormData::FileMetadata.new(filename: "episode.mp3"),
+      HTTP::Headers{"Content-Type" => "audio/mpeg"}
+    )
+    builder.finish
+
+    resp = HTTP::Client.post(
+      "#{TELEGRAM_API}/sendAudio",
+      headers: HTTP::Headers{"Content-Type" => "multipart/form-data; boundary=#{boundary}"},
+      body: buf.to_s
+    )
+    result = JSON.parse(resp.body)
+    unless result["ok"]?.try(&.as_bool?)
+      raise result["description"]?.try(&.as_s?) || "Telegram returned ok=false"
+    end
+  end
+
+  # --------------------------------------------------------------------------
+  # Helpers
+  # --------------------------------------------------------------------------
+  private def self.probe_content_length(url : String) : Int64?
+    resp = HTTP::Client.head(url)
+    resp.headers["Content-Length"]?.try(&.to_i64?)
+  rescue
+    nil
+  end
+
+  private def self.notify_failure(telegram_id : Int64, title : String, reason : String?)
+    BotClient.client.send_message(
+      telegram_id,
+      "❌ Failed to send \"#{title}\": #{reason || "unknown error"}"
+    )
+  rescue
+  end
+
+  private def self.mb(bytes) : String
+    "%.1f" % (bytes / 1_048_576.0)
+  end
+end

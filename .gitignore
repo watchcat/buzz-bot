@@ -1,0 +1,22 @@
+# Environment — contains secrets
+.env
+
+# Crystal build artifacts
+lib/
+bin/
+.shards/
+*.dwarf
+
+# Compiled binary
+buzz-bot
+buzz_bot
+
+# Claude project config
+.claude/
+
+# Cloudflare tunnel credentials (contain auth tokens)
+*.json
+
+# Temp files
+*.tmp
+*.log

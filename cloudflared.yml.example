@@ -1,0 +1,13 @@
+# Cloudflare Tunnel config for local development
+# Copy to ~/.cloudflared/config.yml after running:
+#   cloudflared tunnel login
+#   cloudflared tunnel create buzz-bot
+#   cloudflared tunnel route dns buzz-bot webhook.yourdomain.com
+
+tunnel: <tunnel-id>
+credentials-file: /home/<your-user>/.cloudflared/<tunnel-id>.json
+
+ingress:
+  - hostname: webhook.yourdomain.com
+    service: http://localhost:3000
+  - service: http_status:404

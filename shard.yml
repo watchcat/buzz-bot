@@ -1,0 +1,20 @@
+name: buzz-bot
+version: 0.1.0
+
+dependencies:
+  tourmaline:
+    github: protoncr/tourmaline
+  kemal:
+    github: kemalcr/kemal
+  db:
+    github: crystal-lang/crystal-db
+  pg:
+    github: will/crystal-pg
+  dotenv:
+    github: drum445/dotenv
+
+crystal: ">= 1.6.0"
+
+targets:
+  buzz-bot:
+    main: src/buzz_bot.cr
