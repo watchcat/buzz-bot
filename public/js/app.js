@@ -147,7 +147,8 @@ function loadEpisodeIntoPlayer(playerData) {
     // New episode — reload audio
     if (progressTimer) { clearTimeout(progressTimer); progressTimer = null; }
     audio.dataset.episodeId = newId;
-    audio.src = src;
+    // Upgrade http:// → https:// to avoid mixed-content blocking on HTTPS pages
+    audio.src = src.replace(/^http:\/\//i, 'https://');
     audio.load();
     audio.addEventListener('loadedmetadata', () => {
       if (start > 0) audio.currentTime = start;

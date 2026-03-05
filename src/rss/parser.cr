@@ -72,10 +72,12 @@ module RSS
     title = text_content(node, "title")
     return nil unless guid && title
 
-    # Audio URL from enclosure
-    audio_url = node.xpath_node("enclosure[@type]/@url").try(&.content) ||
-                node.xpath_node("enclosure/@url").try(&.content) ||
-                node.xpath_node("*[local-name()='enclosure']/@url").try(&.content)
+    # Audio URL from enclosure — upgrade http:// to https:// to avoid
+    # mixed-content blocking when the app is served over HTTPS.
+    audio_url = (node.xpath_node("enclosure[@type]/@url").try(&.content) ||
+                 node.xpath_node("enclosure/@url").try(&.content) ||
+                 node.xpath_node("*[local-name()='enclosure']/@url").try(&.content))
+                .try { |u| u.starts_with?("http://") ? "https://" + u[7..] : u }
     return nil unless audio_url
 
     description = text_content(node, "description") ||
