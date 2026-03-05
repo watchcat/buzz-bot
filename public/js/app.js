@@ -345,11 +345,22 @@ document.addEventListener('click', (e) => {
 });
 
 // ============================================================
-// Inbox filter state — listened, feed filter, compact mode
+// Filter state — per-page isolation
 // ============================================================
-const HIDE_LISTENED_KEY    = 'buzz-hide-listened';
-const FEED_FILTER_KEY      = 'buzz-inbox-excluded-feeds';
-const COMPACT_KEY          = 'buzz-inbox-compact';
+const INBOX_HIDE_LISTENED_KEY = 'buzz-inbox-hide-listened';
+const FEED_HIDE_LISTENED_KEY  = 'buzz-feed-hide-listened';
+const FEED_FILTER_KEY         = 'buzz-inbox-excluded-feeds';
+const COMPACT_KEY             = 'buzz-inbox-compact';
+
+// True only when the inbox tab content is active (has compact-mode toggle)
+function isInboxPage() {
+  return !!document.getElementById('compact-mode-cb');
+}
+
+// Return the correct hide-listened key for the current page
+function hideListenedKey() {
+  return isInboxPage() ? INBOX_HIDE_LISTENED_KEY : FEED_HIDE_LISTENED_KEY;
+}
 
 function getExcludedFeeds() {
   try {
@@ -363,31 +374,33 @@ function saveExcludedFeeds(set) {
   localStorage.setItem(FEED_FILTER_KEY, JSON.stringify([...set]));
 }
 
-// Unified filter application: feed filter → listened filter → compact grouping
+// Unified filter application: feed filter → listened filter → compact grouping.
+// Compact mode and feed filter only apply when on the inbox page.
 function applyAllFilters() {
   const list = document.getElementById('episode-list');
   if (!list) return;
 
-  const hideListen   = localStorage.getItem(HIDE_LISTENED_KEY) === 'true';
-  const excludedFeeds = getExcludedFeeds();
-  const compact      = localStorage.getItem(COMPACT_KEY) === 'true';
+  const inbox         = isInboxPage();
+  const hideListen    = localStorage.getItem(hideListenedKey()) === 'true';
+  const excludedFeeds = inbox ? getExcludedFeeds() : new Set();
+  const compact       = inbox && localStorage.getItem(COMPACT_KEY) === 'true';
 
   // 1. Clear any previous compact grouping
   clearCompactGrouping(list);
 
   // 2. Apply base visibility: feed filter + listened filter
   list.querySelectorAll('.episode-item').forEach(el => {
-    const feedExcluded  = excludedFeeds.has(el.dataset.feedId);
+    const feedExcluded   = excludedFeeds.has(el.dataset.feedId);
     const listenedHidden = hideListen && el.classList.contains('listened');
     el.style.display = (feedExcluded || listenedHidden) ? 'none' : '';
   });
 
-  // 3. Compact grouping on top — groups visible consecutive same-feed items
+  // 3. Compact grouping on top — inbox only
   if (compact) applyCompactGrouping(list);
 }
 
 function applyListenedFilter(hide) {
-  localStorage.setItem(HIDE_LISTENED_KEY, hide ? 'true' : 'false');
+  localStorage.setItem(hideListenedKey(), hide ? 'true' : 'false');
   applyAllFilters();
 }
 
@@ -496,9 +509,9 @@ function initInboxState() {
   const compactCb = document.getElementById('compact-mode-cb');
   if (compactCb) compactCb.checked = localStorage.getItem(COMPACT_KEY) === 'true';
 
-  // Restore listened toggle
+  // Restore listened toggle (uses page-specific key)
   const listenedCb = document.getElementById('hide-listened-cb');
-  if (listenedCb) listenedCb.checked = localStorage.getItem(HIDE_LISTENED_KEY) === 'true';
+  if (listenedCb) listenedCb.checked = localStorage.getItem(hideListenedKey()) === 'true';
 
   // Restore feed filter checkboxes
   const excluded = getExcludedFeeds();
