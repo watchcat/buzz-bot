@@ -5,6 +5,14 @@
             hx-target="#content"
             hx-include="[name='initData']">← Back</button>
     <h2><%= feed.title || "Episodes" %></h2>
+    <% unless episodes.empty? %>
+      <label class="filter-label">
+        <input type="checkbox" id="hide-listened-cb" class="filter-checkbox"
+               onchange="applyListenedFilter(this.checked)">
+        <span class="filter-switch"></span>
+        <span class="filter-text">Hide&nbsp;listened</span>
+      </label>
+    <% end %>
   </div>
 
   <% if episodes.empty? %>
@@ -12,9 +20,10 @@
       <p>No episodes found.</p>
     </div>
   <% else %>
-    <ul class="episode-list">
+    <ul class="episode-list" id="episode-list">
       <% episodes.each do |ep| %>
-        <li class="episode-item"
+        <% is_listened = completed_ids.includes?(ep.id) %>
+        <li class="episode-item<%= " listened" if is_listened %>"
             hx-get="/episodes/<%= ep.id %>/player"
             hx-target="#content"
             hx-include="[name='initData']">
@@ -30,7 +39,7 @@
               <p class="episode-description"><%= HTML.escape(desc[0, 120]) %><%= "..." if desc.size > 120 %></p>
             <% end %>
           </div>
-          <span class="episode-play-icon">▶</span>
+          <span class="episode-play-icon"><%= is_listened ? "✓" : "▶" %></span>
         </li>
       <% end %>
     </ul>

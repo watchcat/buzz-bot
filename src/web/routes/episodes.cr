@@ -15,6 +15,7 @@ module Web::Routes::Episodes
       halt env, status_code: 404, response: "Feed not found" unless feed
 
       episodes = Episode.for_feed(feed_id)
+      completed_ids = Episode.completed_ids(user.id, feed_id)
       env.response.content_type = "text/html"
       ECR.render "src/views/episode_list.ecr"
     end

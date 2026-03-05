@@ -64,6 +64,20 @@ struct Episode
     episodes
   end
 
+  def self.completed_ids(user_id : Int64, feed_id : Int64) : Set(Int64)
+    ids = Set(Int64).new
+    AppDB.pool.query_each(
+      <<-SQL,
+        SELECT ue.episode_id
+        FROM user_episodes ue
+        JOIN episodes e ON e.id = ue.episode_id
+        WHERE ue.user_id = $1 AND e.feed_id = $2 AND ue.completed = TRUE
+      SQL
+      user_id, feed_id
+    ) { |rs| ids << rs.read(Int64) }
+    ids
+  end
+
   def self.recommended_for(user_id : Int64, limit : Int32 = 20) : Array(Episode)
     episodes = [] of Episode
     AppDB.pool.query_each(

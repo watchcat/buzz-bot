@@ -54,7 +54,11 @@ struct Feed
         FROM feeds f
         JOIN user_feeds uf ON f.id = uf.feed_id
         WHERE uf.user_id = $1
-        ORDER BY uf.created_at DESC
+        ORDER BY COALESCE(
+          (SELECT MAX(e.published_at) FROM episodes e WHERE e.feed_id = f.id),
+          f.last_fetched_at,
+          uf.created_at
+        ) DESC NULLS LAST
       SQL
       user_id
     ) do |rs|

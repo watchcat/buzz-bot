@@ -332,6 +332,18 @@ function syncPositionState() {
 }
 
 // ============================================================
+// Listened filter
+// ============================================================
+const HIDE_LISTENED_KEY = 'buzz-hide-listened';
+
+function applyListenedFilter(hide) {
+  localStorage.setItem(HIDE_LISTENED_KEY, hide ? 'true' : 'false');
+  document.querySelectorAll('#episode-list .episode-item.listened').forEach(el => {
+    el.style.display = hide ? 'none' : '';
+  });
+}
+
+// ============================================================
 // HTMX lifecycle
 // ============================================================
 document.addEventListener('htmx:afterSwap', () => {
@@ -339,7 +351,14 @@ document.addEventListener('htmx:afterSwap', () => {
   if (playerData) {
     loadEpisodeIntoPlayer(playerData);
   } else {
-    // Left the player page — keep audio playing, just sync button state
     syncPlayPauseAll();
+  }
+
+  // Restore listened filter state when episode list is shown
+  const cb = document.getElementById('hide-listened-cb');
+  if (cb) {
+    const hide = localStorage.getItem(HIDE_LISTENED_KEY) === 'true';
+    cb.checked = hide;
+    applyListenedFilter(hide);
   }
 });
