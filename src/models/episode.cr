@@ -108,6 +108,28 @@ struct Episode
     ids
   end
 
+  def self.in_progress_for_user(user_id : Int64) : {Episode, Int32}?
+    AppDB.pool.query_one?(
+      <<-SQL,
+        SELECT e.id, e.feed_id, e.guid, e.title, e.description,
+               e.audio_url, e.duration_sec, e.published_at,
+               ue.progress_seconds
+        FROM episodes e
+        JOIN user_episodes ue ON e.id = ue.episode_id
+        WHERE ue.user_id = $1
+          AND ue.progress_seconds > 0
+          AND ue.completed = FALSE
+        ORDER BY ue.updated_at DESC
+        LIMIT 1
+      SQL
+      user_id
+    ) do |rs|
+      ep = from_rs(rs)
+      progress = rs.read(Int32)
+      {ep, progress}
+    end
+  end
+
   def self.recommended_for_episode(episode_id : Int64, limit : Int32 = 5) : Array(Episode)
     episodes = [] of Episode
     AppDB.pool.query_each(

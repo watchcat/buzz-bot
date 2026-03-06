@@ -1150,3 +1150,92 @@ main {
 body:has(.now-playing-bar:not([hidden])) main {
   padding-bottom: 80px;
 }
+
+/* ============================================================
+   Resume bar — "Continue listening" strip above now-playing bar
+   ============================================================ */
+.resume-bar {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 62px;
+  background: var(--secondary-bg);
+  border-top: 2px solid var(--button-color);
+  display: flex;
+  align-items: center;
+  padding: 0 14px;
+  gap: 12px;
+  z-index: 95;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: background 0.15s;
+}
+
+.resume-bar:active { background: rgba(0,0,0,0.06); }
+
+/* Shift up when now-playing bar is visible */
+body:has(.now-playing-bar:not([hidden])) .resume-bar {
+  bottom: 62px;
+}
+
+.resume-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.resume-label {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--button-color);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+
+.resume-title {
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.resume-feed {
+  font-size: 11px;
+  color: var(--hint-color);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.resume-progress-track {
+  height: 3px;
+  background: rgba(0,0,0,0.12);
+  border-radius: 2px;
+  margin-top: 3px;
+  overflow: hidden;
+}
+
+.resume-progress-fill {
+  height: 100%;
+  background: var(--button-color);
+  border-radius: 2px;
+}
+
+.resume-icon {
+  color: var(--button-color);
+  font-size: 18px;
+  flex-shrink: 0;
+}
+
+/* Extra padding when resume bar is present */
+body:has(.resume-bar) main {
+  padding-bottom: 142px; /* 62px resume + 80px gap */
+}
+
+body:has(.resume-bar):has(.now-playing-bar:not([hidden])) main {
+  padding-bottom: 204px; /* 62px resume + 62px now-playing + 80px gap */
+}

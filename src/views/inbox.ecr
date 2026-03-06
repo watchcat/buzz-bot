@@ -67,3 +67,23 @@
     </ul>
   <% end %>
 </div>
+
+<% if (ip = in_progress_episode) %>
+  <% ip_ep = ip[0]; ip_prog = ip[1] %>
+  <div class="resume-bar"
+       hx-get="/episodes/<%= ip_ep.id %>/player?autoplay=1"
+       hx-target="#content"
+       hx-include="[name='initData']">
+    <div class="resume-info">
+      <span class="resume-label">Continue listening</span>
+      <span class="resume-title"><%= HTML.escape(ip_ep.title) %></span>
+      <span class="resume-feed"><%= HTML.escape(feeds_map[ip_ep.feed_id]? || "") %></span>
+      <% if (dur = ip_ep.duration_sec) && dur > 0 %>
+        <div class="resume-progress-track">
+          <div class="resume-progress-fill" style="width: <%= (ip_prog * 100 / dur).clamp(0, 100) %>%"></div>
+        </div>
+      <% end %>
+    </div>
+    <span class="resume-icon">▶</span>
+  </div>
+<% end %>

@@ -29,22 +29,7 @@ function getInitData() {
   return tg?.initData || document.getElementById('initData')?.value || '';
 }
 
-// ============================================================
-// Session restore — redirect initial load to last-played episode
-//
-// This runs synchronously here at the bottom of <body>, which is
-// BEFORE DOMContentLoaded fires (where HTMX processes hx-trigger="load").
-// Patching hx-get on #content now means HTMX will load the player
-// page directly — no flash of the inbox first.
-// ============================================================
 const LAST_EPISODE_KEY = 'buzz-last-episode-id';
-
-(function restoreLastSession() {
-  const savedId = localStorage.getItem(LAST_EPISODE_KEY);
-  if (!savedId) return;
-  const mainEl = document.getElementById('content');
-  if (mainEl) mainEl.setAttribute('hx-get', `/episodes/${savedId}/player`);
-})();
 
 // ============================================================
 // HTMX — inject initData header on every request
