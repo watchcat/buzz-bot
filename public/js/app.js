@@ -30,6 +30,23 @@ function getInitData() {
 }
 
 // ============================================================
+// Session restore — redirect initial load to last-played episode
+//
+// This runs synchronously here at the bottom of <body>, which is
+// BEFORE DOMContentLoaded fires (where HTMX processes hx-trigger="load").
+// Patching hx-get on #content now means HTMX will load the player
+// page directly — no flash of the inbox first.
+// ============================================================
+const LAST_EPISODE_KEY = 'buzz-last-episode-id';
+
+(function restoreLastSession() {
+  const savedId = localStorage.getItem(LAST_EPISODE_KEY);
+  if (!savedId) return;
+  const mainEl = document.getElementById('content');
+  if (mainEl) mainEl.setAttribute('hx-get', `/episodes/${savedId}/player`);
+})();
+
+// ============================================================
 // HTMX — inject initData header on every request
 // ============================================================
 document.addEventListener('htmx:configRequest', (event) => {
@@ -159,6 +176,8 @@ function loadEpisodeIntoPlayer(playerData) {
     // New episode — reload audio
     if (progressTimer) { clearTimeout(progressTimer); progressTimer = null; }
     audio.dataset.episodeId = newId;
+    // Persist so the player reopens here on next app launch
+    localStorage.setItem(LAST_EPISODE_KEY, newId);
     // Upgrade http:// → https:// to avoid mixed-content blocking on HTTPS pages
     audio.src = src.replace(/^http:\/\//i, 'https://');
     audio.load();
