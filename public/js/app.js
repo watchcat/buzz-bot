@@ -29,7 +29,33 @@ function getInitData() {
   return tg?.initData || document.getElementById('initData')?.value || '';
 }
 
-const LAST_EPISODE_KEY = 'buzz-last-episode-id';
+const LAST_EPISODE_KEY      = 'buzz-last-episode-id';
+const LAST_EPISODE_META_KEY = 'buzz-last-episode-meta';
+
+// Restore now-playing bar from the previous session (UI only — no audio loaded).
+// Tapping the bar navigates to the player page as usual.
+(function restoreNowPlayingBar() {
+  const savedId = localStorage.getItem(LAST_EPISODE_KEY);
+  if (!savedId) return;
+  let meta = {};
+  try { meta = JSON.parse(localStorage.getItem(LAST_EPISODE_META_KEY) || '{}'); } catch (e) {}
+  const bar = document.getElementById('now-playing');
+  if (!bar) return;
+  bar.hidden = false;
+  bar.dataset.episodeId = savedId;
+  document.getElementById('now-playing-title').textContent   = meta.title   || '';
+  document.getElementById('now-playing-podcast').textContent = meta.podcast  || '';
+  const artEl = document.getElementById('now-playing-artwork');
+  if (artEl) {
+    if (meta.artwork) {
+      artEl.style.backgroundImage = `url('${meta.artwork}')`;
+      artEl.textContent = '';
+    } else {
+      artEl.style.backgroundImage = '';
+      artEl.textContent = '🎙';
+    }
+  }
+})();
 
 // ============================================================
 // HTMX — inject initData header on every request
@@ -161,8 +187,9 @@ function loadEpisodeIntoPlayer(playerData) {
     // New episode — reload audio
     if (progressTimer) { clearTimeout(progressTimer); progressTimer = null; }
     audio.dataset.episodeId = newId;
-    // Persist so the player reopens here on next app launch
+    // Persist so the now-playing bar is restored on next app launch
     localStorage.setItem(LAST_EPISODE_KEY, newId);
+    localStorage.setItem(LAST_EPISODE_META_KEY, JSON.stringify({ title, podcast: artist, artwork }));
     // Upgrade http:// → https:// to avoid mixed-content blocking on HTTPS pages
     audio.src = src.replace(/^http:\/\//i, 'https://');
     audio.load();
