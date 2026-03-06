@@ -267,8 +267,23 @@ function formatTime(sec) {
 // Play / Pause / Seek
 // ============================================================
 function togglePlayPause() {
-  if (audio.paused) audio.play().catch(() => {});
-  else              audio.pause();
+  if (audio.paused) {
+    // If no audio is loaded yet (restored bar from previous session),
+    // navigate to the player with autoplay rather than calling play() on an empty element.
+    if (!audio.src || audio.src === window.location.href) {
+      const episodeId = document.getElementById('now-playing')?.dataset.episodeId;
+      if (episodeId) {
+        htmx.ajax('GET', `/episodes/${episodeId}/player?autoplay=1`, {
+          target: '#content',
+          swap:   'innerHTML',
+        });
+        return;
+      }
+    }
+    audio.play().catch(() => {});
+  } else {
+    audio.pause();
+  }
 }
 
 function seekRelative(delta) {
