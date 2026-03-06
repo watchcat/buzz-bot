@@ -48,7 +48,7 @@
         <% is_listened = completed_ids.includes?(ep.id) %>
         <li class="episode-item<%= " listened" if is_listened %>"
             data-feed-id="<%= ep.feed_id %>"
-            hx-get="/episodes/<%= ep.id %>/player"
+            hx-get="/episodes/<%= ep.id %>/player?from=inbox"
             hx-target="#content"
             hx-include="[name='initData']">
           <div class="episode-info">

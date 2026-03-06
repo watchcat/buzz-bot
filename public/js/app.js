@@ -273,7 +273,7 @@ function togglePlayPause() {
     if (!audio.src || audio.src === window.location.href) {
       const episodeId = document.getElementById('now-playing')?.dataset.episodeId;
       if (episodeId) {
-        htmx.ajax('GET', `/episodes/${episodeId}/player?autoplay=1`, {
+        htmx.ajax('GET', `/episodes/${episodeId}/player?autoplay=1&from=inbox`, {
           target: '#content',
           swap:   'innerHTML',
         });

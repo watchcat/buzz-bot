@@ -1,9 +1,9 @@
 <div class="player-container" id="player-root" data-next-id="<%= next_episode_id || "" %>">
   <div class="section-header">
     <button class="btn-back"
-            hx-get="/episodes?feed_id=<%= episode.feed_id %>"
+            hx-get="<%= from_inbox ? "/inbox" : "/episodes?feed_id=#{episode.feed_id}" %>"
             hx-target="#content"
-            hx-include="[name='initData']">← Episodes</button>
+            hx-include="[name='initData']">← <%= from_inbox ? "Inbox" : "Episodes" %></button>
   </div>
 
   <div class="player-card">
