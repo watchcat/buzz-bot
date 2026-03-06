@@ -352,6 +352,33 @@ function syncPositionState() {
 }
 
 // ============================================================
+// Hardware media key fallback for Android WebView
+//
+// Android WebView deliberately disables the Web MediaSession API
+// (Chromium bug #678979), so setActionHandler() never fires for
+// Bluetooth headset buttons. As a fallback, some headsets dispatch
+// their play/pause button as a keyboard MediaPlayPause event to the
+// focused window — catch those here.
+// ============================================================
+document.addEventListener('keydown', (e) => {
+  switch (e.key) {
+    case 'MediaPlayPause':
+      e.preventDefault();
+      togglePlayPause();
+      break;
+    case 'MediaPlay':
+      e.preventDefault();
+      if (audio.paused) audio.play().catch(() => {});
+      break;
+    case 'MediaPause':
+    case 'MediaStop':
+      e.preventDefault();
+      if (!audio.paused) audio.pause();
+      break;
+  }
+});
+
+// ============================================================
 // Episode description links — open in external browser
 // ============================================================
 document.addEventListener('click', (e) => {
