@@ -1145,6 +1145,33 @@ main {
 
 .now-playing-playpause:hover { opacity: 0.85; }
 
+/* Load more */
+.load-more-item {
+  list-style: none;
+}
+
+.btn-load-more {
+  width: 100%;
+  padding: 12px;
+  background: var(--secondary-bg);
+  color: var(--button-color);
+  border: 1px dashed rgba(0,0,0,0.15);
+  border-radius: var(--radius);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.btn-load-more:hover  { background: rgba(0,0,0,0.05); }
+.btn-load-more:active { background: rgba(0,0,0,0.1); }
+
+/* Dim the button while the HTMX request is in flight */
+.load-more-item.htmx-request .btn-load-more {
+  opacity: 0.5;
+  cursor: default;
+}
+
 /* Push main content up so the bar doesn't cover it when visible */
 .now-playing-bar:not([hidden]) ~ * main,
 body:has(.now-playing-bar:not([hidden])) main {

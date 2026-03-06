@@ -52,7 +52,7 @@ struct Episode
     ) { |rs| from_rs(rs) }
   end
 
-  def self.for_feed(feed_id : Int64, limit : Int32 = 50) : Array(Episode)
+  def self.for_feed(feed_id : Int64, limit : Int32 = 50, offset : Int32 = 0) : Array(Episode)
     episodes = [] of Episode
     AppDB.pool.query_each(
       <<-SQL,
@@ -60,9 +60,9 @@ struct Episode
         FROM episodes
         WHERE feed_id = $1
         ORDER BY COALESCE(published_at, created_at) DESC
-        LIMIT $2
+        LIMIT $2 OFFSET $3
       SQL
-      feed_id, limit
+      feed_id, limit, offset
     ) { |rs| episodes << from_rs(rs) }
     episodes
   end
@@ -83,7 +83,7 @@ struct Episode
     ids
   end
 
-  def self.for_inbox(user_id : Int64, limit : Int32 = 100) : Array(Episode)
+  def self.for_inbox(user_id : Int64, limit : Int32 = 100, offset : Int32 = 0) : Array(Episode)
     episodes = [] of Episode
     AppDB.pool.query_each(
       <<-SQL,
@@ -92,9 +92,9 @@ struct Episode
         JOIN user_feeds uf ON uf.feed_id = e.feed_id
         WHERE uf.user_id = $1
         ORDER BY COALESCE(e.published_at, e.created_at) DESC
-        LIMIT $2
+        LIMIT $2 OFFSET $3
       SQL
-      user_id, limit
+      user_id, limit, offset
     ) { |rs| episodes << from_rs(rs) }
     episodes
   end

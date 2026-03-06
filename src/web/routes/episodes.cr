@@ -14,10 +14,18 @@ module Web::Routes::Episodes
       feed = Feed.find(feed_id)
       halt env, status_code: 404, response: "Feed not found" unless feed
 
-      episodes = Episode.for_feed(feed_id)
+      limit         = 50
+      offset        = env.params.query["offset"]?.try(&.to_i32) || 0
+      next_offset   = offset + limit
+      episodes      = Episode.for_feed(feed_id, limit, offset)
       completed_ids = Episode.completed_ids(user.id, feed_id)
+
       env.response.content_type = "text/html"
-      ECR.render "src/views/episode_list.ecr"
+      if offset > 0
+        ECR.render "src/views/episode_items.ecr"
+      else
+        ECR.render "src/views/episode_list.ecr"
+      end
     end
 
     # Get player for a single episode

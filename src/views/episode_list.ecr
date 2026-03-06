@@ -44,6 +44,15 @@
           <span class="episode-play-icon"><%= is_listened ? "✓" : "▶" %></span>
         </li>
       <% end %>
+      <% if episodes.size == limit %>
+        <li class="load-more-item"
+            hx-get="/episodes?feed_id=<%= feed_id %>&offset=<%= next_offset %>"
+            hx-target="this"
+            hx-swap="outerHTML"
+            hx-include="[name='initData']">
+          <button class="btn-load-more">Load more</button>
+        </li>
+      <% end %>
     </ul>
   <% end %>
 </div>
