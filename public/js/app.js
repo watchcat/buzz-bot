@@ -104,9 +104,21 @@ audio.addEventListener('durationchange', () => {
 
 audio.addEventListener('loadedmetadata', () => updateSeekBar());
 
-// Resume after backgrounding
+// Track whether audio was playing when we left the foreground so we can
+// restore it if the WebView suspended playback while in the background.
+let wasPlayingBeforeBackground = false;
+
 document.addEventListener('visibilitychange', () => {
-  if (!document.hidden && audioCtx?.state === 'suspended') audioCtx.resume();
+  if (document.hidden) {
+    wasPlayingBeforeBackground = !audio.paused;
+  } else {
+    // Resume Web Audio context (may have been suspended by the system)
+    if (audioCtx?.state === 'suspended') audioCtx.resume();
+    // If the WebView paused the audio element while backgrounded, restart it
+    if (wasPlayingBeforeBackground && audio.paused) {
+      audio.play().catch(() => {});
+    }
+  }
 });
 
 // ============================================================
@@ -295,7 +307,20 @@ function saveProgress(episodeId, seconds, completed) {
 let audioCtx = null;
 
 function ensureAudioContext() {
-  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  if (!audioCtx) {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    // Connecting the audio element into the Web Audio graph is the key step
+    // that registers an active audio session with the OS. Without it, many
+    // WebViews (including Telegram's) suspend HTML audio when backgrounded
+    // and hardware media keys are not routed to the page.
+    try {
+      const source = audioCtx.createMediaElementSource(audio);
+      source.connect(audioCtx.destination);
+    } catch (_) {
+      // createMediaElementSource throws if called twice on the same element;
+      // safe to ignore.
+    }
+  }
   if (audioCtx.state === 'suspended') audioCtx.resume();
 }
 
@@ -311,8 +336,11 @@ function setupMediaSession({ title, artist, artwork }) {
       { src: artwork, sizes: '512x512', type: 'image/jpeg' },
     ] : [],
   });
-  navigator.mediaSession.setActionHandler('play',         () => audio.play());
+  navigator.mediaSession.setActionHandler('play',         () => audio.play().catch(() => {}));
   navigator.mediaSession.setActionHandler('pause',        () => audio.pause());
+  // 'stop' is sent by many Bluetooth headsets and system media controls
+  // instead of (or in addition to) 'pause'
+  navigator.mediaSession.setActionHandler('stop',         () => audio.pause());
   navigator.mediaSession.setActionHandler('seekbackward', (d) => seekRelative(-(d.seekOffset ?? 10)));
   navigator.mediaSession.setActionHandler('seekforward',  (d) => seekRelative(+(d.seekOffset ?? 30)));
   navigator.mediaSession.setActionHandler('seekto', (d) => {
