@@ -307,20 +307,12 @@ function saveProgress(episodeId, seconds, completed) {
 let audioCtx = null;
 
 function ensureAudioContext() {
-  if (!audioCtx) {
-    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    // Connecting the audio element into the Web Audio graph is the key step
-    // that registers an active audio session with the OS. Without it, many
-    // WebViews (including Telegram's) suspend HTML audio when backgrounded
-    // and hardware media keys are not routed to the page.
-    try {
-      const source = audioCtx.createMediaElementSource(audio);
-      source.connect(audioCtx.destination);
-    } catch (_) {
-      // createMediaElementSource throws if called twice on the same element;
-      // safe to ignore.
-    }
-  }
+  // AudioContext is created and resumed here solely to unlock audio on
+  // mobile devices that block playback until a user-gesture context exists.
+  // DO NOT connect the audio element via createMediaElementSource() —
+  // doing so routes audio through the Web Audio graph, and if the context
+  // is suspended (common in WebViews) audio plays silently with no output.
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
   if (audioCtx.state === 'suspended') audioCtx.resume();
 }
 
