@@ -356,27 +356,43 @@ function syncPositionState() {
 //
 // Android WebView deliberately disables the Web MediaSession API
 // (Chromium bug #678979), so setActionHandler() never fires for
-// Bluetooth headset buttons. As a fallback, some headsets dispatch
-// their play/pause button as a keyboard MediaPlayPause event to the
-// focused window — catch those here.
+// Bluetooth headset buttons. Two fallback paths are tried:
+//
+// 1. Keyboard events: some headsets dispatch play/pause as a
+//    MediaPlayPause key event (keyCode 179) to the focused window.
+//    We listen on both keydown AND keyup because certain BT devices
+//    only fire one of the two.
+//
+// 2. keyCode fallback: e.key may be 'Unidentified' in some WebViews
+//    even when the keyCode is the correct media value. Handle the
+//    numeric keyCodes as a secondary check.
 // ============================================================
-document.addEventListener('keydown', (e) => {
-  switch (e.key) {
-    case 'MediaPlayPause':
-      e.preventDefault();
+function handleMediaKey(e) {
+  // keyCode values: 179 = MediaPlayPause, 175 = MediaPlay,
+  // 19 = MediaPause, 178 = MediaStop (standard JS media keyCodes)
+  const key = e.key;
+  const code = e.keyCode;
+
+  const isPlayPause = key === 'MediaPlayPause' || code === 179;
+  const isPlay      = key === 'MediaPlay'      || code === 175;
+  const isPause     = key === 'MediaPause'     || code === 19;
+  const isStop      = key === 'MediaStop'      || code === 178;
+
+  if (isPlayPause || isPlay || isPause || isStop) {
+    e.preventDefault();
+    if (isPlayPause) {
       togglePlayPause();
-      break;
-    case 'MediaPlay':
-      e.preventDefault();
+    } else if (isPlay) {
       if (audio.paused) audio.play().catch(() => {});
-      break;
-    case 'MediaPause':
-    case 'MediaStop':
-      e.preventDefault();
+    } else {
       if (!audio.paused) audio.pause();
-      break;
+    }
   }
-});
+}
+
+// Listen on both keydown and keyup — BT headset behaviour varies by device
+document.addEventListener('keydown', handleMediaKey);
+document.addEventListener('keyup',   handleMediaKey);
 
 // ============================================================
 // Episode description links — open in external browser
