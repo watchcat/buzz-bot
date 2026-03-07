@@ -21,7 +21,7 @@
 <% end %>
 <% if episodes.size == limit %>
   <li class="load-more-item"
-      hx-get="/episodes?feed_id=<%= feed_id %>&offset=<%= next_offset %>"
+      hx-get="/episodes?feed_id=<%= feed_id %>&offset=<%= next_offset %>&order=<%= order %>"
       hx-target="this"
       hx-swap="outerHTML"
       hx-include="[name='initData']">

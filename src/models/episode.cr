@@ -52,14 +52,15 @@ struct Episode
     ) { |rs| from_rs(rs) }
   end
 
-  def self.for_feed(feed_id : Int64, limit : Int32 = 50, offset : Int32 = 0) : Array(Episode)
+  def self.for_feed(feed_id : Int64, limit : Int32 = 50, offset : Int32 = 0, order : String = "desc") : Array(Episode)
+    dir = order == "asc" ? "ASC" : "DESC"
     episodes = [] of Episode
     AppDB.pool.query_each(
       <<-SQL,
         SELECT id, feed_id, guid, title, description, audio_url, duration_sec, published_at
         FROM episodes
         WHERE feed_id = $1
-        ORDER BY COALESCE(published_at, created_at) DESC
+        ORDER BY COALESCE(published_at, created_at) #{dir}
         LIMIT $2 OFFSET $3
       SQL
       feed_id, limit, offset

@@ -60,10 +60,22 @@ const LAST_EPISODE_META_KEY = 'buzz-last-episode-meta';
 // ============================================================
 // HTMX — inject initData header on every request
 // ============================================================
+const REVERSE_ORDER_KEY = 'buzz-feed-reverse';
+
 document.addEventListener('htmx:configRequest', (event) => {
   const initData = getInitData();
   if (initData) {
     event.detail.headers['X-Init-Data'] = initData;
+  }
+
+  // Auto-inject saved order preference for feed episode list requests.
+  // Covers initial navigation, load-more, and hide-listened filter changes.
+  const path = event.detail.path || '';
+  const feedMatch = path.match(/[?&]feed_id=(\d+)/);
+  if (feedMatch && !path.includes('order=')) {
+    const feedId = feedMatch[1];
+    const reversed = localStorage.getItem(`${REVERSE_ORDER_KEY}-${feedId}`) === 'true';
+    if (reversed) event.detail.parameters['order'] = 'asc';
   }
 });
 
@@ -636,37 +648,17 @@ function initInboxState() {
 }
 
 // ============================================================
-// Feed episode list — per-feed reverse order (oldest first)
+// Feed episode list — reverse order toggle
 // ============================================================
-const REVERSE_ORDER_KEY = 'buzz-feed-reverse';
-
-function getFeedPageFeedId() {
-  return document.querySelector('#episode-list[data-feed-id]')?.dataset.feedId || null;
-}
-
-function applyReverseOrder(reverse) {
-  const list = document.getElementById('episode-list');
-  if (!list) return;
-  const items   = [...list.querySelectorAll('.episode-item')];
-  const loadMore = list.querySelector('.load-more-item');
-  if (reverse) items.reverse();
-  items.forEach(item => list.insertBefore(item, loadMore || null));
-}
-
 function setReverseOrder(checked) {
-  const feedId = getFeedPageFeedId();
+  const feedId = document.querySelector('#episode-list[data-feed-id]')?.dataset.feedId;
   if (!feedId) return;
   localStorage.setItem(`${REVERSE_ORDER_KEY}-${feedId}`, checked ? 'true' : 'false');
-  applyReverseOrder(checked);
-}
-
-function initFeedState() {
-  const feedId = getFeedPageFeedId();
-  if (!feedId) return;
-  const reversed = localStorage.getItem(`${REVERSE_ORDER_KEY}-${feedId}`) === 'true';
-  const cb = document.getElementById('reverse-order-cb');
-  if (cb) cb.checked = reversed;
-  if (reversed) applyReverseOrder(true);
+  const order = checked ? 'asc' : 'desc';
+  htmx.ajax('GET', `/episodes?feed_id=${feedId}&order=${order}`, {
+    target: '#content',
+    swap:   'innerHTML',
+  });
 }
 
 // ============================================================
@@ -681,5 +673,4 @@ document.addEventListener('htmx:afterSwap', () => {
   }
 
   initInboxState();
-  initFeedState();
 });

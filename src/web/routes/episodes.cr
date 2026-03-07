@@ -17,7 +17,8 @@ module Web::Routes::Episodes
       limit         = 50
       offset        = env.params.query["offset"]?.try(&.to_i32) || 0
       next_offset   = offset + limit
-      episodes      = Episode.for_feed(feed_id, limit, offset)
+      order         = env.params.query["order"]? == "asc" ? "asc" : "desc"
+      episodes      = Episode.for_feed(feed_id, limit, offset, order)
       completed_ids = Episode.completed_ids(user.id, feed_id)
 
       env.response.content_type = "text/html"

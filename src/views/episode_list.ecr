@@ -10,7 +10,8 @@
         <div class="section-controls">
           <label class="filter-label">
             <input type="checkbox" id="reverse-order-cb" class="filter-checkbox"
-                   onchange="setReverseOrder(this.checked)">
+                   onchange="setReverseOrder(this.checked)"
+                   <%= "checked" if order == "asc" %>>
             <span class="filter-switch"></span>
             <span class="filter-text">Old&nbsp;first</span>
           </label>
@@ -54,7 +55,7 @@
       <% end %>
       <% if episodes.size == limit %>
         <li class="load-more-item"
-            hx-get="/episodes?feed_id=<%= feed_id %>&offset=<%= next_offset %>"
+            hx-get="/episodes?feed_id=<%= feed_id %>&offset=<%= next_offset %>&order=<%= order %>"
             hx-target="this"
             hx-swap="outerHTML"
             hx-include="[name='initData']">
