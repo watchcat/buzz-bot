@@ -334,9 +334,11 @@ document.getElementById('now-playing-tap')?.addEventListener('click', () => {
 function maybePlayNext() {
   const checkbox = document.getElementById('autoplay-checkbox');
   if (!checkbox?.checked) return;
-  const nextId = document.getElementById('player-root')?.dataset.nextId;
+  const root   = document.getElementById('player-root');
+  const nextId = root?.dataset.nextId;
   if (!nextId) return;
-  htmx.ajax('GET', `/episodes/${nextId}/player?autoplay=1`, {
+  const order  = root?.dataset.order === 'asc' ? '&order=asc' : '';
+  htmx.ajax('GET', `/episodes/${nextId}/player?autoplay=1${order}`, {
     target: '#content',
     swap:   'innerHTML',
   });

@@ -159,12 +159,13 @@ struct Episode
     episodes
   end
 
-  def self.next_in_feed(feed_id : Int64, current_id : Int64) : Int64?
+  def self.next_in_feed(feed_id : Int64, current_id : Int64, order : String = "desc") : Int64?
+    dir = order == "asc" ? "ASC" : "DESC"
     AppDB.pool.query_one?(
       <<-SQL,
         WITH ranked AS (
           SELECT id,
-                 LEAD(id) OVER (ORDER BY COALESCE(published_at, created_at) DESC) AS next_id
+                 LEAD(id) OVER (ORDER BY COALESCE(published_at, created_at) #{dir}) AS next_id
           FROM episodes
           WHERE feed_id = $1
         )
@@ -173,7 +174,7 @@ struct Episode
         WHERE id = $2
       SQL
       feed_id, current_id,
-      as: Int64
+      as: Int64?
     )
   end
 

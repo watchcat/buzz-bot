@@ -35,7 +35,7 @@
       <% episodes.each do |ep| %>
         <% is_listened = completed_ids.includes?(ep.id) %>
         <li class="episode-item<%= " listened" if is_listened %>"
-            hx-get="/episodes/<%= ep.id %>/player"
+            hx-get="/episodes/<%= ep.id %>/player?order=<%= order %>"
             hx-target="#content"
             hx-include="[name='initData']">
           <div class="episode-info">
