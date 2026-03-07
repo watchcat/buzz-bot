@@ -7,12 +7,20 @@
               hx-include="[name='initData']">← Back</button>
       <h2><%= feed.title || "Episodes" %></h2>
       <% unless episodes.empty? %>
-        <label class="filter-label">
-          <input type="checkbox" id="hide-listened-cb" class="filter-checkbox"
-                 onchange="applyListenedFilter(this.checked)">
-          <span class="filter-switch"></span>
-          <span class="filter-text">Hide&nbsp;listened</span>
-        </label>
+        <div class="section-controls">
+          <label class="filter-label">
+            <input type="checkbox" id="reverse-order-cb" class="filter-checkbox"
+                   onchange="setReverseOrder(this.checked)">
+            <span class="filter-switch"></span>
+            <span class="filter-text">Old&nbsp;first</span>
+          </label>
+          <label class="filter-label">
+            <input type="checkbox" id="hide-listened-cb" class="filter-checkbox"
+                   onchange="applyListenedFilter(this.checked)">
+            <span class="filter-switch"></span>
+            <span class="filter-text">Hide&nbsp;✓</span>
+          </label>
+        </div>
       <% end %>
     </div>
   </div>
@@ -22,7 +30,7 @@
       <p>No episodes found.</p>
     </div>
   <% else %>
-    <ul class="episode-list" id="episode-list">
+    <ul class="episode-list" id="episode-list" data-feed-id="<%= feed_id %>">
       <% episodes.each do |ep| %>
         <% is_listened = completed_ids.includes?(ep.id) %>
         <li class="episode-item<%= " listened" if is_listened %>"

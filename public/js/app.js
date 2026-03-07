@@ -636,6 +636,40 @@ function initInboxState() {
 }
 
 // ============================================================
+// Feed episode list — per-feed reverse order (oldest first)
+// ============================================================
+const REVERSE_ORDER_KEY = 'buzz-feed-reverse';
+
+function getFeedPageFeedId() {
+  return document.querySelector('#episode-list[data-feed-id]')?.dataset.feedId || null;
+}
+
+function applyReverseOrder(reverse) {
+  const list = document.getElementById('episode-list');
+  if (!list) return;
+  const items   = [...list.querySelectorAll('.episode-item')];
+  const loadMore = list.querySelector('.load-more-item');
+  if (reverse) items.reverse();
+  items.forEach(item => list.insertBefore(item, loadMore || null));
+}
+
+function setReverseOrder(checked) {
+  const feedId = getFeedPageFeedId();
+  if (!feedId) return;
+  localStorage.setItem(`${REVERSE_ORDER_KEY}-${feedId}`, checked ? 'true' : 'false');
+  applyReverseOrder(checked);
+}
+
+function initFeedState() {
+  const feedId = getFeedPageFeedId();
+  if (!feedId) return;
+  const reversed = localStorage.getItem(`${REVERSE_ORDER_KEY}-${feedId}`) === 'true';
+  const cb = document.getElementById('reverse-order-cb');
+  if (cb) cb.checked = reversed;
+  if (reversed) applyReverseOrder(true);
+}
+
+// ============================================================
 // HTMX lifecycle
 // ============================================================
 document.addEventListener('htmx:afterSwap', () => {
@@ -647,4 +681,5 @@ document.addEventListener('htmx:afterSwap', () => {
   }
 
   initInboxState();
+  initFeedState();
 });
