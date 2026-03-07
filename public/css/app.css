@@ -238,6 +238,21 @@ main {
   gap: 4px;
 }
 
+.btn-feed-link {
+  background: none;
+  border: none;
+  color: var(--link-color);
+  font-size: 13px;
+  cursor: pointer;
+  padding: 4px 0;
+  margin-left: auto;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 55%;
+  text-align: right;
+}
+
 .btn-icon {
   background: none;
   border: none;
