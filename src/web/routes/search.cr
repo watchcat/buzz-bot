@@ -62,8 +62,9 @@ module Web::Routes::Search
           end
         end
 
+        feeds = Feed.for_user(user.id)
         env.response.content_type = "text/html"
-        %(<button class="btn-subscribed" disabled>✓ Subscribed</button>)
+        ECR.render "src/views/subscribe_success.ecr"
       rescue ex
         env.response.status_code = 422
         env.response.content_type = "text/html"
