@@ -21,7 +21,7 @@ A Telegram bot and Mini App for podcast listening. Subscribe to RSS feeds, track
 | Database driver | [crystal-pg](https://github.com/will/crystal-pg) + [crystal-db](https://github.com/crystal-lang/crystal-db) |
 | Database | PostgreSQL (tested with [Neon](https://neon.tech)) |
 | Frontend | HTMX + Telegram WebApp JS SDK |
-| Deployment | Docker (multi-stage build) |
+| Deployment | Docker · k3s on Hetzner (via [hetzner-k3s](https://github.com/vitobotta/hetzner-k3s)) |
 
 ---
 
@@ -66,6 +66,7 @@ BASE_URL=https://yourdomain.com
 | `DATABASE_URL` | PostgreSQL connection string |
 | `PORT` | Port Kemal listens on (default: `3000`) |
 | `BASE_URL` | Public base URL — used for the Mini App button in `/start` |
+| `TELEGRAM_API_SERVER` | *(optional)* Self-hosted Bot API server URL (e.g. `http://telegram-bot-api:8081/`). Omit to use `api.telegram.org`. Required for >50 MB file transfers. |
 
 ### 3. Run the database migrations
 
@@ -92,13 +93,204 @@ crystal run src/buzz_bot.cr
 
 On startup the bot automatically calls `setWebhook` to register `WEBHOOK_URL` with Telegram.
 
-### 4b. Run with Docker (recommended for production)
+### 4b. Run with Docker (single server)
 
 ```sh
 docker compose up -d
 ```
 
 The image is built in two stages: a Crystal/Alpine builder compiles a fully static binary, which is then copied into a minimal Alpine runtime image.
+
+---
+
+## Kubernetes Deployment (k3s on Hetzner)
+
+A single `cpx11` node (2 vCPU, 2 GB RAM, ~€4/mo) is enough for the bot. The setup uses:
+
+- **[hetzner-k3s](https://github.com/vitobotta/hetzner-k3s)** to provision a k3s cluster on Hetzner Cloud
+- **Traefik** (built into k3s) as the ingress controller
+- **cert-manager** for automatic Let's Encrypt TLS
+- **aiogram/telegram-bot-api** as a self-hosted Bot API server (optional, enables >50 MB file transfers)
+
+### 1. Install hetzner-k3s
+
+The binary is statically linked and runs on NixOS without any `nix-shell` wrapper:
+
+```sh
+curl -L https://github.com/vitobotta/hetzner-k3s/releases/download/v2.4.6/hetzner-k3s-linux-amd64 \
+  -o ~/.local/bin/hetzner-k3s
+chmod +x ~/.local/bin/hetzner-k3s
+hetzner-k3s --version   # should print 2.4.6
+```
+
+### 2. Create the cluster
+
+Edit `k8s/cluster.yaml` and fill in your Hetzner API token (create one at [console.hetzner.cloud](https://console.hetzner.cloud) → Security → API Tokens):
+
+```yaml
+hetzner_token: <YOUR_HETZNER_API_TOKEN>
+```
+
+Then create the cluster (takes ~3 minutes):
+
+```sh
+hetzner-k3s create --config k8s/cluster.yaml
+```
+
+This creates a single `cpx11` node in Nuremberg (`nbg1`), installs k3s, and writes `k8s/kubeconfig`.
+
+```sh
+export KUBECONFIG=k8s/kubeconfig
+kubectl get nodes   # should show one Ready node
+```
+
+### 3. Install cert-manager
+
+cert-manager handles Let's Encrypt certificate issuance and renewal automatically:
+
+```sh
+kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.17.0/cert-manager.yaml
+kubectl wait --for=condition=ready pod -l app.kubernetes.io/instance=cert-manager \
+  -n cert-manager --timeout=120s
+```
+
+### 4. Create secrets
+
+Copy the example and fill in real values:
+
+```sh
+cp k8s/secret.example.yaml k8s/secret.yaml
+```
+
+Edit `k8s/secret.yaml`:
+
+```yaml
+stringData:
+  BOT_TOKEN: "your-telegram-bot-token"
+  WEBHOOK_URL: "http://buzz-bot:3000/webhook"   # internal cluster URL (plain HTTP is fine — stays inside the cluster)
+  DATABASE_URL: "postgresql://user:pass@host/db?sslmode=require"
+  PORT: "3000"
+  BASE_URL: "https://app.yourdomain.com"
+  TELEGRAM_API_SERVER: "http://telegram-bot-api:8081/"   # remove if not using local bot API server
+```
+
+Edit `k8s/cert-issuer.yaml` and replace `<YOUR_EMAIL>` with your Let's Encrypt registration email.
+
+### 5. Point DNS to the node
+
+Find the node's public IP:
+
+```sh
+kubectl get nodes -o wide
+# NAME           STATUS   ...  EXTERNAL-IP
+# buzz-bot-...   Ready    ...  65.21.x.x
+```
+
+In your DNS provider, set:
+
+```
+app.yourdomain.com  A  65.21.x.x
+```
+
+Use a short TTL (60 s) so the change propagates quickly. cert-manager needs this record to be live before it can issue a certificate — it proves domain ownership by serving a challenge token via Traefik on port 80.
+
+### 6. Deploy the app
+
+```sh
+kubectl apply -f k8s/namespace.yaml
+kubectl apply -f k8s/secret.yaml
+kubectl apply -f k8s/cert-issuer.yaml
+kubectl apply -f k8s/deployment.yaml k8s/service.yaml k8s/ingress.yaml
+```
+
+Build and push the image, then roll it out:
+
+```sh
+# Authenticate with GitHub Container Registry once
+echo $GITHUB_TOKEN | docker login ghcr.io -u USERNAME --password-stdin
+
+./k8s/deploy.sh        # builds ghcr.io/watchcat/buzz-bot:<git-sha>, pushes, rolls out
+```
+
+cert-manager issues the TLS certificate automatically within ~30 seconds of DNS propagating.
+
+### 7. Verify
+
+```sh
+kubectl get pods -n buzz-bot        # buzz-bot pod should be Running
+kubectl logs -n buzz-bot deploy/buzz-bot -f   # should show "Webhook registered"
+curl https://app.yourdomain.com/    # should return HTTP 200
+```
+
+### Day-2 operations
+
+```sh
+# Redeploy after code changes
+./k8s/deploy.sh
+
+# View live logs
+kubectl logs -n buzz-bot deploy/buzz-bot -f
+
+# Apply updated secret (e.g. after rotating BOT_TOKEN)
+kubectl apply -f k8s/secret.yaml
+kubectl rollout restart deployment/buzz-bot -n buzz-bot
+
+# Delete the cluster entirely
+hetzner-k3s delete --config k8s/cluster.yaml
+```
+
+---
+
+## Self-hosted Telegram Bot API Server
+
+By default bots are limited to 50 MB for file uploads/downloads. Running a local [Telegram Bot API server](https://github.com/tdlib/telegram-bot-api) inside the cluster removes this limit (up to 2 GB).
+
+### How it works
+
+```
+Telegram ◄──outbound──► telegram-bot-api pod (port 8081, ClusterIP)
+                                │
+                  forwards updates via HTTP
+                                │
+                                ▼
+                         buzz-bot :3000/webhook   (internal cluster DNS)
+```
+
+The bot API server is not publicly exposed — it communicates outbound to Telegram and inbound to `buzz-bot` entirely within the cluster. `WEBHOOK_URL` uses the internal service name (`http://buzz-bot:3000/webhook`) because the local bot API server allows plain HTTP in `--local` mode.
+
+### Get API credentials
+
+Go to [my.telegram.org](https://my.telegram.org) → *API development tools* and create an application. You need the **App api_id** and **App api_hash** — these are separate from the bot token.
+
+### Deploy
+
+```sh
+cp k8s/tg-api-secret.example.yaml k8s/tg-api-secret.yaml
+# Edit k8s/tg-api-secret.yaml — fill in TELEGRAM_API_ID and TELEGRAM_API_HASH
+
+kubectl apply -f k8s/tg-api-secret.yaml
+kubectl apply -f k8s/tg-api-pvc.yaml
+kubectl apply -f k8s/tg-api-deployment.yaml
+kubectl apply -f k8s/tg-api-service.yaml
+```
+
+### Migrate the bot from api.telegram.org (one-time)
+
+The bot must log out of the official API before the local server can take over:
+
+```sh
+curl "https://api.telegram.org/bot<YOUR_BOT_TOKEN>/logOut"
+# {"ok":true,"result":true}
+```
+
+Then redeploy `buzz-bot` with the updated secret (which sets `TELEGRAM_API_SERVER` and the internal `WEBHOOK_URL`):
+
+```sh
+kubectl apply -f k8s/secret.yaml
+kubectl rollout restart deployment/buzz-bot -n buzz-bot
+```
+
+The local bot API server registers the webhook with Telegram automatically on startup.
 
 ---
 
@@ -225,38 +417,52 @@ chmod +x devrun.sh
 
 ```
 buzz-bot/
+├── k8s/
+│   ├── cluster.yaml               # hetzner-k3s cluster config (1× cpx11, nbg1)
+│   ├── namespace.yaml
+│   ├── secret.example.yaml        # env-var Secret template (committed)
+│   ├── secret.yaml                # real credentials (gitignored)
+│   ├── deployment.yaml            # buzz-bot Deployment
+│   ├── service.yaml               # ClusterIP :3000
+│   ├── ingress.yaml               # Traefik ingress + TLS for app.yourdomain.com
+│   ├── cert-issuer.yaml           # Let's Encrypt ClusterIssuer
+│   ├── tg-api-secret.example.yaml # Bot API server credentials template
+│   ├── tg-api-pvc.yaml            # 10 Gi PVC for bot API file cache
+│   ├── tg-api-deployment.yaml     # aiogram/telegram-bot-api (--local mode)
+│   ├── tg-api-service.yaml        # ClusterIP :8081 (internal only)
+│   └── deploy.sh                  # build → push → kubectl rollout
 ├── migrations/
-│   └── 001_initial.sql        # Full schema
+│   └── 001_initial.sql            # Full schema
 ├── public/
-│   ├── css/app.css            # Telegram-themed styles
-│   └── js/app.js              # WebApp SDK init, HTMX config, audio player
+│   ├── css/app.css                # Telegram-themed styles
+│   └── js/app.js                  # WebApp SDK init, HTMX config, audio player
 ├── src/
-│   ├── buzz_bot.cr            # Entry point
-│   ├── config.cr              # ENV accessors
-│   ├── db.cr                  # DB pool singleton (AppDB)
+│   ├── buzz_bot.cr                # Entry point
+│   ├── config.cr                  # ENV accessors
+│   ├── db.cr                      # DB pool singleton (AppDB)
 │   ├── bot/
-│   │   ├── client.cr          # Tourmaline client + webhook registration
-│   │   └── handlers.cr        # /start, /help, callback handlers
+│   │   ├── client.cr              # Tourmaline client + webhook registration
+│   │   └── handlers.cr            # /start, /help, callback handlers
 │   ├── models/
 │   │   ├── user.cr
 │   │   ├── feed.cr
 │   │   ├── episode.cr
 │   │   └── user_episode.cr
 │   ├── rss/
-│   │   └── parser.cr          # RSS and OPML parsing
-│   ├── views/                 # ECR templates (HTMX fragments)
+│   │   └── parser.cr              # RSS and OPML parsing
+│   ├── views/                     # ECR templates (HTMX fragments)
 │   └── web/
-│       ├── auth.cr            # initData HMAC-SHA256 validation
-│       ├── server.cr          # Kemal setup
+│       ├── auth.cr                # initData HMAC-SHA256 validation
+│       ├── server.cr              # Kemal setup
 │       └── routes/
-│           ├── webhook.cr     # POST /webhook
-│           ├── app.cr         # GET /app (Mini App shell)
-│           ├── feeds.cr       # Feed CRUD
-│           ├── episodes.cr    # Episode list, player, progress, signals
+│           ├── webhook.cr         # POST /webhook
+│           ├── app.cr             # GET /app (Mini App shell)
+│           ├── feeds.cr           # Feed CRUD
+│           ├── episodes.cr        # Episode list, player, progress, signals
 │           └── recommendations.cr
 ├── .env.example
-├── cloudflared.yml.example    # Cloudflare Tunnel config template
-├── devrun.sh                  # One-command local dev launcher
+├── cloudflared.yml.example        # Cloudflare Tunnel config template
+├── devrun.sh                      # One-command local dev launcher
 ├── Dockerfile
 ├── docker-compose.yml
 └── shard.yml
