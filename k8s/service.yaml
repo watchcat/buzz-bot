@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: buzz-bot
+  namespace: buzz-bot
+spec:
+  selector:
+    app: buzz-bot
+  ports:
+    - port: 3000
+      targetPort: 3000

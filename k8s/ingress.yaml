@@ -1,0 +1,24 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: buzz-bot
+  namespace: buzz-bot
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+spec:
+  ingressClassName: traefik
+  rules:
+    - host: app.buzz-bot.top
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: buzz-bot
+                port:
+                  number: 3000
+  tls:
+    - hosts:
+        - app.buzz-bot.top
+      secretName: buzz-bot-tls

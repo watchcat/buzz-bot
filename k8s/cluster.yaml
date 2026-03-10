@@ -1,0 +1,43 @@
+---
+hetzner_token: <HETZNER_API_TOKEN>
+cluster_name: buzz-bot
+kubeconfig_path: "./k8s/kubeconfig"
+k3s_version: v1.32.2+k3s1
+
+networking:
+  ssh:
+    port: 22
+    use_agent: false
+    public_key_path: "~/.ssh/id_ed25519.pub"
+    private_key_path: "~/.ssh/id_ed25519"
+  allowed_networks:
+    ssh:
+      - 0.0.0.0/0
+    api:
+      - 0.0.0.0/0
+  public_network:
+    ipv4: true
+    ipv6: false
+  private_network:
+    enabled: true
+    subnet: 10.0.0.0/16
+  cni:
+    enabled: true
+    mode: flannel
+
+datastore:
+  mode: etcd
+
+# Single node — master also runs workloads (no separate workers needed)
+schedule_workloads_on_masters: true
+
+masters_pool:
+  instance_type: cpx11   # 2 vCPU, 2 GB RAM — sufficient for a small bot
+  instance_count: 1
+  locations:
+    - nbg1               # Nuremberg — closest to Neon EU endpoint
+
+worker_node_pools: []
+
+protect_against_deletion: false
+create_load_balancer_for_the_kubernetes_api: false

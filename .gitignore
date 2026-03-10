@@ -20,3 +20,7 @@ buzz_bot
 # Temp files
 *.tmp
 *.log
+
+# k8s — secrets and generated kubeconfig are never committed
+k8s/secret.yaml
+k8s/kubeconfig
