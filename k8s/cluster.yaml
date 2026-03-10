@@ -32,7 +32,7 @@ datastore:
 schedule_workloads_on_masters: true
 
 masters_pool:
-  instance_type: cpx11   # 2 vCPU, 2 GB RAM — sufficient for a small bot
+  instance_type: cpx22   # 2 vCPU, 4 GB RAM
   instance_count: 1
   locations:
     - nbg1               # Nuremberg — closest to Neon EU endpoint
