@@ -5,7 +5,11 @@ module BotClient
   @@username : String = ""
 
   def self.client : Tourmaline::Client
-    @@client ||= Tourmaline::Client.new(Config.bot_token)
+    @@client ||= if (server = Config.telegram_api_server)
+      Tourmaline::Client.new(Config.bot_token, endpoint: server)
+    else
+      Tourmaline::Client.new(Config.bot_token)
+    end
   end
 
   def self.username : String

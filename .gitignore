@@ -23,4 +23,5 @@ buzz_bot
 
 # k8s — secrets and generated kubeconfig are never committed
 k8s/secret.yaml
+k8s/tg-api-secret.yaml
 k8s/kubeconfig

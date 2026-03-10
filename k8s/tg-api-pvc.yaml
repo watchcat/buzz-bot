@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: tg-api-data
+  namespace: buzz-bot
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: local-path   # built into k3s
+  resources:
+    requests:
+      storage: 10Gi              # bot API server caches downloaded files here

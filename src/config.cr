@@ -18,4 +18,11 @@ module Config
   def self.base_url : String
     ENV["BASE_URL"]? || "http://localhost:#{port}"
   end
+
+  # Optional self-hosted Telegram Bot API server endpoint.
+  # When set, Tourmaline sends requests here instead of api.telegram.org,
+  # enabling file transfers up to 2 GB.
+  def self.telegram_api_server : String?
+    ENV["TELEGRAM_API_SERVER"]?.presence
+  end
 end
