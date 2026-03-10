@@ -1,5 +1,6 @@
 require "http/client"
 require "json"
+require "uri"
 
 # AudioSender handles sending podcast episodes to a user's Telegram chat.
 #
@@ -15,7 +16,7 @@ require "json"
 # immediately with a "Sending…" response.
 
 module AudioSender
-  TELEGRAM_API    = "https://api.telegram.org/bot#{Config.bot_token}"
+  TELEGRAM_API    = "#{Config.telegram_api_server || "https://api.telegram.org"}/bot#{Config.bot_token}"
   MAX_UPLOAD_SIZE = 50 * 1024 * 1024  # 50 MB — hard Bot API limit
   URL_SEND_TIMEOUT = 60.seconds
 
@@ -74,15 +75,28 @@ module AudioSender
     downloaded = 0_i64
 
     begin
-      HTTP::Client.get(episode.audio_url) do |resp|
-        raise "Remote returned HTTP #{resp.status_code}" unless resp.success?
-        buf = Bytes.new(65_536)
-        while (n = resp.body_io.read(buf)) > 0
-          tempfile.write(buf[0, n])
-          downloaded += n
-          if downloaded > MAX_UPLOAD_SIZE
-            raise "File exceeds #{mb(MAX_UPLOAD_SIZE)} MB Telegram limit " \
-                  "(stopped at #{mb(downloaded)} MB)"
+      url = episode.audio_url
+      redirects = 0
+      done = false
+      until done
+        HTTP::Client.get(url) do |resp|
+          if resp.status.redirection?
+            redirects += 1
+            raise "Too many redirects" if redirects > 5
+            location = resp.headers["Location"]? || raise "Redirect without Location header"
+            url = absolute_url(url, location)
+          else
+            raise "Remote returned HTTP #{resp.status_code}" unless resp.success?
+            buf = Bytes.new(65_536)
+            while (n = resp.body_io.read(buf)) > 0
+              tempfile.write(buf[0, n])
+              downloaded += n
+              if downloaded > MAX_UPLOAD_SIZE
+                raise "File exceeds #{mb(MAX_UPLOAD_SIZE)} MB Telegram limit " \
+                      "(stopped at #{mb(downloaded)} MB)"
+              end
+            end
+            done = true
           end
         end
       end
@@ -129,10 +143,24 @@ module AudioSender
   # Helpers
   # --------------------------------------------------------------------------
   private def self.probe_content_length(url : String) : Int64?
-    resp = HTTP::Client.head(url)
-    resp.headers["Content-Length"]?.try(&.to_i64?)
+    5.times do
+      resp = HTTP::Client.head(url)
+      if resp.status.redirection?
+        url = absolute_url(url, resp.headers["Location"]? || return nil)
+        next
+      end
+      return resp.headers["Content-Length"]?.try(&.to_i64?)
+    end
+    nil
   rescue
     nil
+  end
+
+  private def self.absolute_url(base : String, location : String) : String
+    loc_uri = URI.parse(location)
+    return location if loc_uri.scheme
+    base_uri = URI.parse(base)
+    URI.new(base_uri.scheme, base_uri.host, base_uri.port, location).to_s
   end
 
   private def self.notify_failure(telegram_id : Int64, title : String, reason : String?)
