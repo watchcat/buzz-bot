@@ -17,7 +17,7 @@ require "uri"
 
 module AudioSender
   TELEGRAM_API    = "#{Config.telegram_api_server || "https://api.telegram.org"}/bot#{Config.bot_token}"
-  MAX_UPLOAD_SIZE = 50 * 1024 * 1024  # 50 MB — hard Bot API limit
+  MAX_UPLOAD_SIZE = Config.telegram_api_server ? 2000 * 1024 * 1024 : 50 * 1024 * 1024
   URL_SEND_TIMEOUT = 60.seconds
 
   def self.send_to_user(telegram_id : Int64, episode : Episode, feed : Feed?)
@@ -29,10 +29,11 @@ module AudioSender
     # URL path failed — check size before attempting download+upload
     size = probe_content_length(episode.audio_url)
     if size && size > MAX_UPLOAD_SIZE
+      limit_mb = mb(MAX_UPLOAD_SIZE)
       BotClient.client.send_message(
         telegram_id,
         "⚠️ \"#{episode.title}\" is too large to send (#{mb(size)} MB). " \
-        "Telegram bots can only deliver files up to 50 MB."
+        "Maximum supported file size is #{limit_mb} MB."
       )
       return
     end
