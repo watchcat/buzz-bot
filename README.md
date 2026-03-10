@@ -134,8 +134,10 @@ hetzner_token: <YOUR_HETZNER_API_TOKEN>
 Then create the cluster (takes ~3 minutes):
 
 ```sh
-hetzner-k3s create --config k8s/cluster.yaml
+./k8s/hetzner-k3s.sh create --config k8s/cluster.yaml
 ```
+
+> **NixOS note:** use `k8s/hetzner-k3s.sh` instead of `hetzner-k3s` directly. The wrapper sets `SSL_CERT_FILE` and `ZONEINFO` which the statically-compiled Crystal binary cannot locate on its own because NixOS doesn't follow standard FHS paths.
 
 This creates a single `cpx11` node in Nuremberg (`nbg1`), installs k3s, and writes `k8s/kubeconfig`.
 
@@ -236,7 +238,7 @@ kubectl apply -f k8s/secret.yaml
 kubectl rollout restart deployment/buzz-bot -n buzz-bot
 
 # Delete the cluster entirely
-hetzner-k3s delete --config k8s/cluster.yaml
+./k8s/hetzner-k3s.sh delete --config k8s/cluster.yaml
 ```
 
 ---
