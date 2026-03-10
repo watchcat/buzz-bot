@@ -1,23 +1,33 @@
 #!/usr/bin/env bash
-# Build, push, and roll out a new image to the k3s cluster.
-# Usage: ./k8s/deploy.sh [TAG]   (defaults to short git SHA)
+# Build and deploy buzz-bot to the k3s cluster.
+# Exports the image as a tar, transfers it to the node, imports into k3s containerd.
+# Usage: ./k8s/deploy.sh
 set -euo pipefail
 
-REPO="ghcr.io/watchcat/buzz-bot"
-TAG="${1:-$(git rev-parse --short HEAD)}"
-IMAGE="${REPO}:${TAG}"
+NODE="root@46.225.0.50"
+SSH_KEY="$HOME/.ssh/id_rsa"
+IMAGE="ghcr.io/watchcat/buzz-bot:latest"
+TMPFILE="/tmp/buzz-bot.tar.gz"
 export KUBECONFIG="$(dirname "$0")/kubeconfig"
 
 echo "==> Building $IMAGE"
-docker build -t "$IMAGE" .
+docker build -t buzz-bot:latest .
 
-echo "==> Pushing $IMAGE"
-docker push "$IMAGE"
+echo "==> Exporting image"
+docker save buzz-bot:latest | gzip > "$TMPFILE"
 
-echo "==> Updating deployment"
-kubectl set image deployment/buzz-bot buzz-bot="$IMAGE" -n buzz-bot
+echo "==> Transferring image to node"
+scp -i "$SSH_KEY" -o StrictHostKeyChecking=no "$TMPFILE" "${NODE}:/tmp/"
 
-echo "==> Waiting for rollout"
+echo "==> Importing image into k3s containerd"
+ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no "$NODE" "
+  k3s ctr images import /tmp/buzz-bot.tar.gz 2>&1 | tail -3
+  k3s ctr images tag docker.io/library/buzz-bot:latest $IMAGE 2>&1
+  rm /tmp/buzz-bot.tar.gz
+"
+
+echo "==> Rolling out deployment"
+kubectl rollout restart deployment/buzz-bot -n buzz-bot
 kubectl rollout status deployment/buzz-bot -n buzz-bot
 
-echo "==> Done — running $IMAGE"
+echo "==> Done"
