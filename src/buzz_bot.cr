@@ -25,6 +25,7 @@ require "./web/routes/feeds"
 require "./web/routes/episodes"
 require "./web/routes/inbox"
 require "./web/routes/search"
+require "./web/routes/discover"
 
 Log.setup(:info)
 

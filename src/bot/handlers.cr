@@ -24,15 +24,38 @@ module Bot
         user_data.last_name
       )
 
-      case text.split(" ").first
-      when "/start"
-        handle_start(message, user)
-      when "/help"
-        handle_help(message)
+      parts = text.split(" ", limit: 2)
+      cmd   = parts.first
+      param = parts[1]? || ""
+
+      case cmd
+      when "/start" then handle_start(message, user, param)
+      when "/help"  then handle_help(message)
       end
     end
 
-    private def self.handle_start(message : Tourmaline::Message, user : User)
+    private def self.handle_start(message : Tourmaline::Message, user : User, param : String = "")
+      if param.starts_with?("ep_")
+        episode_id = param[3..].to_i64?
+        if episode_id && (episode = Episode.find(episode_id))
+          feed = Feed.find(episode.feed_id)
+          podcast_name = feed.try(&.title) || "Unknown Podcast"
+          app_url = "#{Config.base_url}/app?episode=#{episode_id}"
+          BotClient.client.send_message(
+            message.chat.id,
+            "🎧 *#{escape_md(episode.title)}*\n_#{escape_md(podcast_name)}_",
+            parse_mode: Tourmaline::ParseMode::MarkdownV2,
+            reply_markup: Tourmaline::InlineKeyboardMarkup.new([[
+              Tourmaline::InlineKeyboardButton.new(
+                text: "▶️ Open Episode",
+                web_app: Tourmaline::WebAppInfo.new(url: app_url)
+              )
+            ]])
+          )
+          return
+        end
+      end
+
       name = user.first_name || user.username || "there"
       app_url = "#{Config.base_url}/app"
 
@@ -51,6 +74,10 @@ module Bot
         parse_mode: Tourmaline::ParseMode::Markdown,
         reply_markup: keyboard
       )
+    end
+
+    private def self.escape_md(text : String) : String
+      text.gsub(/[_*\[\]()~`>#+\-=|{}.!\\]/) { |c| "\\#{c}" }
     end
 
     private def self.handle_help(message : Tourmaline::Message)

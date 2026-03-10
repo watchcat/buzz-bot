@@ -1,11 +1,13 @@
 <div class="player-container" id="player-root" data-next-id="<%= next_episode_id || "" %>" data-order="<%= order %>">
   <div class="section-header">
     <div class="section-header-row">
+      <% back_url   = from == "inbox" ? "/inbox" : (from == "discover" ? "/discover" : "/episodes?feed_id=#{episode.feed_id}") %>
+      <% back_label = from == "inbox" ? "Inbox" : (from == "discover" ? "Discover" : "Episodes") %>
       <button class="btn-back"
-              hx-get="<%= from_inbox ? "/inbox" : "/episodes?feed_id=#{episode.feed_id}" %>"
+              hx-get="<%= back_url %>"
               hx-target="#content"
-              hx-include="[name='initData']">← <%= from_inbox ? "Inbox" : "Episodes" %></button>
-      <% if from_inbox && (f = feed) %>
+              hx-include="[name='initData']">← <%= back_label %></button>
+      <% if (from == "inbox" || from == "discover") && (f = feed) %>
         <button class="btn-feed-link"
                 hx-get="/episodes?feed_id=<%= episode.feed_id %>"
                 hx-target="#content"
@@ -26,10 +28,31 @@
          data-autoplay="<%= should_autoplay ? "1" : "0" %>">
     </div>
 
-    <h2 class="player-title"><%= HTML.escape(episode.title) %></h2>
+    <div class="player-title-row">
+      <h2 class="player-title"><%= HTML.escape(episode.title) %></h2>
+      <button class="btn-share-icon" onclick="toggleSharePanel(<%= episode.id %>)" title="Share Episode">
+        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/>
+          <polyline points="16 6 12 2 8 6"/>
+          <line x1="12" y1="2" x2="12" y2="15"/>
+        </svg>
+      </button>
+    </div>
+
+    <div class="share-panel" id="share-panel-<%= episode.id %>" hidden>
+      <textarea class="share-message-input"
+                id="share-message-<%= episode.id %>"
+                rows="3"><%= HTML.escape("🎧 Check out this episode I found:\n\n#{episode.title}\n#{feed.try(&.title) || ""}") %></textarea>
+      <button class="btn-share-confirm"
+              onclick="shareEpisode(<%= episode.id %>, document.getElementById('share-message-<%= episode.id %>').value)">
+        📤 Share
+      </button>
+    </div>
 
     <% if (desc = episode.description) %>
-      <div class="player-description"><%= Sanitizer.podcast_description(desc) %></div>
+      <div class="player-description" id="player-desc-<%= episode.id %>"><%= Sanitizer.podcast_description(desc) %></div>
+      <button class="player-desc-toggle" id="player-desc-toggle-<%= episode.id %>" hidden
+              onclick="toggleDescription(<%= episode.id %>)">Show more ▾</button>
     <% end %>
 
     <%# Custom playback controls — all wired to #episode-audio via JS %>
@@ -90,6 +113,18 @@
         </button>
       </div>
     </div>
+
+    <% unless is_subscribed %>
+      <div class="subscribe-row" id="subscribe-row-<%= episode.feed_id %>">
+        <button class="btn-subscribe"
+                hx-post="/feeds/<%= episode.feed_id %>/subscribe"
+                hx-target="#subscribe-row-<%= episode.feed_id %>"
+                hx-swap="outerHTML"
+                hx-include="[name='initData']">
+          ➕ Subscribe to <%= HTML.escape(feed.try(&.title) || "this podcast") %>
+        </button>
+      </div>
+    <% end %>
 
     <div class="send-row">
       <button class="btn-send"

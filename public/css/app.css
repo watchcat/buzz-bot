@@ -670,6 +670,25 @@ main {
   word-wrap: break-word;
 }
 
+.player-description--collapsed {
+  max-height: 120px;
+  overflow: hidden;
+  margin-bottom: 4px;
+  -webkit-mask-image: linear-gradient(to bottom, black 50%, transparent 100%);
+  mask-image: linear-gradient(to bottom, black 50%, transparent 100%);
+}
+
+.player-desc-toggle {
+  display: block;
+  margin-bottom: 16px;
+  padding: 0;
+  background: none;
+  border: none;
+  color: var(--link-color);
+  font-size: 13px;
+  cursor: pointer;
+}
+
 .player-description a {
   color: var(--link-color);
   text-decoration: none;
@@ -1192,3 +1211,129 @@ main {
 body:has(.now-playing-bar:not([hidden])) main {
   padding-bottom: 80px;
 }
+
+/* Discover tab */
+.discover-container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.discover-search-bar {
+  padding: 8px 16px 12px;
+}
+
+.discover-search-input {
+  width: 100%;
+  padding: 10px 14px;
+  border: 1px solid rgba(0,0,0,0.15);
+  border-radius: var(--radius);
+  background: var(--secondary-bg);
+  color: var(--text-color);
+  font-size: 15px;
+  box-sizing: border-box;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.discover-search-input:focus {
+  border-color: var(--button-color);
+}
+
+.discover-section-label {
+  padding: 4px 16px 8px;
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--hint-color);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+/* Subscribe button on player page */
+.subscribe-row {
+  padding: 0 0 12px;
+}
+
+.subscribe-row .btn-subscribe {
+  padding: 10px 20px;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.subscribe-row .btn-subscribe.htmx-request { opacity: 0.5; cursor: default; }
+
+/* Share icon button — top-right of player card */
+.player-title-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.player-title-row .player-title {
+  flex: 1;
+  margin-bottom: 0;
+}
+
+.btn-share-icon {
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  border-radius: 8px;
+  color: var(--hint-color);
+  cursor: pointer;
+  padding: 4px;
+  transition: color 0.2s, background 0.2s;
+}
+
+.btn-share-icon:hover,
+.btn-share-icon:active {
+  color: var(--button-color);
+  background: rgba(0,0,0,0.06);
+}
+
+/* Share panel — expands below the title row */
+.share-panel {
+  margin-bottom: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  background: var(--bg-color);
+  border: 1px solid rgba(0,0,0,0.12);
+  border-radius: var(--radius);
+}
+.share-panel[hidden] { display: none; }
+
+.share-message-input {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid rgba(0,0,0,0.15);
+  border-radius: var(--radius);
+  background: var(--secondary-bg);
+  color: var(--text-color);
+  font-size: 14px;
+  resize: vertical;
+  box-sizing: border-box;
+  font-family: inherit;
+}
+
+.btn-share-confirm {
+  align-self: flex-start;
+  padding: 10px 20px;
+  background: var(--button-color);
+  color: var(--button-text-color);
+  border: none;
+  border-radius: var(--radius);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.2s;
+}
+.btn-share-confirm:active { opacity: 0.7; }

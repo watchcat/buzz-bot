@@ -131,6 +131,40 @@ struct Episode
     end
   end
 
+  def self.liked_for_user(user_id : Int64, limit : Int32 = 50, offset : Int32 = 0) : Array(Episode)
+    episodes = [] of Episode
+    AppDB.pool.query_each(
+      <<-SQL,
+        SELECT e.id, e.feed_id, e.guid, e.title, e.description, e.audio_url, e.duration_sec, e.published_at
+        FROM episodes e
+        JOIN user_episodes ue ON e.id = ue.episode_id
+        WHERE ue.user_id = $1 AND ue.liked = TRUE
+        ORDER BY ue.updated_at DESC
+        LIMIT $2 OFFSET $3
+      SQL
+      user_id, limit, offset
+    ) { |rs| episodes << from_rs(rs) }
+    episodes
+  end
+
+  def self.search_for_user(user_id : Int64, query : String, limit : Int32 = 30) : Array(Episode)
+    pattern = "%#{query}%"
+    episodes = [] of Episode
+    AppDB.pool.query_each(
+      <<-SQL,
+        SELECT e.id, e.feed_id, e.guid, e.title, e.description, e.audio_url, e.duration_sec, e.published_at
+        FROM episodes e
+        JOIN user_feeds uf ON uf.feed_id = e.feed_id
+        WHERE uf.user_id = $1
+          AND (e.title ILIKE $2 OR e.description ILIKE $2)
+        ORDER BY COALESCE(e.published_at, e.created_at) DESC
+        LIMIT $3
+      SQL
+      user_id, pattern, limit
+    ) { |rs| episodes << from_rs(rs) }
+    episodes
+  end
+
   def self.recommended_for_episode(episode_id : Int64, limit : Int32 = 5) : Array(Episode)
     episodes = [] of Episode
     AppDB.pool.query_each(

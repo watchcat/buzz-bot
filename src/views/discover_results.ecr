@@ -1,0 +1,40 @@
+<% if episodes.empty? %>
+  <div class="empty-state">
+    <% if query.empty? %>
+      <p>Episodes you ❤️ will appear here.</p>
+    <% else %>
+      <p>No episodes found for "<%= HTML.escape(query) %>".</p>
+    <% end %>
+  </div>
+<% else %>
+  <p class="discover-section-label"><%= section_title %></p>
+  <ul class="episode-list">
+    <% episodes.each do |ep| %>
+      <li class="episode-item"
+          hx-get="/episodes/<%= ep.id %>/player?from=discover"
+          hx-target="#content"
+          hx-include="[name='initData']">
+        <div class="episode-info">
+          <span class="episode-feed-name"><%= HTML.escape(feeds_map[ep.feed_id]? || "") %></span>
+          <strong class="episode-title"><%= HTML.escape(ep.title) %></strong>
+          <div class="episode-meta">
+            <% if (pub = ep.published_at) %>
+              <span class="episode-date"><%= pub.to_s("%b %-d, %Y") %></span>
+            <% end %>
+            <span class="episode-duration"><%= ep.duration_display %></span>
+          </div>
+        </div>
+        <span class="episode-play-icon"><%= query.empty? ? "❤️" : "▶" %></span>
+      </li>
+    <% end %>
+    <% if query.empty? && episodes.size == limit %>
+      <li class="load-more-item"
+          hx-get="/discover/search?offset=<%= next_offset %>"
+          hx-target="this"
+          hx-swap="outerHTML"
+          hx-include="[name='initData']">
+        <button class="btn-load-more">Load more</button>
+      </li>
+    <% end %>
+  </ul>
+<% end %>

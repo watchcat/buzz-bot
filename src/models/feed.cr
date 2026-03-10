@@ -108,6 +108,13 @@ struct Feed
     )
   end
 
+  def self.subscribed?(user_id : Int64, feed_id : Int64) : Bool
+    AppDB.pool.query_one(
+      "SELECT EXISTS(SELECT 1 FROM user_feeds WHERE user_id = $1 AND feed_id = $2)",
+      user_id, feed_id, as: Bool
+    )
+  end
+
   def self.subscribe(user_id : Int64, feed_id : Int64)
     AppDB.pool.exec(
       "INSERT INTO user_feeds (user_id, feed_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",

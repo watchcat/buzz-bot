@@ -29,6 +29,16 @@ function getInitData() {
   return tg?.initData || document.getElementById('initData')?.value || '';
 }
 
+// Handle deep link from share: ?episode=ID in URL, or tg startapp param
+(function handleDeepLink() {
+  const fromUrl   = new URLSearchParams(window.location.search).get('episode');
+  const fromStart = tg?.initDataUnsafe?.start_param || '';
+  const episodeId = fromUrl || (fromStart.startsWith('ep_') ? fromStart.slice(3) : null);
+  if (!episodeId) return;
+  const main = document.getElementById('content');
+  if (main) main.setAttribute('hx-get', `/episodes/${episodeId}/player?from=share`);
+})();
+
 const LAST_EPISODE_KEY      = 'buzz-last-episode-id';
 const LAST_EPISODE_META_KEY = 'buzz-last-episode-meta';
 
@@ -105,6 +115,7 @@ const AUTOPLAY_KEY = 'buzz-autoplay';
 
 // Attach all audio event listeners once at page load
 audio.addEventListener('play', () => {
+  playIntent = true;
   ensureAudioContext();
   updatePlayPauseButtons(true);
   if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'playing';
@@ -118,6 +129,7 @@ audio.addEventListener('pause', () => {
 });
 
 audio.addEventListener('ended', () => {
+  playIntent = false;
   updatePlayPauseButtons(false);
   flushProgress(true);
   maybePlayNext();
@@ -144,19 +156,28 @@ audio.addEventListener('durationchange', () => {
 
 audio.addEventListener('loadedmetadata', () => updateSeekBar());
 
-// Track whether audio was playing when we left the foreground so we can
-// restore it if the WebView suspended playback while in the background.
-let wasPlayingBeforeBackground = false;
+// Tracks whether the user INTENDS for audio to be playing.
+// Set true on play event, false only on explicit user-initiated stop/pause/end.
+// System pauses (WebView backgrounded by Android) do NOT clear this flag,
+// so we can reliably resume when the app comes back to the foreground.
+//
+// The previous approach used wasPlayingBeforeBackground = !audio.paused inside
+// the visibilitychange(hidden=true) handler, but on Android the WebView can
+// pause the <audio> element BEFORE visibilitychange fires, causing the flag to
+// always read false and audio to never resume — a silent regression.
+let playIntent = false;
 
 document.addEventListener('visibilitychange', () => {
-  if (document.hidden) {
-    wasPlayingBeforeBackground = !audio.paused;
-  } else {
+  if (!document.hidden) {
     // Resume Web Audio context (may have been suspended by the system)
     if (audioCtx?.state === 'suspended') audioCtx.resume();
-    // If the WebView paused the audio element while backgrounded, restart it
-    if (wasPlayingBeforeBackground && audio.paused) {
-      audio.play().catch(() => {});
+    // If the WebView paused the audio while backgrounded but the user still
+    // intends for it to play, restart it.  Small delay lets the WebView fully
+    // restore before we call play().
+    if (playIntent && audio.paused) {
+      setTimeout(() => {
+        if (playIntent && audio.paused) audio.play().catch(() => {});
+      }, 250);
     }
   }
 });
@@ -196,7 +217,8 @@ function loadEpisodeIntoPlayer(playerData) {
   }
 
   if (audio.dataset.episodeId !== newId) {
-    // New episode — reload audio
+    // New episode — reload audio; reset intent until play event fires
+    playIntent = false;
     if (progressTimer) { clearTimeout(progressTimer); progressTimer = null; }
     audio.dataset.episodeId = newId;
     // Persist so the now-playing bar is restored on next app launch
@@ -278,6 +300,13 @@ function formatTime(sec) {
 // ============================================================
 // Play / Pause / Seek
 // ============================================================
+// Explicit user-initiated pause — clears playIntent so visibilitychange
+// does not auto-resume when the app comes back to the foreground.
+function userPause() {
+  playIntent = false;
+  audio.pause();
+}
+
 function togglePlayPause() {
   if (audio.paused) {
     // If no audio is loaded yet (restored bar from previous session),
@@ -294,7 +323,7 @@ function togglePlayPause() {
     }
     audio.play().catch(() => {});
   } else {
-    audio.pause();
+    userPause();
   }
 }
 
@@ -389,10 +418,10 @@ function setupMediaSession({ title, artist, artwork }) {
     ] : [],
   });
   navigator.mediaSession.setActionHandler('play',         () => audio.play().catch(() => {}));
-  navigator.mediaSession.setActionHandler('pause',        () => audio.pause());
+  navigator.mediaSession.setActionHandler('pause',        () => userPause());
   // 'stop' is sent by many Bluetooth headsets and system media controls
   // instead of (or in addition to) 'pause'
-  navigator.mediaSession.setActionHandler('stop',         () => audio.pause());
+  navigator.mediaSession.setActionHandler('stop',         () => userPause());
   navigator.mediaSession.setActionHandler('seekbackward', (d) => seekRelative(-(d.seekOffset ?? 10)));
   navigator.mediaSession.setActionHandler('seekforward',  (d) => seekRelative(+(d.seekOffset ?? 30)));
   navigator.mediaSession.setActionHandler('seekto', (d) => {
@@ -445,7 +474,7 @@ function handleMediaKey(e) {
     } else if (isPlay) {
       if (audio.paused) audio.play().catch(() => {});
     } else {
-      if (!audio.paused) audio.pause();
+      if (!audio.paused) userPause();
     }
   }
 }
@@ -664,12 +693,52 @@ function setReverseOrder(checked) {
 }
 
 // ============================================================
+// Description fold
+// ============================================================
+const DESC_COLLAPSE_THRESHOLD = 120; // px — ~5 lines at 13px/1.7lh
+
+function initDescriptionFold() {
+  const desc = document.querySelector('.player-description');
+  const toggle = desc && document.getElementById(`player-desc-toggle-${desc.id.replace('player-desc-', '')}`);
+  if (!desc || !toggle) return;
+  if (desc.scrollHeight > DESC_COLLAPSE_THRESHOLD) {
+    desc.classList.add('player-description--collapsed');
+    toggle.hidden = false;
+  }
+}
+
+function toggleDescription(episodeId) {
+  const desc   = document.getElementById(`player-desc-${episodeId}`);
+  const toggle = document.getElementById(`player-desc-toggle-${episodeId}`);
+  if (!desc || !toggle) return;
+  const nowCollapsed = desc.classList.toggle('player-description--collapsed');
+  toggle.textContent = nowCollapsed ? 'Show more ▾' : 'Show less ▴';
+}
+
+// ============================================================
+// Share episode
+// ============================================================
+function toggleSharePanel(episodeId) {
+  const panel = document.getElementById(`share-panel-${episodeId}`);
+  if (panel) panel.hidden = !panel.hidden;
+}
+
+function shareEpisode(episodeId, message) {
+  const deepLink = `https://t.me/${window.BOT_USERNAME}?start=ep_${episodeId}`;
+  const text = message.trim();
+  const shareUrl = `https://t.me/share/url?url=${encodeURIComponent(deepLink)}&text=${encodeURIComponent(text)}`;
+  if (tg?.openTelegramLink) tg.openTelegramLink(shareUrl);
+  else window.open(shareUrl, '_blank');
+}
+
+// ============================================================
 // HTMX lifecycle
 // ============================================================
 document.addEventListener('htmx:afterSwap', () => {
   const playerData = document.getElementById('player-data');
   if (playerData) {
     loadEpisodeIntoPlayer(playerData);
+    initDescriptionFold();
   } else {
     syncPlayPauseAll();
   }

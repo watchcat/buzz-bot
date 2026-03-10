@@ -87,6 +87,19 @@ module Web::Routes::Feeds
       end
     end
 
+    # Subscribe to an existing feed by its ID (used from the episode player)
+    post "/feeds/:id/subscribe" do |env|
+      user = Auth.current_user(env)
+      halt env, status_code: 401, response: "Unauthorized" unless user
+
+      feed_id = env.params.url["id"].to_i64
+      Feed.subscribe(user.id, feed_id)
+
+      env.response.content_type = "text/html"
+      env.response.status_code = 200
+      "" # outerHTML swap removes the button
+    end
+
     # Unsubscribe from a feed
     delete "/feeds/:id" do |env|
       user = Auth.current_user(env)

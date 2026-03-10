@@ -41,9 +41,11 @@ module Web::Routes::Episodes
       feed            = Feed.find(episode.feed_id)
       user_episode    = UserEpisode.find(user.id, episode_id)
       should_autoplay = env.params.query["autoplay"]? == "1"
-      from_inbox      = env.params.query["from"]? == "inbox"
+      from            = env.params.query["from"]? || "feed"  # "inbox" | "discover" | "feed"
+      from_inbox      = from == "inbox"
       order           = env.params.query["order"]? == "asc" ? "asc" : "desc"
       next_episode_id = Episode.next_in_feed(episode.feed_id, episode_id, order)
+      is_subscribed   = Feed.subscribed?(user.id, episode.feed_id)
       recs            = Episode.recommended_for_episode(episode_id)
       rec_feeds_map   = recs.map(&.feed_id).uniq.each_with_object({} of Int64 => String) do |fid, h|
         h[fid] = Feed.find(fid).try(&.title) || ""
