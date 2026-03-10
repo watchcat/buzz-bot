@@ -8,7 +8,6 @@ NODE="root@46.225.0.50"
 SSH_KEY="$HOME/.ssh/id_rsa"
 IMAGE="ghcr.io/watchcat/buzz-bot:latest"
 TMPFILE="/tmp/buzz-bot.tar.gz"
-export KUBECONFIG="$(dirname "$0")/kubeconfig"
 
 echo "==> Building $IMAGE"
 docker build -t buzz-bot:latest .
@@ -27,7 +26,9 @@ ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no "$NODE" "
 "
 
 echo "==> Rolling out deployment"
-kubectl rollout restart deployment/buzz-bot -n buzz-bot
-kubectl rollout status deployment/buzz-bot -n buzz-bot
+ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no "$NODE" "
+  k3s kubectl rollout restart deployment/buzz-bot -n buzz-bot
+  k3s kubectl rollout status deployment/buzz-bot -n buzz-bot
+"
 
 echo "==> Done"
