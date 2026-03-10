@@ -1,3 +1,5 @@
+# syntax=docker/dockerfile:1.4
+
 # Build stage
 FROM crystallang/crystal:latest-alpine AS builder
 
@@ -9,19 +11,17 @@ RUN shards install --production
 
 # Patch crystal-pg to support the PostgreSQL `options` startup parameter.
 # Needed for Neon's SNI fallback (?options=endpoint%3D<id>) with static binaries.
-RUN python3 -c "
-import re
-
+RUN <<'PYEOF' python3
 # 1. Add 'options' getter to ConnInfo struct (conninfo.cr)
 path = 'lib/pg/src/pq/conninfo.cr'
 src = open(path).read()
 src = src.replace(
-    \"getter auth_methods : Array(String) = %w[scram-sha-256-plus scram-sha-256 md5]\",
-    \"getter auth_methods : Array(String) = %w[scram-sha-256-plus scram-sha-256 md5]\n\n    # PostgreSQL startup options (e.g. endpoint=ep-xxx for Neon SNI fallback)\n    getter options : String?\"
+    "getter auth_methods : Array(String) = %w[scram-sha-256-plus scram-sha-256 md5]",
+    "getter auth_methods : Array(String) = %w[scram-sha-256-plus scram-sha-256 md5]\n\n    # PostgreSQL startup options (e.g. endpoint=ep-xxx for Neon SNI fallback)\n    getter options : String?"
 )
 src = src.replace(
-    \"      else\n        # ignore\",
-    \"      when \\\"options\\\"\n        @options = URI.decode(value)\n      else\n        # ignore\"
+    "      else\n        # ignore",
+    "      when \"options\"\n        @options = URI.decode(value)\n      else\n        # ignore"
 )
 open(path, 'w').write(src)
 
@@ -29,13 +29,13 @@ open(path, 'w').write(src)
 path = 'lib/pg/src/pq/connection.cr'
 src = open(path).read()
 src = src.replace(
-    \"      startup startup_args\",
-    \"      if opts = @conninfo.options\n        startup_args << \\\"options\\\" << opts\n      end\n\n      startup startup_args\",
+    "      startup startup_args",
+    "      if opts = @conninfo.options\n        startup_args << \"options\" << opts\n      end\n\n      startup startup_args",
     1
 )
 open(path, 'w').write(src)
 print('crystal-pg patched OK')
-"
+PYEOF
 
 # Copy source
 COPY src/ ./src/
