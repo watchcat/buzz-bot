@@ -6,7 +6,7 @@ metadata:
 spec:
   accessModes:
     - ReadWriteOnce
-  storageClassName: local-path   # built into k3s
+  storageClassName: hcloud-volumes
   resources:
     requests:
       storage: 10Gi              # bot API server caches downloaded files here

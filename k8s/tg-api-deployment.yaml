@@ -13,14 +13,10 @@ spec:
       labels:
         app: telegram-bot-api
     spec:
-      securityContext:
-        runAsUser: 101
-        runAsGroup: 101
-        fsGroup: 101
       containers:
         - name: telegram-bot-api
           image: aiogram/telegram-bot-api:latest
-          imagePullPolicy: Always
+          imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8081
           envFrom:
