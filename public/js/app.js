@@ -196,6 +196,7 @@ function loadEpisodeIntoPlayer(playerData) {
   const title    = playerData.dataset.title   || '';
   const artist   = playerData.dataset.artist  || '';
   const artwork  = playerData.dataset.artwork || '';
+  window.IS_PREMIUM = (playerData.dataset.subscribed === '1');
 
   // Show now-playing bar and store episode for tap-to-return
   const bar = document.getElementById('now-playing');
@@ -357,8 +358,33 @@ function cycleSpeed() {
   const current = parseFloat(localStorage.getItem(SPEED_KEY) || '1');
   const idx = SPEEDS.indexOf(current);
   const next = SPEEDS[(idx + 1) % SPEEDS.length];
+  if (next !== 1 && !window.IS_PREMIUM) {
+    showSubscribePrompt();
+    return;
+  }
   applySpeed(next);
   localStorage.setItem(SPEED_KEY, String(next));
+}
+
+function showSubscribePrompt() {
+  if (tg?.showPopup) {
+    tg.showPopup({
+      title: '⭐ Buzz-Bot Premium',
+      message: 'Speed control (1.5× / 2×) and sending episodes to Telegram are Premium features.\n\nSubscribe for 100⭐/month.',
+      buttons: [
+        { id: 'sub', type: 'default', text: 'Subscribe Now' },
+        { id: 'cancel', type: 'cancel', text: 'Not Now' }
+      ]
+    }, id => { if (id === 'sub') openSubscribeBot(); });
+  } else {
+    openSubscribeBot();
+  }
+}
+
+function openSubscribeBot() {
+  const url = `https://t.me/${window.BOT_USERNAME}?start=subscribe`;
+  if (tg?.openTelegramLink) tg.openTelegramLink(url);
+  else window.open(url, '_blank');
 }
 
 function applySpeed(rate) {

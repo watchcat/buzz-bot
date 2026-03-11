@@ -46,6 +46,7 @@ module Web::Routes::Episodes
       order           = env.params.query["order"]? == "asc" ? "asc" : "desc"
       next_episode_id = Episode.next_in_feed(episode.feed_id, episode_id, order)
       is_subscribed   = Feed.subscribed?(user.id, episode.feed_id)
+      is_premium      = user.subscribed?
       recs            = Episode.recommended_for_episode(episode_id)
       rec_feeds_map   = recs.map(&.feed_id).uniq.each_with_object({} of Int64 => String) do |fid, h|
         h[fid] = Feed.find(fid).try(&.title) || ""
@@ -81,6 +82,11 @@ module Web::Routes::Episodes
       halt env, status_code: 404, response: "Episode not found" unless episode
 
       feed = Feed.find(episode.feed_id)
+
+      unless user.subscribed?
+        env.response.content_type = "text/html"
+        next %(<div class="send-result upsell">⭐ <strong>Premium feature.</strong> Send episodes to your Telegram chat with a Buzz-Bot subscription. <a class="upsell-link" href="#" onclick="openSubscribeBot(); return false;">Subscribe from 100⭐/month →</a></div>)
+      end
 
       # Fire-and-forget — handler returns immediately; result arrives via bot message
       spawn { AudioSender.send_to_user(user.telegram_id, episode, feed) }

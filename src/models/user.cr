@@ -4,8 +4,10 @@ struct User
   property username : String?
   property first_name : String?
   property last_name : String?
+  property sub_type : String?
+  property sub_expires_at : Time?
 
-  def initialize(@id, @telegram_id, @username, @first_name, @last_name)
+  def initialize(@id, @telegram_id, @username, @first_name, @last_name, @sub_type, @sub_expires_at)
   end
 
   private def self.from_rs(rs)
@@ -14,7 +16,9 @@ struct User
       rs.read(Int64),   # telegram_id
       rs.read(String?), # username
       rs.read(String?), # first_name
-      rs.read(String?)  # last_name
+      rs.read(String?), # last_name
+      rs.read(String?), # sub_type
+      rs.read(Time?)    # sub_expires_at
     )
   end
 
@@ -27,7 +31,7 @@ struct User
           username   = EXCLUDED.username,
           first_name = EXCLUDED.first_name,
           last_name  = EXCLUDED.last_name
-        RETURNING id, telegram_id, username, first_name, last_name
+        RETURNING id, telegram_id, username, first_name, last_name, sub_type, sub_expires_at
       SQL
       telegram_id, username, first_name, last_name
     ) { |rs| from_rs(rs) }
@@ -36,11 +40,24 @@ struct User
   def self.find_by_telegram_id(telegram_id : Int64) : User?
     AppDB.pool.query_one?(
       <<-SQL,
-        SELECT id, telegram_id, username, first_name, last_name
+        SELECT id, telegram_id, username, first_name, last_name, sub_type, sub_expires_at
         FROM users
         WHERE telegram_id = $1
       SQL
       telegram_id
     ) { |rs| from_rs(rs) }
+  end
+
+  def subscribed? : Bool
+    exp = sub_expires_at
+    return false if exp.nil?
+    exp > Time.utc
+  end
+
+  def self.update_subscription(id : Int64, sub_type : String, expires_at : Time)
+    AppDB.pool.exec(
+      "UPDATE users SET sub_type = $1, sub_expires_at = $2 WHERE id = $3",
+      sub_type, expires_at, id
+    )
   end
 end

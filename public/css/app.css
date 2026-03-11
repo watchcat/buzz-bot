@@ -1045,6 +1045,17 @@ main {
 .send-result.success { background: #e8f5e9; color: #2e7d32; }
 .send-result.error   { background: #fce4ec; color: #880e4f; }
 
+.send-result.upsell {
+  color: var(--hint-color);
+  font-size: 13px;
+  line-height: 1.5;
+}
+.send-result.upsell .upsell-link {
+  color: var(--button-color);
+  text-decoration: none;
+  font-weight: 600;
+}
+
 /* Empty State */
 .empty-state {
   text-align: center;

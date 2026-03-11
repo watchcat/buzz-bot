@@ -25,7 +25,8 @@
          data-title="<%= HTML.escape(episode.title) %>"
          data-artist="<%= HTML.escape(feed.try(&.title) || "") %>"
          data-artwork="<%= feed.try(&.image_url) || "" %>"
-         data-autoplay="<%= should_autoplay ? "1" : "0" %>">
+         data-autoplay="<%= should_autoplay ? "1" : "0" %>"
+         data-subscribed="<%= is_premium ? "1" : "0" %>">
     </div>
 
     <div class="player-title-row">
