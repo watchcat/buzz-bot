@@ -55,6 +55,7 @@ const LAST_EPISODE_META_KEY = 'buzz-last-episode-meta';
   bar.dataset.episodeId = savedId;
   document.getElementById('now-playing-title').textContent   = meta.title   || '';
   document.getElementById('now-playing-podcast').textContent = meta.podcast  || '';
+  updateSpeedButtons(parseFloat(localStorage.getItem(SPEED_KEY) || '1'));
   const artEl = document.getElementById('now-playing-artwork');
   if (artEl) {
     if (meta.artwork) {
@@ -229,6 +230,7 @@ function loadEpisodeIntoPlayer(playerData) {
     audio.load();
     audio.addEventListener('loadedmetadata', () => {
       if (start > 0) audio.currentTime = start;
+      audio.playbackRate = parseFloat(localStorage.getItem(SPEED_KEY) || '1');
       if (autoplay) audio.play().catch(() => {});
     }, { once: true });
     setupMediaSession({ title, artist, artwork });
@@ -237,6 +239,7 @@ function loadEpisodeIntoPlayer(playerData) {
   // Wire up the full-player controls that just appeared in #content
   initFullPlayerControls();
   syncPlayPauseAll();
+  updateSpeedButtons(parseFloat(localStorage.getItem(SPEED_KEY) || '1'));
 }
 
 // ============================================================
@@ -343,6 +346,34 @@ function updatePlayPauseButtons(playing) {
 
 function syncPlayPauseAll() {
   updatePlayPauseButtons(!audio.paused);
+}
+
+// ============================================================
+// Playback speed — cycles 1× → 1.5× → 2× → 1×
+// ============================================================
+const SPEED_KEY = 'buzz-playback-speed';
+const SPEEDS = [1, 1.5, 2];
+
+function cycleSpeed() {
+  const current = parseFloat(localStorage.getItem(SPEED_KEY) || '1');
+  const idx = SPEEDS.indexOf(current);
+  const next = SPEEDS[(idx + 1) % SPEEDS.length];
+  applySpeed(next);
+  localStorage.setItem(SPEED_KEY, String(next));
+}
+
+function applySpeed(rate) {
+  audio.playbackRate = rate;
+  updateSpeedButtons(rate);
+  syncPositionState();
+}
+
+function updateSpeedButtons(rate) {
+  const label = rate === 1 ? '1×' : rate + '×';
+  document.querySelectorAll('.btn-speed').forEach(btn => {
+    btn.textContent = label;
+    btn.classList.toggle('btn-speed--active', rate !== 1);
+  });
 }
 
 // ============================================================
