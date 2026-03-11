@@ -41,6 +41,8 @@ function getInitData() {
 
 const LAST_EPISODE_KEY      = 'buzz-last-episode-id';
 const LAST_EPISODE_META_KEY = 'buzz-last-episode-meta';
+const SPEED_KEY             = 'buzz-playback-speed';
+const SPEEDS                = [1, 1.5, 2];
 
 // Restore now-playing bar from the previous session (UI only — no audio loaded).
 // Tapping the bar navigates to the player page as usual.
@@ -351,9 +353,6 @@ function syncPlayPauseAll() {
 // ============================================================
 // Playback speed — cycles 1× → 1.5× → 2× → 1×
 // ============================================================
-const SPEED_KEY = 'buzz-playback-speed';
-const SPEEDS = [1, 1.5, 2];
-
 function cycleSpeed() {
   const current = parseFloat(localStorage.getItem(SPEED_KEY) || '1');
   const idx = SPEEDS.indexOf(current);
