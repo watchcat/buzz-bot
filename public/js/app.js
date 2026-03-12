@@ -460,6 +460,21 @@ function _startAutoCaching(episodeId) {
   }).then(() => {
     if (audio.dataset.episodeId !== String(episodeId)) return;
     _updateCacheFill(1, false); // 100% green, hide hint
+    // Switch the live stream to the local blob so seeking/replay is instant
+    getCachedBlobUrl(episodeId).then(blobUrl => {
+      if (!blobUrl || audio.dataset.episodeId !== String(episodeId)) return;
+      const wasPlaying = !audio.paused;
+      const savedTime  = audio.currentTime;
+      if (window._audioBlobUrl) { URL.revokeObjectURL(window._audioBlobUrl); }
+      window._audioBlobUrl = blobUrl;
+      audio.src = blobUrl;
+      audio.load();
+      audio.addEventListener('loadedmetadata', () => {
+        if (audio.dataset.episodeId !== String(episodeId)) return;
+        audio.currentTime = savedTime;
+        if (wasPlaying) audio.play().catch(() => {});
+      }, { once: true });
+    });
   }).catch(err => {
     console.warn('Auto-cache failed:', err);
     _updateCacheFill(0, false); // clear on error
