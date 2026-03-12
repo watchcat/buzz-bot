@@ -95,6 +95,44 @@ module Web::Routes::Episodes
       %(<div class="send-result info">📤 Sending to your chat&hellip; it will arrive in a moment.</div>)
     end
 
+    # Stream episode audio via server-side proxy (follows redirects, auth-gated)
+    get "/episodes/:id/audio_proxy" do |env|
+      user = Auth.current_user(env)
+      halt env, status_code: 401, response: "Unauthorized" unless user
+
+      episode_id = env.params.url["id"].to_i64
+      episode = Episode.find(episode_id)
+      halt env, status_code: 404, response: "Episode not found" unless episode
+
+      url = episode.audio_url.sub(/^http:\/\//i, "https://")
+      streamed = false
+      redirects_left = 5
+
+      while redirects_left > 0 && !streamed
+        redirects_left -= 1
+        uri = URI.parse(url)
+        HTTP::Client.get(url) do |resp|
+          if resp.status_code.in?(301, 302, 303, 307, 308)
+            loc = resp.headers["Location"]? || break
+            url = loc.starts_with?("http") ? loc : "#{uri.scheme}://#{uri.host}#{loc}"
+          else
+            env.response.status_code = resp.status_code
+            env.response.content_type = resp.content_type || "audio/mpeg"
+            if cl = resp.headers["Content-Length"]?
+              env.response.headers["Content-Length"] = cl
+            end
+            IO.copy(resp.body_io, env.response)
+            streamed = true
+          end
+        end
+      end
+      nil
+    rescue ex
+      Log.error { "audio_proxy error: #{ex.message}" }
+      env.response.status_code = 502
+      "Proxy error"
+    end
+
     # Save like/dislike signal
     put "/episodes/:id/signal" do |env|
       user = Auth.current_user(env)

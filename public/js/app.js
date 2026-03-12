@@ -188,7 +188,7 @@ document.addEventListener('visibilitychange', () => {
 // ============================================================
 // Load / switch episode into persistent audio
 // ============================================================
-function loadEpisodeIntoPlayer(playerData) {
+async function loadEpisodeIntoPlayer(playerData) {
   const newId    = playerData.dataset.episodeId;
   const src      = playerData.dataset.src;
   const start    = parseInt(playerData.dataset.start  || '0', 10);
@@ -228,8 +228,15 @@ function loadEpisodeIntoPlayer(playerData) {
     // Persist so the now-playing bar is restored on next app launch
     localStorage.setItem(LAST_EPISODE_KEY, newId);
     localStorage.setItem(LAST_EPISODE_META_KEY, JSON.stringify({ title, podcast: artist, artwork }));
-    // Upgrade http:// → https:// to avoid mixed-content blocking on HTTPS pages
-    audio.src = src.replace(/^http:\/\//i, 'https://');
+    // Use cached blob if available, otherwise stream from CDN (https:// upgraded)
+    if (window._audioBlobUrl) { URL.revokeObjectURL(window._audioBlobUrl); window._audioBlobUrl = null; }
+    const cachedUrl = await getCachedBlobUrl(newId).catch(() => null);
+    if (cachedUrl) {
+      window._audioBlobUrl = cachedUrl;
+      audio.src = cachedUrl;
+    } else {
+      audio.src = src.replace(/^http:\/\//i, 'https://');
+    }
     audio.load();
     audio.addEventListener('loadedmetadata', () => {
       if (start > 0) audio.currentTime = start;
@@ -241,8 +248,10 @@ function loadEpisodeIntoPlayer(playerData) {
 
   // Wire up the full-player controls that just appeared in #content
   initFullPlayerControls();
+  _updateCacheFill(isCachedSync(newId) ? 1 : 0, false);
   syncPlayPauseAll();
   updateSpeedButtons(parseFloat(localStorage.getItem(SPEED_KEY) || '1'));
+  _startAutoCaching(newId);
 }
 
 // ============================================================
@@ -385,6 +394,76 @@ function openSubscribeBot() {
   const url = `https://t.me/${window.BOT_USERNAME}?start=subscribe`;
   if (tg?.openTelegramLink) tg.openTelegramLink(url);
   else window.open(url, '_blank');
+}
+
+// ============================================================
+// Clipboard copy + toast feedback
+// ============================================================
+function copyToClipboard(text) {
+  if (navigator.clipboard?.writeText) {
+    navigator.clipboard.writeText(text).then(_showCopyToast).catch(_showCopyToast);
+  } else {
+    try {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.cssText = 'position:fixed;opacity:0;top:0;left:0';
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      document.body.removeChild(ta);
+    } catch(e) {}
+    _showCopyToast();
+  }
+}
+
+function _showCopyToast() {
+  let toast = document.getElementById('copy-toast');
+  if (!toast) {
+    toast = document.createElement('div');
+    toast.id = 'copy-toast';
+    toast.className = 'copy-toast';
+    document.body.appendChild(toast);
+  }
+  toast.textContent = 'RSS URL copied';
+  toast.classList.add('copy-toast--visible');
+  clearTimeout(toast._hideTimer);
+  toast._hideTimer = setTimeout(() => toast.classList.remove('copy-toast--visible'), 1500);
+}
+
+// Update the seek bar's green cache-fill layer and the hint text.
+// pct: 0..1 or null (indeterminate). showHint: show "Caching X%" text.
+function _updateCacheFill(pct, showHint) {
+  const seekBar = document.getElementById('player-seek');
+  const hint    = document.getElementById('player-cache-hint');
+  if (seekBar) {
+    seekBar.style.setProperty('--cache-pct', pct != null ? (pct * 100).toFixed(1) + '%' : '0%');
+  }
+  if (hint) {
+    if (!showHint || pct === null) {
+      hint.hidden = (pct == null || pct <= 0);
+      hint.textContent = showHint && pct === null ? 'Caching…' : '';
+    } else {
+      hint.hidden = false;
+      hint.textContent = `Caching ${Math.round(pct * 100)}%`;
+    }
+  }
+}
+
+// Fire-and-forget: begin caching the currently loaded episode if not already cached.
+function _startAutoCaching(episodeId) {
+  if (!('caches' in window)) return;
+  if (isCachedSync(episodeId)) return; // already done
+  downloadAndCache(episodeId, getInitData(), pct => {
+    // Only update UI if this episode is still the active one
+    if (audio.dataset.episodeId !== String(episodeId)) return;
+    _updateCacheFill(pct ?? 0, true);
+  }).then(() => {
+    if (audio.dataset.episodeId !== String(episodeId)) return;
+    _updateCacheFill(1, false); // 100% green, hide hint
+  }).catch(err => {
+    console.warn('Auto-cache failed:', err);
+    _updateCacheFill(0, false); // clear on error
+  });
 }
 
 function applySpeed(rate) {

@@ -743,10 +743,12 @@ main {
   cursor: pointer;
   background: linear-gradient(
     to right,
-    var(--button-color) 0%,
-    var(--button-color) var(--pct, 0%),
-    rgba(128,128,128,0.3) var(--pct, 0%),
-    rgba(128,128,128,0.3) 100%
+    var(--button-color)      0%,
+    var(--button-color)      var(--pct, 0%),
+    rgba(76,175,80,0.45)     var(--pct, 0%),
+    rgba(76,175,80,0.45)     var(--cache-pct, 0%),
+    rgba(128,128,128,0.3)    var(--cache-pct, 0%),
+    rgba(128,128,128,0.3)    100%
   );
 }
 
@@ -784,6 +786,18 @@ main {
   text-align: center;
   flex-shrink: 0;
   font-variant-numeric: tabular-nums;
+}
+
+.player-cache-hint-row {
+  height: 14px;
+  text-align: center;
+}
+
+.player-cache-hint {
+  font-size: 11px;
+  font-weight: 600;
+  color: #4caf50;
+  letter-spacing: 0.2px;
 }
 
 /* Control buttons row */
@@ -1378,3 +1392,86 @@ body:has(.now-playing-bar:not([hidden])) main {
 }
 
 .btn-speed:active { opacity: 0.7; }
+
+/* Feed title copy button (episode list header) */
+.btn-feed-title {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  color: var(--text-color);
+  font-size: 18px;
+  font-weight: 600;
+  text-align: left;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.btn-feed-title-text {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.feed-rss-badge {
+  font-size: 9px;
+  font-weight: 700;
+  color: var(--hint-color);
+  border: 1.5px solid currentColor;
+  border-radius: 4px;
+  padding: 1px 3px;
+  flex-shrink: 0;
+  line-height: 1.4;
+  letter-spacing: 0.2px;
+  opacity: 0.7;
+}
+
+/* RSS copy icon button (player card title row) */
+.btn-rss-copy {
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  border-radius: 8px;
+  color: var(--hint-color);
+  cursor: pointer;
+  padding: 4px;
+  transition: color 0.2s, background 0.2s;
+}
+
+.btn-rss-copy:hover,
+.btn-rss-copy:active {
+  color: var(--button-color);
+  background: rgba(0,0,0,0.06);
+}
+
+/* Copy toast notification */
+.copy-toast {
+  position: fixed;
+  bottom: 80px;
+  left: 50%;
+  transform: translateX(-50%) translateY(8px);
+  background: rgba(0,0,0,0.75);
+  color: #fff;
+  font-size: 13px;
+  padding: 7px 16px;
+  border-radius: 20px;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.18s, transform 0.18s;
+  z-index: 200;
+  white-space: nowrap;
+}
+
+.copy-toast--visible {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}

@@ -5,7 +5,13 @@
               hx-get="/feeds"
               hx-target="#content"
               hx-include="[name='initData']">← Back</button>
-      <h2><%= feed.title || "Episodes" %></h2>
+      <button class="btn-feed-title"
+              data-url="<%= HTML.escape(feed.url) %>"
+              onclick="copyToClipboard(this.dataset.url)"
+              title="Copy RSS URL">
+        <span class="btn-feed-title-text"><%= HTML.escape(feed.title || "Episodes") %></span>
+        <span class="feed-rss-badge">RSS</span>
+      </button>
       <% unless episodes.empty? %>
         <div class="section-controls">
           <label class="filter-label">
