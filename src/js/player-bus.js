@@ -206,10 +206,14 @@ function _switchToBlobUrl(episodeId, blobUrl) {
   }, { once: true });
 }
 
+const _cachingInProgress = new Set(); // episode IDs currently being downloaded
+
 function _startAutoCaching(episodeId) {
   if (!window.isCachedSync || window.isCachedSync(episodeId)) return;
   if (!window.downloadAndCache) return;
+  if (_cachingInProgress.has(String(episodeId))) return; // already downloading
 
+  _cachingInProgress.add(String(episodeId));
   let earlySwitched = false;
 
   window.downloadAndCache(episodeId, getInitData(),
@@ -231,11 +235,13 @@ function _startAutoCaching(episodeId) {
       },
     }
   ).then(() => {
+    _cachingInProgress.delete(String(episodeId));
     if (audio.dataset.episodeId !== String(episodeId)) return;
     cacheProgress.value = 1;
     // Switch to fully-stored IDB blob (revokes partial blob URL if early switch fired)
     window.getCachedBlobUrl?.(episodeId).then(blobUrl => _switchToBlobUrl(episodeId, blobUrl));
   }).catch(() => {
+    _cachingInProgress.delete(String(episodeId));
     cacheProgress.value = 0;
   });
 }
