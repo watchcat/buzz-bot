@@ -49,19 +49,8 @@
     <input type="hidden" name="initData" id="initData" value="">
   </div>
 
-  <!-- Persistent audio element — lives outside #content so HTMX swaps never destroy it -->
-  <div id="now-playing" class="now-playing-bar" hidden>
-    <audio id="episode-audio" preload="metadata"></audio>
-    <div class="now-playing-inner" id="now-playing-tap">
-      <div class="now-playing-artwork" id="now-playing-artwork"></div>
-      <div class="now-playing-text">
-        <span class="now-playing-title" id="now-playing-title"></span>
-        <span class="now-playing-podcast" id="now-playing-podcast"></span>
-      </div>
-    </div>
-    <button class="btn-speed" id="now-playing-speed-btn" onclick="cycleSpeed()">1×</button>
-    <button class="now-playing-playpause" id="now-playing-playpause" onclick="togglePlayPause()">▶</button>
-  </div>
+  <!-- MiniPlayer (Preact) mounts here — persists across HTMX swaps -->
+  <div id="miniplayer-root"></div>
 
   <script>window.BOT_USERNAME = '<%= BotClient.username %>';</script>
   <script src="/js/cache.js?v=<%= Assets::VERSION %>"></script>

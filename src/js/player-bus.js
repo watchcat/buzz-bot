@@ -271,3 +271,24 @@ function _ensureAudioContext() {
   if (!_audioCtx) _audioCtx = new (window.AudioContext || window.webkitAudioContext)();
   if (_audioCtx.state === 'suspended') _audioCtx.resume();
 }
+
+// ── Session restore ───────────────────────────────────────────────────────────
+// Re-populate currentEpisode from localStorage so MiniPlayer is visible
+// immediately on page load (audio is not loaded yet — tapping navigates to player).
+(function _restoreSession() {
+  const savedId = localStorage.getItem(LAST_EPISODE_KEY);
+  if (!savedId) return;
+  try {
+    const meta = JSON.parse(localStorage.getItem(LAST_EPISODE_META_KEY) || '{}');
+    currentEpisode.value = {
+      id:         savedId,
+      src:        '',        // empty — load() called when user taps or HTMX navigates
+      title:      meta.title   || '',
+      artist:     meta.podcast || '',
+      artwork:    meta.artwork  || '',
+      start:      0,
+      autoplay:   false,
+      subscribed: false,
+    };
+  } catch { /* ignore corrupt localStorage */ }
+}());

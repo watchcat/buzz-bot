@@ -39,36 +39,17 @@ function getInitData() {
   if (main) main.setAttribute('hx-get', `/episodes/${episodeId}/player?from=share`);
 })();
 
-const LAST_EPISODE_KEY      = 'buzz-last-episode-id';
-const LAST_EPISODE_META_KEY = 'buzz-last-episode-meta';
-const SPEED_KEY             = 'buzz-playback-speed';
-const SPEEDS                = [1, 1.5, 2];
+// ============================================================
+// PlayerBus — the audio engine lives in miniplayer.js (Preact bundle).
+// Everything below that touches audio goes through this reference.
+// ============================================================
+const pb = window.playerBus;
 
-// Restore now-playing bar from the previous session (UI only — no audio loaded).
-// Tapping the bar navigates to the player page as usual.
-(function restoreNowPlayingBar() {
-  const savedId = localStorage.getItem(LAST_EPISODE_KEY);
-  if (!savedId) return;
-  let meta = {};
-  try { meta = JSON.parse(localStorage.getItem(LAST_EPISODE_META_KEY) || '{}'); } catch (e) {}
-  const bar = document.getElementById('now-playing');
-  if (!bar) return;
-  bar.hidden = false;
-  bar.dataset.episodeId = savedId;
-  document.getElementById('now-playing-title').textContent   = meta.title   || '';
-  document.getElementById('now-playing-podcast').textContent = meta.podcast  || '';
-  updateSpeedButtons(parseFloat(localStorage.getItem(SPEED_KEY) || '1'));
-  const artEl = document.getElementById('now-playing-artwork');
-  if (artEl) {
-    if (meta.artwork) {
-      artEl.style.backgroundImage = `url('${meta.artwork}')`;
-      artEl.textContent = '';
-    } else {
-      artEl.style.backgroundImage = '';
-      artEl.textContent = '🎙';
-    }
-  }
-})();
+// Autoplay-next when the current episode finishes
+pb.audio.addEventListener('ended', () => maybePlayNext());
+
+// Make showSubscribePrompt reachable from player-bus.js (called on speed up without premium)
+window.showSubscribePrompt = showSubscribePrompt;
 
 // ============================================================
 // HTMX — inject initData header on every request
@@ -77,22 +58,17 @@ const REVERSE_ORDER_KEY = 'buzz-feed-reverse';
 
 document.addEventListener('htmx:configRequest', (event) => {
   const initData = getInitData();
-  if (initData) {
-    event.detail.headers['X-Init-Data'] = initData;
-  }
+  if (initData) event.detail.headers['X-Init-Data'] = initData;
 
-  // Auto-inject saved order preference for feed episode list requests.
-  // Covers initial navigation, load-more, and hide-listened filter changes.
-  const path = event.detail.path || '';
+  // Auto-inject saved order preference for feed episode list requests
+  const path      = event.detail.path || '';
   const feedMatch = path.match(/[?&]feed_id=(\d+)/);
   if (feedMatch && !path.includes('order=')) {
-    const feedId = feedMatch[1];
-    const reversed = localStorage.getItem(`${REVERSE_ORDER_KEY}-${feedId}`) === 'true';
+    const reversed = localStorage.getItem(`${REVERSE_ORDER_KEY}-${feedMatch[1]}`) === 'true';
     if (reversed) event.detail.parameters['order'] = 'asc';
   }
 });
 
-// HTMX error handling
 document.addEventListener('htmx:responseError', (event) => {
   const status = event.detail.xhr.status;
   const target = event.detail.target;
@@ -110,171 +86,71 @@ function setActiveTab(btn) {
 }
 
 // ============================================================
-// Persistent audio — single element in layout, never destroyed
+// Play / Pause / Seek / Speed — thin wrappers over playerBus
 // ============================================================
-const audio = document.getElementById('episode-audio');
-let progressTimer = null;
-const AUTOPLAY_KEY = 'buzz-autoplay';
-
-// Attach all audio event listeners once at page load
-audio.addEventListener('play', () => {
-  playIntent = true;
-  ensureAudioContext();
-  updatePlayPauseButtons(true);
-  if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'playing';
-  syncPositionState();
-});
-
-audio.addEventListener('pause', () => {
-  updatePlayPauseButtons(false);
-  if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused';
-  flushProgress();
-});
-
-audio.addEventListener('ended', () => {
-  playIntent = false;
-  updatePlayPauseButtons(false);
-  flushProgress(true);
-  maybePlayNext();
-});
-
-audio.addEventListener('timeupdate', () => {
-  updateSeekBar();
-  if (progressTimer) return;
-  progressTimer = setTimeout(() => {
-    progressTimer = null;
-    if (!audio.dataset.episodeId) return;
-    saveProgress(
-      audio.dataset.episodeId,
-      Math.floor(audio.currentTime),
-      audio.duration > 0 && (audio.duration - audio.currentTime) < 30
-    );
-  }, 5000);
-});
-
-audio.addEventListener('durationchange', () => {
-  syncPositionState();
-  updateSeekBar();
-});
-
-audio.addEventListener('loadedmetadata', () => updateSeekBar());
-
-// Tracks whether the user INTENDS for audio to be playing.
-// Set true on play event, false only on explicit user-initiated stop/pause/end.
-// System pauses (WebView backgrounded by Android) do NOT clear this flag,
-// so we can reliably resume when the app comes back to the foreground.
-//
-// The previous approach used wasPlayingBeforeBackground = !audio.paused inside
-// the visibilitychange(hidden=true) handler, but on Android the WebView can
-// pause the <audio> element BEFORE visibilitychange fires, causing the flag to
-// always read false and audio to never resume — a silent regression.
-let playIntent = false;
-
-document.addEventListener('visibilitychange', () => {
-  if (!document.hidden) {
-    // Resume Web Audio context (may have been suspended by the system)
-    if (audioCtx?.state === 'suspended') audioCtx.resume();
-    // If the WebView paused the audio while backgrounded but the user still
-    // intends for it to play, restart it.  Small delay lets the WebView fully
-    // restore before we call play().
-    if (playIntent && audio.paused) {
-      setTimeout(() => {
-        if (playIntent && audio.paused) audio.play().catch(() => {});
-      }, 250);
+function togglePlayPause() {
+  const audio = pb.audio;
+  // If no audio is loaded yet (bar restored from previous session),
+  // navigate to the player with autoplay rather than calling play() on empty src.
+  if (audio.paused && (!audio.src || audio.src === window.location.href)) {
+    const episodeId = pb.currentEpisode.value?.id;
+    if (episodeId) {
+      htmx.ajax('GET', `/episodes/${episodeId}/player?autoplay=1&from=inbox`, {
+        target: '#content', swap: 'innerHTML',
+      });
+      return;
     }
   }
-});
+  pb.togglePlay();
+}
 
-// ============================================================
-// Load / switch episode into persistent audio
-// ============================================================
-async function loadEpisodeIntoPlayer(playerData) {
-  const newId    = playerData.dataset.episodeId;
-  const src      = playerData.dataset.src;
-  const start    = parseInt(playerData.dataset.start  || '0', 10);
-  const autoplay = playerData.dataset.autoplay === '1';
-  const title    = playerData.dataset.title   || '';
-  const artist   = playerData.dataset.artist  || '';
-  const artwork  = playerData.dataset.artwork || '';
-  window.IS_PREMIUM = (playerData.dataset.subscribed === '1');
+function userPause()          { pb.userPause(); }
+function seekRelative(delta)  { pb.seekRelative(delta); }
+function cycleSpeed()         { pb.cycleSpeed(); }
 
-  // Show now-playing bar and store episode for tap-to-return
-  const bar = document.getElementById('now-playing');
-  if (bar) {
-    bar.hidden = false;
-    bar.dataset.episodeId = newId;
+function showSubscribePrompt() {
+  if (tg?.showPopup) {
+    tg.showPopup({
+      title:   '⭐ Buzz-Bot Premium',
+      message: 'Speed control (1.5× / 2×) and sending episodes to Telegram are Premium features.\n\nSubscribe for 100⭐/month.',
+      buttons: [
+        { id: 'sub',    type: 'default', text: 'Subscribe Now' },
+        { id: 'cancel', type: 'cancel',  text: 'Not Now'       },
+      ],
+    }, id => { if (id === 'sub') openSubscribeBot(); });
+  } else {
+    openSubscribeBot();
   }
-  document.getElementById('now-playing-title')?.textContent !== undefined &&
-    (document.getElementById('now-playing-title').textContent = title);
-  document.getElementById('now-playing-podcast')?.textContent !== undefined &&
-    (document.getElementById('now-playing-podcast').textContent = artist);
+}
 
-  const artEl = document.getElementById('now-playing-artwork');
-  if (artEl) {
-    if (artwork) {
-      artEl.style.backgroundImage = `url(${CSS.escape ? "'" + artwork + "'" : artwork})`;
-      artEl.textContent = '';
-    } else {
-      artEl.style.backgroundImage = '';
-      artEl.textContent = '🎙';
-    }
-  }
-
-  if (audio.dataset.episodeId !== newId) {
-    // New episode — reload audio; reset intent until play event fires
-    playIntent = false;
-    if (progressTimer) { clearTimeout(progressTimer); progressTimer = null; }
-    audio.dataset.episodeId = newId;
-    // Persist so the now-playing bar is restored on next app launch
-    localStorage.setItem(LAST_EPISODE_KEY, newId);
-    localStorage.setItem(LAST_EPISODE_META_KEY, JSON.stringify({ title, podcast: artist, artwork }));
-    // Use cached blob if available, otherwise stream from CDN (https:// upgraded)
-    if (window._audioBlobUrl) { URL.revokeObjectURL(window._audioBlobUrl); window._audioBlobUrl = null; }
-    const cachedUrl = await getCachedBlobUrl(newId).catch(() => null);
-    if (cachedUrl) {
-      window._audioBlobUrl = cachedUrl;
-      audio.src = cachedUrl;
-    } else {
-      audio.src = src.replace(/^http:\/\//i, 'https://');
-    }
-    audio.load();
-    audio.addEventListener('loadedmetadata', () => {
-      if (start > 0) audio.currentTime = start;
-      audio.playbackRate = parseFloat(localStorage.getItem(SPEED_KEY) || '1');
-      if (autoplay) audio.play().catch(() => {});
-    }, { once: true });
-    setupMediaSession({ title, artist, artwork });
-  }
-
-  // Wire up the full-player controls that just appeared in #content
-  initFullPlayerControls();
-  _updateCacheFill(isCachedSync(newId) ? 1 : 0, false);
-  syncPlayPauseAll();
-  updateSpeedButtons(parseFloat(localStorage.getItem(SPEED_KEY) || '1'));
-  _startAutoCaching(newId);
+function openSubscribeBot() {
+  const url = `https://t.me/${window.BOT_USERNAME}?start=subscribe`;
+  if (tg?.openTelegramLink) tg.openTelegramLink(url);
+  else window.open(url, '_blank');
 }
 
 // ============================================================
 // Full-player controls (only present when player page is shown)
 // ============================================================
+const AUTOPLAY_KEY = 'buzz-autoplay';
+
 function initFullPlayerControls() {
   const seekBar = document.getElementById('player-seek');
   if (!seekBar) return;
 
-  // Remove any leftover listeners by replacing the element clone
+  // Clone to remove any stale listeners from the previous player page load
   const fresh = seekBar.cloneNode(true);
   seekBar.parentNode.replaceChild(fresh, seekBar);
 
   fresh.addEventListener('input', () => {
-    // Live preview position while dragging
     fresh.style.setProperty('--pct', parseFloat(fresh.value).toFixed(2) + '%');
-    if (audio.duration) {
-      const previewTime = (fresh.value / 100) * audio.duration;
-      document.getElementById('player-current-time').textContent = formatTime(previewTime);
+    if (pb.audio.duration) {
+      const t = (fresh.value / 100) * pb.audio.duration;
+      document.getElementById('player-current-time').textContent = formatTime(t);
     }
   });
   fresh.addEventListener('change', () => {
-    if (audio.duration) audio.currentTime = (fresh.value / 100) * audio.duration;
+    if (pb.audio.duration) pb.seek((fresh.value / 100) * pb.audio.duration);
   });
 
   // Autoplay checkbox
@@ -286,10 +162,49 @@ function initFullPlayerControls() {
     });
   }
 
+  // Replace audio listeners on each player-page load to avoid accumulation
+  if (window._playerAudioListeners) {
+    const { timeupdate, durationchange, play, pause } = window._playerAudioListeners;
+    pb.audio.removeEventListener('timeupdate',    timeupdate);
+    pb.audio.removeEventListener('durationchange', durationchange);
+    pb.audio.removeEventListener('play',           play);
+    pb.audio.removeEventListener('pause',          pause);
+  }
+  const onTimeUpdate = () => updateSeekBar();
+  const onPlayState  = () => {
+    const btn = document.getElementById('player-play-pause');
+    if (btn) btn.textContent = pb.audio.paused ? '▶' : '⏸';
+  };
+  pb.audio.addEventListener('timeupdate',    onTimeUpdate);
+  pb.audio.addEventListener('durationchange', onTimeUpdate);
+  pb.audio.addEventListener('play',           onPlayState);
+  pb.audio.addEventListener('pause',          onPlayState);
+  window._playerAudioListeners = { timeupdate: onTimeUpdate, durationchange: onTimeUpdate, play: onPlayState, pause: onPlayState };
+
+  // Speed button — reactive to playbackRate signal
+  if (window._speedEffectDispose) window._speedEffectDispose();
+  window._speedEffectDispose = pb.effect(() => {
+    const rate  = pb.playbackRate.value;
+    const label = rate === 1 ? '1×' : `${rate}×`;
+    const btn   = document.getElementById('player-speed-btn');
+    if (btn) {
+      btn.textContent = label;
+      btn.classList.toggle('btn-speed--active', rate !== 1);
+    }
+  });
+
+  // Cache progress — drives the green seek bar layer and hint text
+  if (window._cacheEffectDispose) window._cacheEffectDispose();
+  window._cacheEffectDispose = pb.effect(() => {
+    _updateCacheFill(pb.cacheProgress.value);
+  });
+
   updateSeekBar();
+  onPlayState(); // sync play/pause button to current state immediately
 }
 
 function updateSeekBar() {
+  const audio     = pb.audio;
   const seekBar   = document.getElementById('player-seek');
   const currentEl = document.getElementById('player-current-time');
   const durEl     = document.getElementById('player-duration');
@@ -313,87 +228,32 @@ function formatTime(sec) {
 }
 
 // ============================================================
-// Play / Pause / Seek
+// Autoplay next episode
 // ============================================================
-// Explicit user-initiated pause — clears playIntent so visibilitychange
-// does not auto-resume when the app comes back to the foreground.
-function userPause() {
-  playIntent = false;
-  audio.pause();
-}
-
-function togglePlayPause() {
-  if (audio.paused) {
-    // If no audio is loaded yet (restored bar from previous session),
-    // navigate to the player with autoplay rather than calling play() on an empty element.
-    if (!audio.src || audio.src === window.location.href) {
-      const episodeId = document.getElementById('now-playing')?.dataset.episodeId;
-      if (episodeId) {
-        htmx.ajax('GET', `/episodes/${episodeId}/player?autoplay=1&from=inbox`, {
-          target: '#content',
-          swap:   'innerHTML',
-        });
-        return;
-      }
-    }
-    audio.play().catch(() => {});
-  } else {
-    userPause();
-  }
-}
-
-function seekRelative(delta) {
-  audio.currentTime = Math.max(0, Math.min(audio.duration || 0, audio.currentTime + delta));
-  syncPositionState();
-}
-
-function updatePlayPauseButtons(playing) {
-  const icon = playing ? '⏸' : '▶';
-  const ids = ['now-playing-playpause', 'player-play-pause'];
-  ids.forEach(id => {
-    const btn = document.getElementById(id);
-    if (btn) btn.textContent = icon;
+function maybePlayNext() {
+  const checkbox = document.getElementById('autoplay-checkbox');
+  if (!checkbox?.checked) return;
+  const root   = document.getElementById('player-root');
+  const nextId = root?.dataset.nextId;
+  if (!nextId) return;
+  const order = root?.dataset.order === 'asc' ? '&order=asc' : '';
+  htmx.ajax('GET', `/episodes/${nextId}/player?autoplay=1${order}`, {
+    target: '#content', swap: 'innerHTML',
   });
 }
 
-function syncPlayPauseAll() {
-  updatePlayPauseButtons(!audio.paused);
-}
-
 // ============================================================
-// Playback speed — cycles 1× → 1.5× → 2× → 1×
+// Cache progress UI (seek bar green layer + hint text)
 // ============================================================
-function cycleSpeed() {
-  const current = parseFloat(localStorage.getItem(SPEED_KEY) || '1');
-  const idx = SPEEDS.indexOf(current);
-  const next = SPEEDS[(idx + 1) % SPEEDS.length];
-  if (next !== 1 && !window.IS_PREMIUM) {
-    showSubscribePrompt();
-    return;
+function _updateCacheFill(pct) {
+  const seekBar = document.getElementById('player-seek');
+  const hint    = document.getElementById('player-cache-hint');
+  if (seekBar) seekBar.style.setProperty('--cache-pct', (pct * 100).toFixed(1) + '%');
+  if (hint) {
+    const caching      = pct > 0 && pct < 1;
+    hint.hidden        = !caching;
+    hint.textContent   = caching ? `Caching ${Math.round(pct * 100)}%` : '';
   }
-  applySpeed(next);
-  localStorage.setItem(SPEED_KEY, String(next));
-}
-
-function showSubscribePrompt() {
-  if (tg?.showPopup) {
-    tg.showPopup({
-      title: '⭐ Buzz-Bot Premium',
-      message: 'Speed control (1.5× / 2×) and sending episodes to Telegram are Premium features.\n\nSubscribe for 100⭐/month.',
-      buttons: [
-        { id: 'sub', type: 'default', text: 'Subscribe Now' },
-        { id: 'cancel', type: 'cancel', text: 'Not Now' }
-      ]
-    }, id => { if (id === 'sub') openSubscribeBot(); });
-  } else {
-    openSubscribeBot();
-  }
-}
-
-function openSubscribeBot() {
-  const url = `https://t.me/${window.BOT_USERNAME}?start=subscribe`;
-  if (tg?.openTelegramLink) tg.openTelegramLink(url);
-  else window.open(url, '_blank');
 }
 
 // ============================================================
@@ -430,222 +290,6 @@ function _showCopyToast() {
   toast._hideTimer = setTimeout(() => toast.classList.remove('copy-toast--visible'), 1500);
 }
 
-// Update the seek bar's green cache-fill layer and the hint text.
-// pct: 0..1 or null (indeterminate). showHint: show "Caching X%" text.
-function _updateCacheFill(pct, showHint) {
-  const seekBar = document.getElementById('player-seek');
-  const hint    = document.getElementById('player-cache-hint');
-  if (seekBar) {
-    seekBar.style.setProperty('--cache-pct', pct != null ? (pct * 100).toFixed(1) + '%' : '0%');
-  }
-  if (hint) {
-    if (!showHint || pct === null) {
-      hint.hidden = (pct == null || pct <= 0);
-      hint.textContent = showHint && pct === null ? 'Caching…' : '';
-    } else {
-      hint.hidden = false;
-      hint.textContent = `Caching ${Math.round(pct * 100)}%`;
-    }
-  }
-}
-
-// Fire-and-forget: begin caching the currently loaded episode if not already cached.
-function _startAutoCaching(episodeId) {
-  if (!('caches' in window)) return;
-  if (isCachedSync(episodeId)) return; // already done
-  downloadAndCache(episodeId, getInitData(), pct => {
-    // Only update UI if this episode is still the active one
-    if (audio.dataset.episodeId !== String(episodeId)) return;
-    _updateCacheFill(pct ?? 0, true);
-  }).then(() => {
-    if (audio.dataset.episodeId !== String(episodeId)) return;
-    _updateCacheFill(1, false); // 100% green, hide hint
-    // Switch the live stream to the local blob so seeking/replay is instant
-    getCachedBlobUrl(episodeId).then(blobUrl => {
-      if (!blobUrl || audio.dataset.episodeId !== String(episodeId)) return;
-      const wasPlaying = !audio.paused;
-      const savedTime  = audio.currentTime;
-      if (window._audioBlobUrl) { URL.revokeObjectURL(window._audioBlobUrl); }
-      window._audioBlobUrl = blobUrl;
-      audio.src = blobUrl;
-      audio.load();
-      audio.addEventListener('loadedmetadata', () => {
-        if (audio.dataset.episodeId !== String(episodeId)) return;
-        audio.currentTime = savedTime;
-        if (wasPlaying) audio.play().catch(() => {});
-      }, { once: true });
-    });
-  }).catch(err => {
-    console.warn('Auto-cache failed:', err);
-    _updateCacheFill(0, false); // clear on error
-  });
-}
-
-function applySpeed(rate) {
-  audio.playbackRate = rate;
-  updateSpeedButtons(rate);
-  syncPositionState();
-}
-
-function updateSpeedButtons(rate) {
-  const label = rate === 1 ? '1×' : rate + '×';
-  document.querySelectorAll('.btn-speed').forEach(btn => {
-    btn.textContent = label;
-    btn.classList.toggle('btn-speed--active', rate !== 1);
-  });
-}
-
-// ============================================================
-// Now-playing bar tap → navigate to full player
-// ============================================================
-document.getElementById('now-playing-tap')?.addEventListener('click', () => {
-  const episodeId = document.getElementById('now-playing')?.dataset.episodeId;
-  if (!episodeId) return;
-  htmx.ajax('GET', `/episodes/${episodeId}/player`, {
-    target: '#content',
-    swap:   'innerHTML',
-  });
-});
-
-// ============================================================
-// Autoplay next episode
-// ============================================================
-function maybePlayNext() {
-  const checkbox = document.getElementById('autoplay-checkbox');
-  if (!checkbox?.checked) return;
-  const root   = document.getElementById('player-root');
-  const nextId = root?.dataset.nextId;
-  if (!nextId) return;
-  const order  = root?.dataset.order === 'asc' ? '&order=asc' : '';
-  htmx.ajax('GET', `/episodes/${nextId}/player?autoplay=1${order}`, {
-    target: '#content',
-    swap:   'innerHTML',
-  });
-}
-
-// ============================================================
-// Progress saving
-// ============================================================
-function flushProgress(completed = false) {
-  if (progressTimer) { clearTimeout(progressTimer); progressTimer = null; }
-  if (!audio.dataset.episodeId) return;
-  saveProgress(audio.dataset.episodeId, Math.floor(audio.currentTime), completed);
-}
-
-function saveProgress(episodeId, seconds, completed) {
-  fetch(`/episodes/${episodeId}/progress`, {
-    method:  'PUT',
-    headers: { 'Content-Type': 'application/json', 'X-Init-Data': getInitData() },
-    body:    JSON.stringify({ seconds, completed }),
-  }).catch(err => console.warn('Progress save failed:', err));
-}
-
-// ============================================================
-// AudioContext — keep alive across background/foreground
-// ============================================================
-let audioCtx = null;
-
-function ensureAudioContext() {
-  // AudioContext is created and resumed here solely to unlock audio on
-  // mobile devices that block playback until a user-gesture context exists.
-  // DO NOT connect the audio element via createMediaElementSource() —
-  // doing so routes audio through the Web Audio graph, and if the context
-  // is suspended (common in WebViews) audio plays silently with no output.
-  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-  if (audioCtx.state === 'suspended') audioCtx.resume();
-}
-
-// ============================================================
-// Media Session API
-// ============================================================
-function setupMediaSession({ title, artist, artwork }) {
-  if (!('mediaSession' in navigator)) return;
-  navigator.mediaSession.metadata = new MediaMetadata({
-    title,
-    artist,
-    artwork: artwork ? [
-      { src: artwork, sizes: '512x512', type: 'image/jpeg' },
-    ] : [],
-  });
-  navigator.mediaSession.setActionHandler('play',         () => audio.play().catch(() => {}));
-  navigator.mediaSession.setActionHandler('pause',        () => userPause());
-  // 'stop' is sent by many Bluetooth headsets and system media controls
-  // instead of (or in addition to) 'pause'
-  navigator.mediaSession.setActionHandler('stop',         () => userPause());
-  navigator.mediaSession.setActionHandler('seekbackward', (d) => seekRelative(-(d.seekOffset ?? 10)));
-  navigator.mediaSession.setActionHandler('seekforward',  (d) => seekRelative(+(d.seekOffset ?? 30)));
-  navigator.mediaSession.setActionHandler('seekto', (d) => {
-    audio.currentTime = d.seekTime;
-    syncPositionState();
-  });
-}
-
-function syncPositionState() {
-  if (!('mediaSession' in navigator) || !navigator.mediaSession.setPositionState) return;
-  if (!audio.duration || !isFinite(audio.duration)) return;
-  navigator.mediaSession.setPositionState({
-    duration:     audio.duration,
-    playbackRate: audio.playbackRate,
-    position:     Math.min(audio.currentTime, audio.duration),
-  });
-}
-
-// ============================================================
-// Hardware media key fallback for Android WebView
-//
-// Android WebView deliberately disables the Web MediaSession API
-// (Chromium bug #678979), so setActionHandler() never fires for
-// Bluetooth headset buttons. Two fallback paths are tried:
-//
-// 1. Keyboard events: some headsets dispatch play/pause as a
-//    MediaPlayPause key event (keyCode 179) to the focused window.
-//    We listen on both keydown AND keyup because certain BT devices
-//    only fire one of the two.
-//
-// 2. keyCode fallback: e.key may be 'Unidentified' in some WebViews
-//    even when the keyCode is the correct media value. Handle the
-//    numeric keyCodes as a secondary check.
-// ============================================================
-function handleMediaKey(e) {
-  // keyCode values: 179 = MediaPlayPause, 175 = MediaPlay,
-  // 19 = MediaPause, 178 = MediaStop (standard JS media keyCodes)
-  const key = e.key;
-  const code = e.keyCode;
-
-  const isPlayPause = key === 'MediaPlayPause' || code === 179;
-  const isPlay      = key === 'MediaPlay'      || code === 175;
-  const isPause     = key === 'MediaPause'     || code === 19;
-  const isStop      = key === 'MediaStop'      || code === 178;
-
-  if (isPlayPause || isPlay || isPause || isStop) {
-    e.preventDefault();
-    if (isPlayPause) {
-      togglePlayPause();
-    } else if (isPlay) {
-      if (audio.paused) audio.play().catch(() => {});
-    } else {
-      if (!audio.paused) userPause();
-    }
-  }
-}
-
-// Listen on both keydown and keyup — BT headset behaviour varies by device
-document.addEventListener('keydown', handleMediaKey);
-document.addEventListener('keyup',   handleMediaKey);
-
-// ============================================================
-// Episode description links — open in external browser
-// ============================================================
-document.addEventListener('click', (e) => {
-  const link = e.target.closest('.player-description a');
-  if (!link) return;
-  const href = link.href;
-  if (!href || href === '#' || href.startsWith('javascript:')) return;
-  e.preventDefault();
-  if (tg) tg.openLink(href);
-  else window.open(href, '_blank', 'noopener');
-});
-
 // ============================================================
 // Filter state — per-page isolation
 // ============================================================
@@ -654,12 +298,10 @@ const FEED_HIDE_LISTENED_KEY  = 'buzz-feed-hide-listened';
 const FEED_FILTER_KEY         = 'buzz-inbox-excluded-feeds';
 const COMPACT_KEY             = 'buzz-inbox-compact';
 
-// True only when the inbox tab content is active (has compact-mode toggle)
 function isInboxPage() {
   return !!document.getElementById('compact-mode-cb');
 }
 
-// Return the correct hide-listened key for the current page
 function hideListenedKey() {
   return isInboxPage() ? INBOX_HIDE_LISTENED_KEY : FEED_HIDE_LISTENED_KEY;
 }
@@ -676,8 +318,6 @@ function saveExcludedFeeds(set) {
   localStorage.setItem(FEED_FILTER_KEY, JSON.stringify([...set]));
 }
 
-// Unified filter application: feed filter → listened filter → compact grouping.
-// Compact mode and feed filter only apply when on the inbox page.
 function applyAllFilters() {
   const list = document.getElementById('episode-list');
   if (!list) return;
@@ -687,17 +327,14 @@ function applyAllFilters() {
   const excludedFeeds = inbox ? getExcludedFeeds() : new Set();
   const compact       = inbox && localStorage.getItem(COMPACT_KEY) === 'true';
 
-  // 1. Clear any previous compact grouping
   clearCompactGrouping(list);
 
-  // 2. Apply base visibility: feed filter + listened filter
   list.querySelectorAll('.episode-item').forEach(el => {
     const feedExcluded   = excludedFeeds.has(el.dataset.feedId);
     const listenedHidden = hideListen && el.classList.contains('listened');
     el.style.display = (feedExcluded || listenedHidden) ? 'none' : '';
   });
 
-  // 3. Compact grouping on top — inbox only
   if (compact) applyCompactGrouping(list);
 }
 
@@ -752,13 +389,12 @@ function clearCompactGrouping(list) {
 }
 
 function applyCompactGrouping(list) {
-  // Work only on currently visible items (not hidden by other filters)
   const visible = [...list.querySelectorAll('.episode-item')]
     .filter(el => el.style.display !== 'none');
 
   let i = 0;
   while (i < visible.length) {
-    const feedId = visible[i].dataset.feedId;
+    const feedId   = visible[i].dataset.feedId;
     let j = i + 1;
     while (j < visible.length && visible[j].dataset.feedId === feedId) j++;
 
@@ -771,18 +407,16 @@ function applyCompactGrouping(list) {
       first.dataset.groupCount    = group.length;
       first.dataset.groupExpanded = 'false';
 
-      // Hide the rest of the group
       siblings.forEach(el => {
         el.classList.add('compact-hidden');
         el.style.display = 'none';
       });
 
-      // Inject expand button into first item
       const btn = document.createElement('button');
       btn.className   = 'compact-expand-btn';
       btn.textContent = `+${siblings.length} more`;
       btn.addEventListener('click', (e) => {
-        e.stopPropagation(); // don't trigger hx-get on the parent li
+        e.stopPropagation();
         toggleCompactGroup(first, siblings);
       });
       first.appendChild(btn);
@@ -807,24 +441,18 @@ function toggleCompactGroup(first, siblings) {
 // Restore all inbox state after HTMX swap
 // ============================================================
 function initInboxState() {
-  // Restore compact toggle
   const compactCb = document.getElementById('compact-mode-cb');
   if (compactCb) compactCb.checked = localStorage.getItem(COMPACT_KEY) === 'true';
 
-  // Restore listened toggle (uses page-specific key)
   const listenedCb = document.getElementById('hide-listened-cb');
   if (listenedCb) listenedCb.checked = localStorage.getItem(hideListenedKey()) === 'true';
 
-  // Restore feed filter checkboxes
   const excluded = getExcludedFeeds();
   document.querySelectorAll('.feed-filter-cb').forEach(cb => {
     cb.checked = !excluded.has(cb.dataset.feedId);
   });
 
-  // Reflect active-filter state on the button (dot badge)
   updateFeedFilterBtn();
-
-  // Apply all filters (no-op if no episode list is present)
   applyAllFilters();
 }
 
@@ -837,18 +465,17 @@ function setReverseOrder(checked) {
   localStorage.setItem(`${REVERSE_ORDER_KEY}-${feedId}`, checked ? 'true' : 'false');
   const order = checked ? 'asc' : 'desc';
   htmx.ajax('GET', `/episodes?feed_id=${feedId}&order=${order}`, {
-    target: '#content',
-    swap:   'innerHTML',
+    target: '#content', swap: 'innerHTML',
   });
 }
 
 // ============================================================
 // Description fold
 // ============================================================
-const DESC_COLLAPSE_THRESHOLD = 120; // px — ~5 lines at 13px/1.7lh
+const DESC_COLLAPSE_THRESHOLD = 120;
 
 function initDescriptionFold() {
-  const desc = document.querySelector('.player-description');
+  const desc   = document.querySelector('.player-description');
   const toggle = desc && document.getElementById(`player-desc-toggle-${desc.id.replace('player-desc-', '')}`);
   if (!desc || !toggle) return;
   if (desc.scrollHeight > DESC_COLLAPSE_THRESHOLD) {
@@ -875,11 +502,23 @@ function toggleSharePanel(episodeId) {
 
 function shareEpisode(episodeId, message) {
   const deepLink = `https://t.me/${window.BOT_USERNAME}?start=ep_${episodeId}`;
-  const text = message.trim();
-  const shareUrl = `https://t.me/share/url?url=${encodeURIComponent(deepLink)}&text=${encodeURIComponent(text)}`;
+  const shareUrl = `https://t.me/share/url?url=${encodeURIComponent(deepLink)}&text=${encodeURIComponent(message.trim())}`;
   if (tg?.openTelegramLink) tg.openTelegramLink(shareUrl);
   else window.open(shareUrl, '_blank');
 }
+
+// ============================================================
+// Episode description links — open in external browser
+// ============================================================
+document.addEventListener('click', (e) => {
+  const link = e.target.closest('.player-description a');
+  if (!link) return;
+  const href = link.href;
+  if (!href || href === '#' || href.startsWith('javascript:')) return;
+  e.preventDefault();
+  if (tg) tg.openLink(href);
+  else window.open(href, '_blank', 'noopener');
+});
 
 // ============================================================
 // HTMX lifecycle
@@ -887,11 +526,9 @@ function shareEpisode(episodeId, message) {
 document.addEventListener('htmx:afterSwap', () => {
   const playerData = document.getElementById('player-data');
   if (playerData) {
-    loadEpisodeIntoPlayer(playerData);
+    pb.load(playerData.dataset);
+    initFullPlayerControls();
     initDescriptionFold();
-  } else {
-    syncPlayPauseAll();
   }
-
   initInboxState();
 });

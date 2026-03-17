@@ -1140,7 +1140,6 @@ main {
   backdrop-filter: blur(8px);
 }
 
-.now-playing-bar[hidden] { display: none; }
 
 .now-playing-inner {
   flex: 1;
@@ -1232,8 +1231,7 @@ main {
 }
 
 /* Push main content up so the bar doesn't cover it when visible */
-.now-playing-bar:not([hidden]) ~ * main,
-body:has(.now-playing-bar:not([hidden])) main {
+body:has(.now-playing-bar) main {
   padding-bottom: 80px;
 }
 
