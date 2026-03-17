@@ -56,5 +56,10 @@
   <script src="/js/cache.js?v=<%= Assets::VERSION %>"></script>
   <script src="/js/miniplayer.js?v=<%= Assets::VERSION %>"></script>
   <script src="/js/app.js?v=<%= Assets::VERSION %>"></script>
+  <script>
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/sw.js');
+    }
+  </script>
 </body>
 </html>
