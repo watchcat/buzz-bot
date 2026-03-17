@@ -46,7 +46,10 @@ async function getCachedBlobUrl(episodeId) {
 
 // Download via proxy, storing blob in IndexedDB.
 // onProgress(0..1) called per chunk; null if Content-Length unknown.
-async function downloadAndCache(episodeId, initData, onProgress) {
+// onEarlySwitch (optional): { getThresholdPct: () => number|null, onReady: (blobUrl) => void }
+//   — when byte progress >= getThresholdPct(), fires onReady with a partial blob URL so the
+//     caller can switch audio.src before the full download completes.
+async function downloadAndCache(episodeId, initData, onProgress, onEarlySwitch = null) {
   const resp = await fetch(`/episodes/${episodeId}/audio_proxy`, {
     headers: { 'X-Init-Data': initData }
   });
@@ -57,13 +60,24 @@ async function downloadAndCache(episodeId, initData, onProgress) {
   const reader      = resp.body.getReader();
   const chunks      = [];
   let received      = 0;
+  let earlySwitchFired = false;
 
   while (true) {
     const { done, value } = await reader.read();
     if (done) break;
     chunks.push(value);
     received += value.byteLength;
-    onProgress(total > 0 ? received / total : null);
+    const pct = total > 0 ? received / total : null;
+    onProgress(pct);
+
+    if (!earlySwitchFired && onEarlySwitch && pct !== null) {
+      const threshold = onEarlySwitch.getThresholdPct();
+      if (threshold !== null && threshold !== undefined && pct >= threshold) {
+        earlySwitchFired = true;
+        const partialBlob = new Blob(chunks.slice(), { type: contentType });
+        onEarlySwitch.onReady(URL.createObjectURL(partialBlob));
+      }
+    }
   }
 
   const blob = new Blob(chunks, { type: contentType });

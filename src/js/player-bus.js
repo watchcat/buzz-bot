@@ -189,31 +189,52 @@ document.addEventListener('keyup',   _handleMediaKey);
 
 // ── Caching integration ───────────────────────────────────────────────────────
 
+const EARLY_SWITCH_AHEAD_SECS = 5 * 60; // switch to cached blob once 5 min ahead is buffered
+
+function _switchToBlobUrl(episodeId, blobUrl) {
+  if (!blobUrl || audio.dataset.episodeId !== String(episodeId)) return;
+  const wasPlaying = !audio.paused;
+  const savedTime  = audio.currentTime;
+  if (audioBlobUrl) URL.revokeObjectURL(audioBlobUrl);
+  audioBlobUrl = blobUrl;
+  audio.src = blobUrl;
+  audio.load();
+  audio.addEventListener('loadedmetadata', () => {
+    if (audio.dataset.episodeId !== String(episodeId)) return;
+    audio.currentTime = savedTime;
+    if (wasPlaying) audio.play().catch(() => {});
+  }, { once: true });
+}
+
 function _startAutoCaching(episodeId) {
   if (!window.isCachedSync || window.isCachedSync(episodeId)) return;
   if (!window.downloadAndCache) return;
 
-  window.downloadAndCache(episodeId, getInitData(), pct => {
-    if (audio.dataset.episodeId !== String(episodeId)) return;
-    cacheProgress.value = pct ?? 0;
-  }).then(() => {
+  let earlySwitched = false;
+
+  window.downloadAndCache(episodeId, getInitData(),
+    pct => {
+      if (audio.dataset.episodeId !== String(episodeId)) return;
+      cacheProgress.value = pct ?? 0;
+    },
+    {
+      // Threshold: bytes fraction that covers currentTime + 5 min
+      getThresholdPct: () => {
+        const dur = audio.duration;
+        if (!dur || !isFinite(dur)) return null;
+        return Math.min(1, (audio.currentTime + EARLY_SWITCH_AHEAD_SECS) / dur);
+      },
+      onReady: partialBlobUrl => {
+        if (audio.dataset.episodeId !== String(episodeId)) return;
+        earlySwitched = true;
+        _switchToBlobUrl(episodeId, partialBlobUrl);
+      },
+    }
+  ).then(() => {
     if (audio.dataset.episodeId !== String(episodeId)) return;
     cacheProgress.value = 1;
-    // Switch live stream → cached blob (no network needed for seeking)
-    window.getCachedBlobUrl?.(episodeId).then(blobUrl => {
-      if (!blobUrl || audio.dataset.episodeId !== String(episodeId)) return;
-      const wasPlaying = !audio.paused;
-      const savedTime  = audio.currentTime;
-      if (audioBlobUrl) URL.revokeObjectURL(audioBlobUrl);
-      audioBlobUrl = blobUrl;
-      audio.src = blobUrl;
-      audio.load();
-      audio.addEventListener('loadedmetadata', () => {
-        if (audio.dataset.episodeId !== String(episodeId)) return;
-        audio.currentTime = savedTime;
-        if (wasPlaying) audio.play().catch(() => {});
-      }, { once: true });
-    });
+    // Switch to fully-stored IDB blob (revokes partial blob URL if early switch fired)
+    window.getCachedBlobUrl?.(episodeId).then(blobUrl => _switchToBlobUrl(episodeId, blobUrl));
   }).catch(() => {
     cacheProgress.value = 0;
   });
