@@ -1,9 +1,22 @@
 const STATIC_CACHE = 'buzz-static-v1';
 const HTML_CACHE   = 'buzz-html-v1';
 
-// Take control immediately — no need to wait for existing SW to retire
-self.addEventListener('install',  ()  => self.skipWaiting());
-self.addEventListener('activate', e   => e.waitUntil(self.clients.claim()));
+// Precache the app shell and vendored scripts on install so the app works
+// offline immediately after the first online visit.
+const PRECACHE_ASSETS = [
+  '/js/telegram-web-app.js',
+  '/js/htmx.min.js',
+];
+
+self.addEventListener('install', e => {
+  e.waitUntil(
+    caches.open(STATIC_CACHE)
+      .then(cache => cache.addAll(PRECACHE_ASSETS))
+      .then(() => self.skipWaiting())
+  );
+});
+
+self.addEventListener('activate', e => e.waitUntil(self.clients.claim()));
 
 self.addEventListener('fetch', e => {
   const { request } = e;
@@ -25,12 +38,23 @@ self.addEventListener('fetch', e => {
 
   // HTML pages and HTMX fragments — network-first, fall back to cached copy.
   // Covers the app shell, inbox, feeds, episode lists, player, discover.
+  // Cache key strips initData: Telegram rotates it each session so the raw URL
+  // would never match a previously cached response.
   const HTML_PREFIXES = ['/', '/app', '/inbox', '/feeds', '/episodes', '/discover'];
   if (HTML_PREFIXES.some(p => url.pathname === p || url.pathname.startsWith(p + '/'))) {
     e.respondWith(_networkFirst(request, HTML_CACHE));
     return;
   }
 });
+
+// Strip initData from the URL before using it as a cache key.
+// initData is a Telegram auth token that rotates each session — without this,
+// every new session would miss the cache even for identical page content.
+function _htmlCacheKey(request) {
+  const url = new URL(request.url);
+  url.searchParams.delete('initData');
+  return url.toString();
+}
 
 // ── Strategies ────────────────────────────────────────────────────────────────
 
@@ -44,12 +68,13 @@ async function _cacheFirst(request, cacheName) {
 }
 
 async function _networkFirst(request, cacheName) {
+  const cacheKey = _htmlCacheKey(request);
   try {
     const resp = await fetch(request);
-    if (resp.ok) (await caches.open(cacheName)).put(request, resp.clone());
+    if (resp.ok) (await caches.open(cacheName)).put(cacheKey, resp.clone());
     return resp;
   } catch {
-    const cached = await caches.match(request);
+    const cached = await caches.match(cacheKey);
     return cached ?? new Response(
       '<div class="error-msg">You\'re offline and this page hasn\'t been cached yet.</div>',
       { headers: { 'Content-Type': 'text/html; charset=utf-8' } }
