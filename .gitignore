@@ -16,6 +16,12 @@ buzz_bot
 
 # Cloudflare tunnel credentials (contain auth tokens)
 *.json
+!package.json
+!package-lock.json
+
+# JS build artifacts
+node_modules/
+public/js/miniplayer.js
 
 # Temp files
 *.tmp
