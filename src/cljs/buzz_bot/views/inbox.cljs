@@ -62,6 +62,11 @@
          [:div.section-header
           [:div.section-header-row
            [:h2 "Inbox"]
+           [:button.btn-icon
+            {:title    "Refresh"
+             :class    (when loading? "btn-icon--spinning")
+             :on-click #(rf/dispatch [::events/fetch-inbox])}
+            "↻"]
            [:div.section-controls
             [:label.filter-label
              {:on-click (fn [e]

@@ -57,7 +57,13 @@
             searching?       (seq @query-atom)]
         [:<>
          [:div.section-header
-          [:div.section-header-row [:h2 "Feeds"]]]
+          [:div.section-header-row
+           [:h2 "Feeds"]
+           [:button.btn-icon
+            {:title    "Refresh"
+             :class    (when @loading? "btn-icon--spinning")
+             :on-click #(rf/dispatch [::events/fetch-feeds])}
+            "↻"]]]
 
          [:div.search-section
           [:input.search-input

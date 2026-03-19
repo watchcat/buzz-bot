@@ -266,6 +266,9 @@ main {
 
 .btn-icon:hover { background: rgba(0,0,0,0.08); }
 
+@keyframes spin { to { transform: rotate(360deg); } }
+.btn-icon--spinning { animation: spin 0.7s linear infinite; pointer-events: none; }
+
 /* Podcast Search */
 .search-section {
   margin-bottom: 16px;
