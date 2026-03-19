@@ -1,11 +1,10 @@
 module Assets
-  # Computed once at startup from the latest mtime of CSS + JS.
-  # Changes every time you restart after editing static files,
-  # which forces browsers/WebViews to fetch fresh copies.
+  # Computed once at startup from the mtime of the compiled JS bundle.
+  # Changes every deploy (Docker build timestamp), forcing browsers to
+  # fetch fresh copies.
   VERSION = begin
-    mtimes = ["public/css/app.css", "public/js/app.js", "public/js/miniplayer.js", "public/js/cache.js", "public/js/write-queue.js"].map do |path|
-      File.info(path).modification_time.to_unix rescue 0_i64
-    end
-    mtimes.max.to_s
+    File.info("public/js/main.js").modification_time.to_unix.to_s
+  rescue
+    Time.utc.to_unix.to_s
   end
 end
