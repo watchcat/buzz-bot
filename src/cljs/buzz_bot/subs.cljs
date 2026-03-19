@@ -45,11 +45,17 @@
 (rf/reg-sub ::bookmarks-list     (fn [db _] (get-in db [:bookmarks :list])))
 (rf/reg-sub ::bookmarks-loading? (fn [db _] (get-in db [:bookmarks :loading?])))
 
+;; Search
+(rf/reg-sub ::search-results        (fn [db _] (get-in db [:search :results])))
+(rf/reg-sub ::search-loading?       (fn [db _] (get-in db [:search :loading?])))
+(rf/reg-sub ::search-subscribed-urls (fn [db _] (get-in db [:search :subscribed-urls])))
+
 ;; Audio
 (rf/reg-sub ::audio          (fn [db _] (:audio db)))
 (rf/reg-sub ::audio-playing? :<- [::audio] (fn [a _] (:playing? a)))
 (rf/reg-sub ::audio-pending? :<- [::audio] (fn [a _] (:pending? a)))
 (rf/reg-sub ::audio-episode-id :<- [::audio] (fn [a _] (:episode-id a)))
+(rf/reg-sub ::audio-feed-id   :<- [::audio] (fn [a _] (:feed-id a)))
 (rf/reg-sub ::audio-current-time :<- [::audio] (fn [a _] (:current-time a)))
 (rf/reg-sub ::audio-duration :<- [::audio] (fn [a _] (:duration a)))
 (rf/reg-sub ::audio-rate     :<- [::audio] (fn [a _] (:rate a)))

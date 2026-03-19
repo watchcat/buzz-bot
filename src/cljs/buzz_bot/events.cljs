@@ -248,6 +248,7 @@
                    :artwork (get-in db [:player :data :episode :feed_image_url])})))
      {:db         (-> db
                       (assoc-in [:audio :episode-id] ep-id)
+                      (assoc-in [:audio :feed-id]    (str (get-in db [:player :data :episode :feed_id])))
                       (assoc-in [:audio :src]        src)
                       (assoc-in [:audio :pending?]   false))
       ::buzz-bot.fx/audio-cmd {:op :load :src src :start start :autoplay? autoplay?}})))
@@ -337,6 +338,47 @@
                                 :on-ok  [::progress-saved] :on-err [::fetch-error]}})))
 
 (rf/reg-event-db ::progress-saved (fn [db _] db))
+
+;; ── Podcast search ───────────────────────────────────────────────────────────
+
+(rf/reg-event-fx
+ ::fetch-search
+ (fn [{:keys [db]} [_ query]]
+   (if (str/blank? query)
+     {:db (-> db
+              (assoc-in [:search :results] [])
+              (assoc-in [:search :loading?] false))}
+     {:db         (assoc-in db [:search :loading?] true)
+      ::buzz-bot.fx/http-fetch {:method :get
+                                :url    (str "/search?q=" (js/encodeURIComponent query))
+                                :on-ok  [::search-loaded] :on-err [::search-load-error]}})))
+
+(rf/reg-event-db
+ ::search-loaded
+ (fn [db [_ resp]]
+   (-> db
+       (assoc-in [:search :results]  (:results resp))
+       (assoc-in [:search :loading?] false))))
+
+(rf/reg-event-db
+ ::search-load-error
+ (fn [db _]
+   (assoc-in db [:search :loading?] false)))
+
+(rf/reg-event-fx
+ ::search-subscribe
+ (fn [_ [_ feed-url]]
+   {::buzz-bot.fx/http-fetch {:method :post
+                              :url    "/search/subscribe"
+                              :body   (js/URLSearchParams. #js{"url" feed-url})
+                              :on-ok  [::search-subscribed feed-url]
+                              :on-err [::fetch-error]}}))
+
+(rf/reg-event-fx
+ ::search-subscribed
+ (fn [{:keys [db]} [_ feed-url _resp]]
+   {:db       (update-in db [:search :subscribed-urls] conj feed-url)
+    :dispatch [::fetch-feeds]}))
 
 ;; ── Filters ──────────────────────────────────────────────────────────────────
 
