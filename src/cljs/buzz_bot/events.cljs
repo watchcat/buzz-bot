@@ -180,9 +180,10 @@
                        (assoc-in [:audio :title]     (:title episode))
                        (assoc-in [:audio :artist]    (:feed_title episode))
                        (assoc-in [:audio :artwork]   (:feed_image_url episode)))]
-     (if (and playing? (not= cur-id new-id))
-       {:db db' :dispatch [::audio-queue-pending]}
-       {:db db' :dispatch [::audio-load]}))))
+     (cond
+       (= cur-id new-id)                   {:db db'}
+       (and playing? (not= cur-id new-id)) {:db db' :dispatch [::audio-queue-pending]}
+       :else                               {:db db' :dispatch [::audio-load]}))))
 
 ;; ── Bookmarks ────────────────────────────────────────────────────────────────
 
