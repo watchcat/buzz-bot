@@ -11,7 +11,7 @@ IMAGE="ghcr.io/watchcat/buzz-bot:latest"
 TMPFILE="/tmp/buzz-bot.tar.gz"
 
 echo "==> Compiling ClojureScript"
-npx shadow-cljs release app
+node node_modules/.bin/shadow-cljs release app
 
 echo "==> Building $IMAGE"
 docker build -t buzz-bot:latest .
