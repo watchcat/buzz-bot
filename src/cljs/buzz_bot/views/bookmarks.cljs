@@ -10,9 +10,9 @@
     :on-click        #(rf/dispatch [::events/navigate :player
                                     {:episode-id (:id ep) :from "bookmarks"}])}
    [:div.episode-info
-    [:span.episode-feed  (:feed_title ep)]
-    [:span.episode-title (:title ep)]]
-   [:span.episode-play "▶"]])
+    [:span.episode-feed-name (:feed_title ep)]
+    [:span.episode-title     (:title ep)]]
+   [:span.episode-play-icon "▶"]])
 
 (defn view []
   (let [query-atom (r/atom "")
@@ -20,9 +20,10 @@
     (fn []
       (let [episodes @(rf/subscribe [::subs/bookmarks-list])
             loading? @(rf/subscribe [::subs/bookmarks-loading?])]
-        [:div.bookmarks-container
-         [:div.section-header [:h2 "Bookmarks"]]
-         [:div.search-row
+        [:div.episodes-container
+         [:div.section-header
+          [:div.section-header-row [:h2 "Bookmarks"]]]
+         [:div.search-section
           [:input.search-input
            {:type        "search"
             :placeholder "Search bookmarks..."

@@ -10,7 +10,7 @@
     :on-click        #(rf/dispatch [::events/navigate :player {:episode-id (:id ep)}])}
    [:div.episode-info
     [:span.episode-title (:title ep)]]
-   [:span.episode-play "▶"]])
+   [:span.episode-play-icon "▶"]])
 
 (defn view []
   (let [episodes  @(rf/subscribe [::subs/episodes-list])
@@ -20,16 +20,17 @@
         {:keys [feed-id]} @(rf/subscribe [:buzz-bot.subs/view-params])]
     [:div.episodes-container
      [:div.section-header
-      [:button.btn-back
-       {:on-click #(rf/dispatch [::events/navigate :feeds])}
-       "← Feeds"]
-      [:label.filter-label
-       [:input.filter-checkbox
-        {:type      "checkbox"
-         :checked   (= order :asc)
-         :on-change #(rf/dispatch [::events/set-order (if (= order :asc) :desc :asc)])}]
-       [:span.filter-switch]
-       [:span "Oldest first"]]]
+      [:div.section-header-row
+       [:button.btn-back
+        {:on-click #(rf/dispatch [::events/navigate :feeds])}
+        "← Feeds"]
+       [:label.filter-label
+        [:input.filter-checkbox
+         {:type      "checkbox"
+          :checked   (= order :asc)
+          :on-change #(rf/dispatch [::events/set-order (if (= order :asc) :desc :asc)])}]
+        [:span.filter-switch]
+        [:span.filter-text "Oldest first"]]]]
      (cond
        (and loading? (empty? episodes)) [:div.loading "Loading..."]
        (empty? episodes) [:div.empty-msg "No episodes in this feed."]
