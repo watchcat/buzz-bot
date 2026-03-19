@@ -326,3 +326,20 @@
  (fn [db [_ err]]
    (js/console.error "Fetch error:" err)
    db))
+
+;; ── Init helpers ─────────────────────────────────────────────────────────────
+
+(rf/reg-event-db
+ ::set-init-data
+ (fn [db [_ v]] (assoc db :init-data v)))
+
+(rf/reg-event-db
+ ::init-audio-meta
+ (fn [db [_ ep-id meta rate auto?]]
+   (-> db
+       (assoc-in [:audio :episode-id] ep-id)
+       (assoc-in [:audio :title]     (:title meta ""))
+       (assoc-in [:audio :artist]    (:podcast meta ""))
+       (assoc-in [:audio :artwork]   (:artwork meta ""))
+       (assoc-in [:audio :rate]      rate)
+       (assoc-in [:audio :autoplay?] auto?))))
