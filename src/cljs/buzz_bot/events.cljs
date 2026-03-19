@@ -254,7 +254,13 @@
                       (assoc-in [:audio :feed-id]    (str (get-in db [:player :data :episode :feed_id])))
                       (assoc-in [:audio :src]        src)
                       (assoc-in [:audio :pending?]   false))
-      ::buzz-bot.fx/audio-cmd {:op :load :src src :start start :autoplay? autoplay?}})))
+      ::buzz-bot.fx/audio-cmd {:op      :load
+                               :src     src
+                               :start   start
+                               :autoplay? autoplay?
+                               :title   (get-in db [:player :data :episode :title])
+                               :artist  (get-in db [:player :data :episode :feed_title])
+                               :artwork (get-in db [:player :data :episode :feed_image_url])}})))
 
 (rf/reg-event-db
  ::audio-queue-pending
