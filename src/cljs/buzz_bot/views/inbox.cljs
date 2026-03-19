@@ -50,6 +50,6 @@
        loading?         [:div.loading "Loading..."]
        (empty? visible) [:div.empty-msg "No episodes. Subscribe to some feeds!"]
        :else
-       [:ul.episode-list#episode-list
+       [:ul#episode-list.episode-list
         (for [ep visible]
           ^{:key (:id ep)} [episode-item ep])])]))

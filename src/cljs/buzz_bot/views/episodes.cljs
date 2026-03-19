@@ -35,7 +35,7 @@
        (empty? episodes) [:div.empty-msg "No episodes in this feed."]
        :else
        [:<>
-        [:ul.episode-list#episode-list
+        [:ul#episode-list.episode-list
          {:data-feed-id (str feed-id)}
          (for [ep episodes]
            ^{:key (:id ep)} [episode-item ep])]
