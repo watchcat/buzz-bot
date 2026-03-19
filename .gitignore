@@ -21,7 +21,8 @@ buzz_bot
 
 # JS build artifacts
 node_modules/
-public/js/miniplayer.js
+.shadow-cljs/
+public/js/
 
 # Git worktrees
 .worktrees/
