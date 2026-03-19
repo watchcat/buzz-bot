@@ -17,7 +17,7 @@
 
 (defn root []
   (let [view @(rf/subscribe [::subs/view])]
-    [:div#app
+    [:div.app-root
      [:div.app-container
       [:nav.tab-bar
        [tab-btn "📥 Inbox"     :inbox     view]

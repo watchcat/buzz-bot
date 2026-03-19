@@ -66,7 +66,16 @@
   (check-deep-link)
   (rdom/render [layout/root] (js/document.getElementById "app")))
 
+(defn- cleanup-legacy! []
+  (when (.-serviceWorker js/navigator)
+    (-> (.getRegistrations (.-serviceWorker js/navigator))
+        (.then (fn [regs] (doseq [r regs] (.unregister r))))))
+  (when (.-caches js/window)
+    (-> (.keys js/caches)
+        (.then (fn [ks] (js/Promise.all (.map ks (fn [k] (.delete js/caches k)))))))))
+
 (defn ^:export init! []
+  (cleanup-legacy!)
   (if-let [locks (.. js/navigator -locks)]
     (.request locks "buzz-bot-instance"
       #js{:ifAvailable true}
