@@ -63,14 +63,16 @@
     (r/create-class
       {:display-name      "ErrorBoundary"
        :component-did-catch (fn [_this e info]
-                              (reset! err {:msg   (.-message e)
-                                           :stack (.-componentStack info)}))
+                              (reset! err {:msg      (.-message e)
+                                           :js-stack (.-stack e)
+                                           :stack    (.-componentStack info)}))
        :render (fn [this]
-                 (if-let [{:keys [msg stack]} @err]
+                 (if-let [{:keys [msg js-stack stack]} @err]
                    [:div {:style {:padding "16px" :color "red"
                                   :font-size "11px" :white-space "pre-wrap"
                                   :overflow "auto"}}
-                    "RENDER ERROR:\n" msg "\n\nComponent stack:\n" stack]
+                    "RENDER ERROR:\n" msg "\n\nJS stack:\n" js-stack
+                    "\n\nComponent stack:\n" stack]
                    (first (r/children this))))})))
 
 (defn- mount! []
