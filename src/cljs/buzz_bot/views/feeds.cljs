@@ -9,7 +9,7 @@
    {:class (when (= (str (:id feed)) (str playing-feed-id)) "is-playing")}
    [:div.feed-info
     {:style    {:cursor "pointer"}
-     :on-click #(rf/dispatch [::events/navigate :episodes {:feed-id (:id feed)}])}
+     :on-click #(rf/dispatch [::events/navigate :episodes {:feed-id (:id feed) :feed-url (:url feed)}])}
     (if (:image_url feed)
       [:div.feed-image {:style {:background-image    (str "url('" (:image_url feed) "')")
                                 :background-size     "cover"

@@ -336,6 +336,11 @@
    {::buzz-bot.fx/open-telegram-link url}))
 
 (rf/reg-event-fx
+ ::copy-rss-url
+ (fn [_ [_ url]]
+   {::buzz-bot.fx/copy-to-clipboard url}))
+
+(rf/reg-event-fx
  ::send-episode
  (fn [{:keys [db]} [_ episode-id]]
    {:db (assoc-in db [:player :send-status] :loading)

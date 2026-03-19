@@ -70,6 +70,16 @@
              [:div.player-card
               [:div.player-title-row
                [:h2.player-title (:title episode)]
+               (when-let [rss-url (:url feed)]
+                 [:button.btn-rss-copy
+                  {:title    "Copy RSS URL"
+                   :on-click #(rf/dispatch [::events/copy-rss-url rss-url])}
+                  [:svg {:xmlns "http://www.w3.org/2000/svg" :width "18" :height "18"
+                         :viewBox "0 0 24 24" :fill "none" :stroke "currentColor"
+                         :stroke-width "2" :stroke-linecap "round" :stroke-linejoin "round"}
+                   [:path {:d "M4 11a9 9 0 0 1 9 9"}]
+                   [:path {:d "M4 4a16 16 0 0 1 16 16"}]
+                   [:circle {:cx "5" :cy "19" :r "1.5" :fill "currentColor" :stroke "none"}]]])
                [:button.btn-share-icon
                 {:title    "Share episode"
                  :on-click #(swap! share-open? not)}

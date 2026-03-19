@@ -21,13 +21,23 @@
         has-more? @(rf/subscribe [::subs/episodes-has-more?])
         order     @(rf/subscribe [::subs/episodes-order])
         playing-id @(rf/subscribe [::subs/audio-episode-id])
-        {:keys [feed-id]} @(rf/subscribe [:buzz-bot.subs/view-params])]
+        {:keys [feed-id feed-url]} @(rf/subscribe [:buzz-bot.subs/view-params])]
     [:div.episodes-container
      [:div.section-header
       [:div.section-header-row
        [:button.btn-back
         {:on-click #(rf/dispatch [::events/navigate :feeds])}
         "← Feeds"]
+       (when feed-url
+         [:button.btn-rss-copy
+          {:title    "Copy RSS URL"
+           :on-click #(rf/dispatch [::events/copy-rss-url feed-url])}
+          [:svg {:xmlns "http://www.w3.org/2000/svg" :width "18" :height "18"
+                 :viewBox "0 0 24 24" :fill "none" :stroke "currentColor"
+                 :stroke-width "2" :stroke-linecap "round" :stroke-linejoin "round"}
+           [:path {:d "M4 11a9 9 0 0 1 9 9"}]
+           [:path {:d "M4 4a16 16 0 0 1 16 16"}]
+           [:circle {:cx "5" :cy "19" :r "1.5" :fill "currentColor" :stroke "none"}]]])
        [:label.filter-label
         [:input.filter-checkbox
          {:type      "checkbox"

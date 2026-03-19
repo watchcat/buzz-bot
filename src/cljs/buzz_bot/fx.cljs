@@ -56,6 +56,40 @@
  ::audio-cmd
  (fn [cmd] (audio/execute-cmd! cmd)))
 
+;; ── ::copy-to-clipboard ──────────────────────────────────────────────────────
+;; Copies text to clipboard and shows the `.copy-toast` element briefly.
+
+(defn- show-copy-toast! []
+  (let [toast (or (.getElementById js/document "copy-toast")
+                  (let [el (.createElement js/document "div")]
+                    (set! (.-id el) "copy-toast")
+                    (set! (.-className el) "copy-toast")
+                    (.appendChild (.-body js/document) el)
+                    el))]
+    (set! (.-textContent toast) "RSS URL copied")
+    (.add (.-classList toast) "copy-toast--visible")
+    (js/clearTimeout (.-_hideTimer toast))
+    (set! (.-_hideTimer toast)
+          (js/setTimeout #(.remove (.-classList toast) "copy-toast--visible") 1500))))
+
+(rf/reg-fx
+ ::copy-to-clipboard
+ (fn [text]
+   (when text
+     (if (.. js/navigator -clipboard -writeText)
+       (-> (.writeText (.-clipboard js/navigator) text)
+           (.then show-copy-toast!)
+           (.catch show-copy-toast!))
+       (do
+         (let [ta (.createElement js/document "textarea")]
+           (set! (.-value ta) text)
+           (set! (.-cssText (.-style ta)) "position:fixed;opacity:0;top:0;left:0")
+           (.appendChild (.-body js/document) ta)
+           (.select ta)
+           (.execCommand js/document "copy")
+           (.removeChild (.-body js/document) ta))
+         (show-copy-toast!))))))
+
 ;; ── ::open-telegram-link ─────────────────────────────────────────────────────
 ;; Opens a URL via Telegram.WebApp.openTelegramLink (falls back to window.open).
 
