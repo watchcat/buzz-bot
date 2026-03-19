@@ -28,24 +28,25 @@
         filters   @(rf/subscribe [::subs/inbox-filters])
         {:keys [hide-listened? compact?]} filters
         visible   (filter #(episode-visible? % filters) episodes)]
-    [:div.inbox-container
-     [:div.inbox-header
-      [:h2 "Inbox"]
-      [:div.inbox-filters
-       [:label.filter-label
-        [:input.filter-checkbox
-         {:type      "checkbox"
-          :checked   hide-listened?
-          :on-change #(rf/dispatch [::events/toggle-hide-listened])}]
-        [:span.filter-switch]
-        [:span "Hide listened"]]
-       [:label.filter-label
-        [:input.filter-checkbox
-         {:type      "checkbox"
-          :checked   compact?
-          :on-change #(rf/dispatch [::events/toggle-compact])}]
-        [:span.filter-switch]
-        [:span "Compact"]]]]
+    [:div.episodes-container
+     [:div.section-header
+      [:div.section-header-row
+       [:h2 "Inbox"]
+       [:div.section-controls
+        [:label.filter-label
+         [:input.filter-checkbox
+          {:type      "checkbox"
+           :checked   hide-listened?
+           :on-change #(rf/dispatch [::events/toggle-hide-listened])}]
+         [:span.filter-switch]
+         [:span.filter-text "Hide\u00a0✓"]]
+        [:label.filter-label
+         [:input.filter-checkbox
+          {:type      "checkbox"
+           :checked   compact?
+           :on-change #(rf/dispatch [::events/toggle-compact])}]
+         [:span.filter-switch]
+         [:span.filter-text "Compact"]]]]]
      (cond
        loading?         [:div.loading "Loading..."]
        (empty? visible) [:div.empty-msg "No episodes. Subscribe to some feeds!"]
