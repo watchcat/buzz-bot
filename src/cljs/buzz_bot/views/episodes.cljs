@@ -3,11 +3,14 @@
             [buzz-bot.subs :as subs]
             [buzz-bot.events :as events]))
 
-(defn- episode-item [ep]
+(defn- episode-item [ep playing-id]
   [:li.episode-item
-   {:class           (when (:listened ep) "listened")
+   {:class           (cond-> ""
+                       (:listened ep)                       (str " listened")
+                       (= (str (:id ep)) (str playing-id)) (str " is-playing"))
     :data-episode-id (str (:id ep))
-    :on-click        #(rf/dispatch [::events/navigate :player {:episode-id (:id ep)}])}
+    :on-click        #(rf/dispatch [::events/navigate :player
+                                    {:episode-id (:id ep) :from "episodes"}])}
    [:div.episode-info
     [:span.episode-title (:title ep)]]
    [:span.episode-play-icon "▶"]])
@@ -17,6 +20,7 @@
         loading?  @(rf/subscribe [::subs/episodes-loading?])
         has-more? @(rf/subscribe [::subs/episodes-has-more?])
         order     @(rf/subscribe [::subs/episodes-order])
+        playing-id @(rf/subscribe [::subs/audio-episode-id])
         {:keys [feed-id]} @(rf/subscribe [:buzz-bot.subs/view-params])]
     [:div.episodes-container
      [:div.section-header
@@ -33,13 +37,13 @@
         [:span.filter-text "Oldest first"]]]]
      (cond
        (and loading? (empty? episodes)) [:div.loading "Loading..."]
-       (empty? episodes) [:div.empty-msg "No episodes in this feed."]
+       (empty? episodes)                [:div.empty-msg "No episodes in this feed."]
        :else
        [:<>
         [:ul#episode-list.episode-list
          {:data-feed-id (str feed-id)}
          (for [ep episodes]
-           ^{:key (:id ep)} [episode-item ep])]
+           ^{:key (:id ep)} [episode-item ep playing-id])]
         (when has-more?
           [:button.btn-load-more
            {:on-click #(rf/dispatch [::events/load-more-episodes])

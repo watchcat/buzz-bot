@@ -45,7 +45,7 @@
           [:div.section-header-row
            [:button.btn-back
             {:on-click #(rf/dispatch [::events/navigate
-                                      (keyword (get params :from "feeds"))
+                                      (keyword (get params :from "inbox"))
                                       (when (= "episodes" (get params :from))
                                         {:feed-id (:feed_id episode)})])}
             "← Back"]]]

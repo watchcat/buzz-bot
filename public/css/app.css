@@ -589,6 +589,13 @@ main {
   font-size: 16px;
 }
 
+/* Currently playing episode */
+.episode-item.is-playing {
+  background: color-mix(in srgb, var(--button-color) 14%, transparent);
+  border-left: 3px solid var(--button-color);
+  padding-left: calc(var(--episode-padding-left, 12px) - 3px);
+}
+
 /* Filter toggle — toggle switch label */
 .filter-label {
   display: flex;

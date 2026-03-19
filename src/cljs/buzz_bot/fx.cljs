@@ -36,9 +36,15 @@
      (-> (js/fetch url init)
          (.then (fn [resp]
                   (if (.-ok resp)
-                    (-> (.json resp)
-                        (.then (fn [data]
-                                 (rf/dispatch (conj on-ok (js->clj data :keywordize-keys true))))))
+                    (let [len (.get (.-headers resp) "content-length")
+                          ct  (.get (.-headers resp) "content-type")]
+                      (if (or (= (.-status resp) 204)
+                              (= len "0")
+                              (not (and ct (.includes ct "json"))))
+                        (rf/dispatch (conj on-ok nil))
+                        (-> (.json resp)
+                            (.then (fn [data]
+                                     (rf/dispatch (conj on-ok (js->clj data :keywordize-keys true))))))))
                     (rf/dispatch (conj on-err (str "HTTP " (.-status resp)))))))
          (.catch (fn [err]
                    (rf/dispatch (conj on-err (str err)))))))))
@@ -49,3 +55,16 @@
 (rf/reg-fx
  ::audio-cmd
  (fn [cmd] (audio/execute-cmd! cmd)))
+
+;; ── ::scroll-to-episode ──────────────────────────────────────────────────────
+;; Scrolls the episode card with the given id into view (center, smooth).
+
+(rf/reg-fx
+ ::scroll-to-episode
+ (fn [episode-id]
+   (when episode-id
+     (js/requestAnimationFrame
+       (fn []
+         (when-let [el (.querySelector js/document
+                         (str "[data-episode-id='" episode-id "']"))]
+           (.scrollIntoView el #js{:block "center" :behavior "smooth"})))))))

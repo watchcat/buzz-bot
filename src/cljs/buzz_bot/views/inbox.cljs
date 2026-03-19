@@ -9,33 +9,36 @@
     (and (not (and hide-listened? (:listened ep)))
          (not (contains? excluded-feeds (str (:feed_id ep)))))))
 
-(defn- episode-item [ep]
+(defn- episode-item [ep playing-id]
   [:li.episode-item
-   {:class           (when (:listened ep) "listened")
+   {:class           (cond-> ""
+                       (:listened ep)                         (str " listened")
+                       (= (str (:id ep)) (str playing-id))   (str " is-playing"))
     :data-episode-id (str (:id ep))
     :data-feed-id    (str (:feed_id ep))
-    :on-click        #(rf/dispatch [::events/navigate :player {:episode-id (:id ep)}])}
+    :on-click        #(rf/dispatch [::events/navigate :player
+                                    {:episode-id (:id ep) :from "inbox"}])}
    [:div.episode-info
     [:span.episode-feed-name (:feed_title ep)]
     [:strong.episode-title   (:title ep)]]
    [:span.episode-play-icon "▶"]])
 
-(defn- compact-group [eps expanded-feeds-atom]
+(defn- compact-group [eps playing-id expanded-feeds-atom]
   (let [feed-id  (:feed_id (first eps))
         expanded @expanded-feeds-atom]
     (if (or (= 1 (count eps)) (contains? expanded feed-id))
-      ;; show all episodes in group
       (for [ep eps]
-        ^{:key (:id ep)} [episode-item ep])
-      ;; show only first + expand button
+        ^{:key (:id ep)} [episode-item ep playing-id])
       (list
         ^{:key (:id (first eps))}
         [:li.episode-item.compact-first
-         {:class           (when (:listened (first eps)) "listened")
+         {:class           (cond-> ""
+                             (:listened (first eps))                        (str " listened")
+                             (= (str (:id (first eps))) (str playing-id))   (str " is-playing"))
           :data-episode-id (str (:id (first eps)))
           :data-feed-id    (str feed-id)
           :on-click        #(rf/dispatch [::events/navigate :player
-                                          {:episode-id (:id (first eps))}])}
+                                          {:episode-id (:id (first eps)) :from "inbox"}])}
          [:div.episode-info
           [:span.episode-feed-name (:feed_title (first eps))]
           [:strong.episode-title   (:title (first eps))]]
@@ -49,11 +52,12 @@
 (defn view []
   (let [expanded-feeds (r/atom #{})]
     (fn []
-      (let [episodes  @(rf/subscribe [::subs/inbox-episodes])
-            loading?  @(rf/subscribe [::subs/inbox-loading?])
-            filters   @(rf/subscribe [::subs/inbox-filters])
+      (let [episodes   @(rf/subscribe [::subs/inbox-episodes])
+            loading?   @(rf/subscribe [::subs/inbox-loading?])
+            filters    @(rf/subscribe [::subs/inbox-filters])
+            playing-id @(rf/subscribe [::subs/audio-episode-id])
             {:keys [hide-listened? compact?]} filters
-            visible   (filter #(episode-visible? % filters) episodes)]
+            visible    (filter #(episode-visible? % filters) episodes)]
         [:div.episodes-container
          [:div.section-header
           [:div.section-header-row
@@ -83,10 +87,8 @@
            :else
            [:ul#episode-list.episode-list
             (if compact?
-              ;; group by feed, show first + collapse rest
               (let [groups (partition-by :feed_id visible)]
                 (for [grp groups]
-                  (compact-group grp expanded-feeds)))
-              ;; normal list
+                  (compact-group grp playing-id expanded-feeds)))
               (for [ep visible]
-                ^{:key (:id ep)} [episode-item ep]))])]))))
+                ^{:key (:id ep)} [episode-item ep playing-id]))])]))))

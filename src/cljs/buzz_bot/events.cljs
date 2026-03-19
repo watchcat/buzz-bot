@@ -11,14 +11,28 @@
 (rf/reg-event-fx
  ::navigate
  (fn [{:keys [db]} [_ view params]]
-   (let [fetch-event (case view
+   (let [cur-view (:view db)
+         ;; Snapshot list length when entering the player (not for player→player autoplay)
+         saved-list
+         (if (and (= view :player) (not= cur-view :player))
+           {:view  cur-view
+            :count (case cur-view
+                     :inbox     (count (get-in db [:inbox :episodes]))
+                     :episodes  (count (get-in db [:episodes :list]))
+                     :bookmarks (count (get-in db [:bookmarks :list]))
+                     0)}
+           (:saved-list db))
+         fetch-event (case view
                        :inbox     [::fetch-inbox]
                        :feeds     [::fetch-feeds]
                        :player    [::fetch-player (:episode-id params)]
                        :bookmarks [::fetch-bookmarks]
                        :episodes  [::fetch-episodes (:feed-id params)]
                        nil)]
-     (cond-> {:db (assoc db :view view :view-params (or params {}))}
+     (cond-> {:db (-> db
+                      (assoc :view view)
+                      (assoc :view-params (or params {}))
+                      (assoc :saved-list saved-list))}
        fetch-event (assoc :dispatch fetch-event)))))
 
 ;; ── Inbox ────────────────────────────────────────────────────────────────────
@@ -26,16 +40,25 @@
 (rf/reg-event-fx
  ::fetch-inbox
  (fn [{:keys [db]} _]
-   {:db         (assoc-in db [:inbox :loading?] true)
-    ::buzz-bot.fx/http-fetch {:method :get :url "/inbox"
-                              :on-ok  [::inbox-loaded] :on-err [::fetch-error]}}))
+   (let [saved (:saved-list db)
+         limit (when (and (= (:view saved) :inbox) (pos? (:count saved)))
+                 (:count saved))
+         url   (if limit (str "/inbox?limit=" limit) "/inbox")]
+     {:db         (assoc-in db [:inbox :loading?] true)
+      ::buzz-bot.fx/http-fetch {:method :get :url url
+                                :on-ok  [::inbox-loaded] :on-err [::fetch-error]}})))
 
-(rf/reg-event-db
+(rf/reg-event-fx
  ::inbox-loaded
- (fn [db [_ resp]]
-   (-> db
-       (assoc-in [:inbox :episodes] (:episodes resp))
-       (assoc-in [:inbox :loading?] false))))
+ (fn [{:keys [db]} [_ resp]]
+   (let [db'        (-> db
+                        (assoc-in [:inbox :episodes] (:episodes resp))
+                        (assoc-in [:inbox :loading?] false))
+         playing-id (get-in db [:audio :episode-id])]
+     (cond-> {:db db'}
+       (and playing-id
+            (some #(= (str (:id %)) (str playing-id)) (:episodes resp)))
+       (assoc ::buzz-bot.fx/scroll-to-episode playing-id)))))
 
 ;; ── Feeds ────────────────────────────────────────────────────────────────────
 
@@ -79,24 +102,32 @@
 (rf/reg-event-fx
  ::fetch-episodes
  (fn [{:keys [db]} [_ feed-id]]
-   (let [order (get-in db [:episodes :order] :desc)]
+   (let [order (get-in db [:episodes :order] :desc)
+         saved (:saved-list db)
+         limit (when (and (= (:view saved) :episodes) (pos? (:count saved)))
+                 (:count saved))
+         url   (cond-> (str "/episodes?feed_id=" feed-id "&order=" (name order))
+                 limit (str "&limit=" limit))]
      {:db         (-> db
                       (assoc-in [:episodes :feed-id]  feed-id)
                       (assoc-in [:episodes :list]     [])
                       (assoc-in [:episodes :offset]   0)
                       (assoc-in [:episodes :loading?] true))
-      ::buzz-bot.fx/http-fetch {:method :get
-                                :url    (str "/episodes?feed_id=" feed-id
-                                             "&order=" (name order))
+      ::buzz-bot.fx/http-fetch {:method :get :url url
                                 :on-ok  [::episodes-loaded] :on-err [::fetch-error]}})))
 
-(rf/reg-event-db
+(rf/reg-event-fx
  ::episodes-loaded
- (fn [db [_ resp]]
-   (-> db
-       (assoc-in [:episodes :list]      (:episodes resp))
-       (assoc-in [:episodes :has-more?] (:has_more resp))
-       (assoc-in [:episodes :loading?]  false))))
+ (fn [{:keys [db]} [_ resp]]
+   (let [db'        (-> db
+                        (assoc-in [:episodes :list]      (:episodes resp))
+                        (assoc-in [:episodes :has-more?] (:has_more resp))
+                        (assoc-in [:episodes :loading?]  false))
+         playing-id (get-in db [:audio :episode-id])]
+     (cond-> {:db db'}
+       (and playing-id
+            (some #(= (str (:id %)) (str playing-id)) (:episodes resp)))
+       (assoc ::buzz-bot.fx/scroll-to-episode playing-id)))))
 
 (rf/reg-event-fx
  ::load-more-episodes
@@ -158,16 +189,25 @@
 (rf/reg-event-fx
  ::fetch-bookmarks
  (fn [{:keys [db]} _]
-   {:db         (assoc-in db [:bookmarks :loading?] true)
-    ::buzz-bot.fx/http-fetch {:method :get :url "/bookmarks"
-                              :on-ok  [::bookmarks-loaded] :on-err [::fetch-error]}}))
+   (let [saved (:saved-list db)
+         limit (when (and (= (:view saved) :bookmarks) (pos? (:count saved)))
+                 (:count saved))
+         url   (if limit (str "/bookmarks?limit=" limit) "/bookmarks")]
+     {:db         (assoc-in db [:bookmarks :loading?] true)
+      ::buzz-bot.fx/http-fetch {:method :get :url url
+                                :on-ok  [::bookmarks-loaded] :on-err [::fetch-error]}})))
 
-(rf/reg-event-db
+(rf/reg-event-fx
  ::bookmarks-loaded
- (fn [db [_ resp]]
-   (-> db
-       (assoc-in [:bookmarks :list]     (:episodes resp))
-       (assoc-in [:bookmarks :loading?] false))))
+ (fn [{:keys [db]} [_ resp]]
+   (let [db'        (-> db
+                        (assoc-in [:bookmarks :list]     (:episodes resp))
+                        (assoc-in [:bookmarks :loading?] false))
+         playing-id (get-in db [:audio :episode-id])]
+     (cond-> {:db db'}
+       (and playing-id
+            (some #(= (str (:id %)) (str playing-id)) (:episodes resp)))
+       (assoc ::buzz-bot.fx/scroll-to-episode playing-id)))))
 
 (rf/reg-event-fx
  ::search-bookmarks

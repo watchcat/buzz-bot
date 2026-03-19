@@ -4,9 +4,10 @@
             [buzz-bot.subs :as subs]
             [buzz-bot.events :as events]))
 
-(defn- episode-item [ep]
+(defn- episode-item [ep playing-id]
   [:li.episode-item
-   {:data-episode-id (str (:id ep))
+   {:class           (when (= (str (:id ep)) (str playing-id)) "is-playing")
+    :data-episode-id (str (:id ep))
     :on-click        #(rf/dispatch [::events/navigate :player
                                     {:episode-id (:id ep) :from "bookmarks"}])}
    [:div.episode-info
@@ -18,8 +19,9 @@
   (let [query-atom (r/atom "")
         debounce   (atom nil)]
     (fn []
-      (let [episodes @(rf/subscribe [::subs/bookmarks-list])
-            loading? @(rf/subscribe [::subs/bookmarks-loading?])]
+      (let [episodes   @(rf/subscribe [::subs/bookmarks-list])
+            loading?   @(rf/subscribe [::subs/bookmarks-loading?])
+            playing-id @(rf/subscribe [::subs/audio-episode-id])]
         [:div.episodes-container
          [:div.section-header
           [:div.section-header-row [:h2 "Bookmarks"]]]
@@ -41,4 +43,4 @@
            :else
            [:ul.episode-list
             (for [ep episodes]
-              ^{:key (:id ep)} [episode-item ep])])]))))
+              ^{:key (:id ep)} [episode-item ep playing-id])])]))))

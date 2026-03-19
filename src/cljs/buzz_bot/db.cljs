@@ -13,4 +13,5 @@
    :bookmarks   {:list [] :loading? false :query ""}
    :audio       {:episode-id nil :title "" :artist "" :artwork ""
                  :src "" :playing? false :current-time 0 :duration 0
-                 :rate 1 :autoplay? false :pending? false}})
+                 :rate 1 :autoplay? false :pending? false}
+   :saved-list  {:view nil :count 0}})

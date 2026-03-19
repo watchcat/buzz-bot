@@ -6,7 +6,8 @@ module Web::Routes::Discover
       user = Auth.current_user(env)
       halt env, status_code: 401, response: "Unauthorized" unless user
 
-      episodes = Episode.liked_for_user(user.id, 50, 0)
+      limit    = (env.params.query["limit"]?.try(&.to_i32) || 50).clamp(1, 500)
+      episodes = Episode.liked_for_user(user.id, limit, 0)
       items    = Web.build_episode_list(episodes, user.id)
 
       env.response.content_type = "application/json"
