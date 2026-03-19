@@ -9,7 +9,7 @@
                  :filters  {:hide-listened? false :compact? false :excluded-feeds #{}}}
    :feeds       {:list [] :loading? false}
    :episodes    {:feed-id nil :list [] :loading? false :order :desc :offset 0 :has-more? false}
-   :player      {:data nil :loading? false}
+   :player      {:data nil :loading? false :send-status nil}
    :bookmarks   {:list [] :loading? false :query ""}
    :search      {:query "" :results [] :loading? false :subscribed-urls #{}}
    :audio       {:episode-id nil :title "" :artist "" :artwork ""

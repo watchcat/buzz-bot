@@ -175,11 +175,12 @@
          playing?  (get-in db [:audio :playing?])
          episode   (get-in resp [:episode])
          db'       (-> db
-                       (assoc-in [:player :data]     resp)
-                       (assoc-in [:player :loading?] false)
-                       (assoc-in [:audio :title]     (:title episode))
-                       (assoc-in [:audio :artist]    (:feed_title episode))
-                       (assoc-in [:audio :artwork]   (:feed_image_url episode)))]
+                       (assoc-in [:player :data]        resp)
+                       (assoc-in [:player :loading?]    false)
+                       (assoc-in [:player :send-status] nil)
+                       (assoc-in [:audio :title]        (:title episode))
+                       (assoc-in [:audio :artist]       (:feed_title episode))
+                       (assoc-in [:audio :artwork]      (:feed_image_url episode)))]
      (let [autoplay? (get-in db [:view-params :autoplay?])]
        (cond
          (= cur-id new-id)                   {:db db'}
@@ -328,6 +329,28 @@
 (rf/reg-event-db
  ::subscribe-from-player-ok
  (fn [db _] (assoc-in db [:player :data :is_subscribed] true)))
+
+(rf/reg-event-fx
+ ::open-telegram-link
+ (fn [_ [_ url]]
+   {::buzz-bot.fx/open-telegram-link url}))
+
+(rf/reg-event-fx
+ ::send-episode
+ (fn [{:keys [db]} [_ episode-id]]
+   {:db (assoc-in db [:player :send-status] :loading)
+    ::buzz-bot.fx/http-fetch {:method :post :url (str "/episodes/" episode-id "/send")
+                              :on-ok  [::send-episode-done] :on-err [::send-episode-error]}}))
+
+(rf/reg-event-db
+ ::send-episode-done
+ (fn [db _] (assoc-in db [:player :send-status] :sent)))
+
+(rf/reg-event-db
+ ::send-episode-error
+ (fn [db [_ err]]
+   (assoc-in db [:player :send-status]
+             (if (= err "HTTP 402") :upsell :error))))
 
 (rf/reg-event-fx
  ::save-progress

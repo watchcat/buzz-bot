@@ -99,15 +99,16 @@ module Web::Routes::Episodes
       feed = Feed.find(episode.feed_id)
 
       unless user.subscribed?
-        env.response.content_type = "text/html"
-        next %(<div class="send-result upsell">⭐ <strong>Premium feature.</strong> Send episodes to your Telegram chat with a Buzz-Bot subscription. <a class="upsell-link" href="#" onclick="openSubscribeBot(); return false;">Subscribe from 100⭐/month →</a></div>)
+        env.response.content_type = "application/json"
+        env.response.status_code = 402
+        next %({"error":"premium_required"})
       end
 
       # Fire-and-forget — handler returns immediately; result arrives via bot message
       spawn { AudioSender.send_to_user(user.telegram_id, episode, feed) }
 
-      env.response.content_type = "text/html"
-      %(<div class="send-result info">📤 Sending to your chat&hellip; it will arrive in a moment.</div>)
+      env.response.content_type = "application/json"
+      %({"sent":true})
     end
 
     # Stream episode audio via server-side proxy (follows redirects, auth-gated)

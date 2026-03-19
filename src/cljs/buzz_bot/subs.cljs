@@ -38,8 +38,9 @@
   (fn [ep _] (:order ep)))
 
 ;; Player
-(rf/reg-sub ::player-data     (fn [db _] (get-in db [:player :data])))
-(rf/reg-sub ::player-loading? (fn [db _] (get-in db [:player :loading?])))
+(rf/reg-sub ::player-data        (fn [db _] (get-in db [:player :data])))
+(rf/reg-sub ::player-loading?    (fn [db _] (get-in db [:player :loading?])))
+(rf/reg-sub ::player-send-status (fn [db _] (get-in db [:player :send-status])))
 
 ;; Bookmarks
 (rf/reg-sub ::bookmarks-list     (fn [db _] (get-in db [:bookmarks :list])))

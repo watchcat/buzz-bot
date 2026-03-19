@@ -56,6 +56,18 @@
  ::audio-cmd
  (fn [cmd] (audio/execute-cmd! cmd)))
 
+;; ── ::open-telegram-link ─────────────────────────────────────────────────────
+;; Opens a URL via Telegram.WebApp.openTelegramLink (falls back to window.open).
+
+(rf/reg-fx
+ ::open-telegram-link
+ (fn [url]
+   (when url
+     (let [tg (.. js/window -Telegram -WebApp)]
+       (if (.-openTelegramLink tg)
+         (.openTelegramLink tg url)
+         (.open js/window url "_blank"))))))
+
 ;; ── ::scroll-to-episode ──────────────────────────────────────────────────────
 ;; Scrolls the episode card with the given id into view (center, smooth).
 
