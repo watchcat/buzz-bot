@@ -37,7 +37,7 @@
       loading?    [:div.loading "Loading episode..."]
       (nil? data) [:div.error-msg "Episode not found."]
       :else
-      (let [{:keys [episode feed user_episode next_id recs is_subscribed]} data
+      (let [{:keys [episode feed user_episode next_id next_title recs is_subscribed]} data
             liked?    (= true (:liked user_episode))
             autoplay? (:autoplay? @(rf/subscribe [::subs/audio]))]
         [:div#player-root.player-container
@@ -89,7 +89,7 @@
               :on-change #(rf/dispatch [::events/toggle-autoplay])}]
             [:span.autoplay-switch]
             [:span.autoplay-text
-             (if next_id "Play next episode after this one" "Last episode in feed")]]]
+             (if next_id (str "Play next: " next_title) "Last episode in feed")]]]
 
           (when-not is_subscribed
             [:div.subscribe-row

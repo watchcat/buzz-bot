@@ -40,6 +40,7 @@ module Web::Routes::Episodes
       user_episode  = UserEpisode.find(user.id, episode_id)
       order         = env.params.query["order"]? == "asc" ? "asc" : "desc"
       next_id       = Episode.next_in_feed(episode.feed_id, episode_id, order)
+      next_title    = next_id ? Episode.find(next_id).try(&.title) : nil
       is_subscribed = Feed.subscribed?(user.id, episode.feed_id)
       is_premium    = user.subscribed?
       recs_raw      = Episode.recommended_for_episode(episode_id)
@@ -62,6 +63,7 @@ module Web::Routes::Episodes
         feed:         feed,
         user_episode: user_episode,
         next_id:      next_id,
+        next_title:   next_title,
         recs:         recs,
         is_subscribed: is_subscribed,
         is_premium:    is_premium,
