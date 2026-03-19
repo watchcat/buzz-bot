@@ -8,8 +8,8 @@ bin/
 *.dwarf
 
 # Compiled binary
-buzz-bot
-buzz_bot
+/buzz-bot
+/buzz_bot
 
 # Claude project config
 .claude/
