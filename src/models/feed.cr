@@ -1,12 +1,20 @@
 struct Feed
+  include JSON::Serializable
+
   property id : Int64
   property url : String
   property title : String?
-  property description : String?
   property image_url : String?
+
+  @[JSON::Field(ignore: true)]
+  property description : String?
+  @[JSON::Field(ignore: true)]
   property last_fetched_at : Time?
+  @[JSON::Field(ignore: true)]
   property etag : String?
+  @[JSON::Field(ignore: true)]
   property last_modified : String?
+  @[JSON::Field(ignore: true)]
   property ttl_minutes : Int32?
 
   def initialize(@id, @url, @title, @description, @image_url, @last_fetched_at,

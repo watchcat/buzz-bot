@@ -1,10 +1,16 @@
 struct UserEpisode
-  property id : Int64
-  property user_id : Int64
+  include JSON::Serializable
+
   property episode_id : Int64
   property progress_seconds : Int32
   property completed : Bool
   property liked : Bool?
+
+  @[JSON::Field(ignore: true)]
+  property id : Int64
+  @[JSON::Field(ignore: true)]
+  property user_id : Int64
+  @[JSON::Field(ignore: true)]
   property updated_at : Time
 
   def initialize(@id, @user_id, @episode_id, @progress_seconds, @completed, @liked, @updated_at)
@@ -47,6 +53,21 @@ struct UserEpisode
       SQL
       user_id, episode_id, liked
     )
+  end
+
+  def self.find_batch(user_id : Int64, episode_ids : Array(Int64)) : Hash(Int64, UserEpisode)
+    return({} of Int64 => UserEpisode) if episode_ids.empty?
+    result = {} of Int64 => UserEpisode
+    placeholders = episode_ids.each_with_index.map { |_, i| "$#{i + 2}" }.join(", ")
+    AppDB.pool.query_each(
+      <<-SQL,
+        SELECT id, user_id, episode_id, progress_seconds, completed, liked, updated_at
+        FROM user_episodes
+        WHERE user_id = $1 AND episode_id IN (#{placeholders})
+      SQL
+      user_id, *episode_ids
+    ) { |rs| ue = from_rs(rs); result[ue.episode_id] = ue }
+    result
   end
 
   def self.find(user_id : Int64, episode_id : Int64) : UserEpisode?
