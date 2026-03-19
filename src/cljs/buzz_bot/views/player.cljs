@@ -15,7 +15,7 @@
 
 (defn- seek-bar [current duration pending?]
   (let [pct (if (pos? duration) (* 100 (/ current duration)) 0)]
-    [:input.player-seek-bar#player-seek
+    [:input#player-seek.player-seek-bar
      {:type      "range" :min 0 :max 100 :step 0.1
       :value     pct
       :disabled  pending?
@@ -40,7 +40,7 @@
       (let [{:keys [episode feed user_episode next_id recs is_subscribed]} data
             liked?    (= true (:liked user_episode))
             autoplay? (:autoplay? @(rf/subscribe [::subs/audio]))]
-        [:div.player-container#player-root
+        [:div#player-root.player-container
          [:div.section-header
           [:div.section-header-row
            [:button.btn-back
@@ -55,26 +55,26 @@
 
           [:div.player-controls
            [:div.player-progress-row
-            [:span.player-time#player-current-time (fmt-time cur-time)]
+            [:span#player-current-time.player-time (fmt-time cur-time)]
             [seek-bar cur-time duration pending?]
-            [:span.player-time#player-duration (fmt-time duration)]]
+            [:span#player-duration.player-time (fmt-time duration)]]
            [:div.player-buttons-row
             [:button.btn-seek {:on-click #(rf/dispatch [::events/audio-seek-relative -15])}
              [:span.btn-seek-icon "↺"] [:span.btn-seek-label "15s"]]
-            [:button.btn-play-pause-large#player-play-pause
+            [:button#player-play-pause.btn-play-pause-large
              {:on-click #(rf/dispatch [::events/toggle-play-pause])}
              (cond pending? "▶" playing? "⏸" :else "▶")]
             [:button.btn-seek {:on-click #(rf/dispatch [::events/audio-seek-relative 30])}
              [:span.btn-seek-icon "↻"] [:span.btn-seek-label "30s"]]]
            [:div.player-speed-row
-            [:button.btn-speed#player-speed-btn
+            [:button#player-speed-btn.btn-speed
              {:class    (when (not= rate 1) "btn-speed--active")
               :on-click #(rf/dispatch [::events/cycle-speed])}
              (if (= rate 1) "1×" (str rate "×"))]]]
 
           [:div.autoplay-row
            [:label.autoplay-label {:class (when-not next_id "autoplay-label--disabled")}
-            [:input.autoplay-checkbox#autoplay-checkbox
+            [:input#autoplay-checkbox.autoplay-checkbox
              {:type      "checkbox"
               :disabled  (not next_id)
               :checked   autoplay?
