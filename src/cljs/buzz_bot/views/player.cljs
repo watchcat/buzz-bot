@@ -66,7 +66,13 @@
                                           (keyword (get params :from "inbox"))
                                           (when (= "episodes" (get params :from))
                                             {:feed-id (:feed_id episode)})])}
-                "← Back"]]]
+                "← Back"]
+               (when (contains? #{"inbox" "bookmarks"} (get params :from))
+                 [:button.btn-feed-link
+                  {:on-click #(rf/dispatch [::events/navigate :episodes
+                                            {:feed-id (:feed_id episode)
+                                             :feed-url (:url feed)}])}
+                  (str (or (:title feed) "Feed") " →")])]]
              [:div.player-card
               [:div.player-title-row
                [:h2.player-title (:title episode)]
