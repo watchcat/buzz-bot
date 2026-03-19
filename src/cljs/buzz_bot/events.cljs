@@ -180,10 +180,11 @@
                        (assoc-in [:audio :title]     (:title episode))
                        (assoc-in [:audio :artist]    (:feed_title episode))
                        (assoc-in [:audio :artwork]   (:feed_image_url episode)))]
-     (cond
-       (= cur-id new-id)                   {:db db'}
-       (and playing? (not= cur-id new-id)) {:db db' :dispatch [::audio-queue-pending]}
-       :else                               {:db db' :dispatch [::audio-load]}))))
+     (let [autoplay? (get-in db [:view-params :autoplay?])]
+       (cond
+         (= cur-id new-id)                   {:db db'}
+         (and playing? (not= cur-id new-id)) {:db db' :dispatch [::audio-queue-pending]}
+         :else {:db db' :dispatch [::audio-load {:autoplay? (boolean autoplay?)}]})))))
 
 ;; ── Bookmarks ────────────────────────────────────────────────────────────────
 
@@ -230,7 +231,7 @@
    (let [autoplay? (get-in db [:audio :autoplay?])
          next-id   (get-in db [:player :data :next_id])]
      (when (and autoplay? next-id)
-       {:dispatch [::navigate :player {:episode-id next-id}]}))))
+       {:dispatch [::navigate :player {:episode-id next-id :autoplay? true}]}))))
 
 ;; ── Audio commands ───────────────────────────────────────────────────────────
 
