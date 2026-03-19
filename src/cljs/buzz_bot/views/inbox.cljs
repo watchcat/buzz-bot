@@ -64,7 +64,9 @@
            [:h2 "Inbox"]
            [:div.section-controls
             [:label.filter-label
-             {:on-click #(rf/dispatch [::events/toggle-hide-listened])}
+             {:on-click (fn [e]
+                          (.preventDefault e)
+                          (rf/dispatch [::events/toggle-hide-listened]))}
              [:input.filter-checkbox
               {:type      "checkbox"
                :checked   hide-listened?
@@ -72,7 +74,8 @@
              [:span.filter-switch]
              [:span.filter-text "Hide\u00a0✓"]]
             [:label.filter-label
-             {:on-click (fn []
+             {:on-click (fn [e]
+                          (.preventDefault e)
                           (reset! expanded-feeds #{})
                           (rf/dispatch [::events/toggle-compact]))}
              [:input.filter-checkbox
