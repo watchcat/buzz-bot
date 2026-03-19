@@ -58,14 +58,13 @@ struct UserEpisode
   def self.find_batch(user_id : Int64, episode_ids : Array(Int64)) : Hash(Int64, UserEpisode)
     return({} of Int64 => UserEpisode) if episode_ids.empty?
     result = {} of Int64 => UserEpisode
-    placeholders = episode_ids.each_with_index.map { |_, i| "$#{i + 2}" }.join(", ")
     AppDB.pool.query_each(
       <<-SQL,
         SELECT id, user_id, episode_id, progress_seconds, completed, liked, updated_at
         FROM user_episodes
-        WHERE user_id = $1 AND episode_id IN (#{placeholders})
+        WHERE user_id = $1 AND episode_id = ANY($2)
       SQL
-      user_id, *episode_ids
+      user_id, episode_ids
     ) { |rs| ue = from_rs(rs); result[ue.episode_id] = ue }
     result
   end
