@@ -42,6 +42,19 @@ struct UserEpisode
     )
   end
 
+  def self.toggle_like(user_id : Int64, episode_id : Int64)
+    AppDB.pool.exec(
+      <<-SQL,
+        INSERT INTO user_episodes (user_id, episode_id, liked, updated_at)
+        VALUES ($1, $2, true, NOW())
+        ON CONFLICT (user_id, episode_id) DO UPDATE SET
+          liked      = NOT COALESCE(user_episodes.liked, false),
+          updated_at = NOW()
+      SQL
+      user_id, episode_id
+    )
+  end
+
   def self.upsert_signal(user_id : Int64, episode_id : Int64, liked : Bool)
     AppDB.pool.exec(
       <<-SQL,

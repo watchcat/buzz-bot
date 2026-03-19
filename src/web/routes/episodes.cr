@@ -3,30 +3,28 @@ require "json"
 
 module Web::Routes::Episodes
   def self.register
-    # List episodes for a feed (HTMX fragment)
+    # List episodes for a feed
     get "/episodes" do |env|
       user = Auth.current_user(env)
       halt env, status_code: 401, response: "Unauthorized" unless user
 
       feed_id = env.params.query["feed_id"]?.try(&.to_i64)
-      halt env, status_code: 400, response: "feed_id required" unless feed_id
+      halt env, status_code: 400, response: %({"error":"feed_id required"}) unless feed_id
 
       feed = Feed.find(feed_id)
-      halt env, status_code: 404, response: "Feed not found" unless feed
+      halt env, status_code: 404, response: %({"error":"Feed not found"}) unless feed
 
-      limit         = 50
-      offset        = env.params.query["offset"]?.try(&.to_i32) || 0
-      next_offset   = offset + limit
-      order         = env.params.query["order"]? == "asc" ? "asc" : "desc"
-      episodes      = Episode.for_feed(feed_id, limit, offset, order)
-      completed_ids = Episode.completed_ids(user.id, feed_id)
+      limit    = (env.params.query["limit"]?.try(&.to_i32) || 50).clamp(1, 500)
+      offset   = env.params.query["offset"]?.try(&.to_i32) || 0
+      order    = env.params.query["order"]? == "asc" ? "asc" : "desc"
+      episodes = Episode.for_feed(feed_id, limit + 1, offset, order)
+      has_more = episodes.size > limit
+      episodes = episodes.first(limit) if has_more
 
-      env.response.content_type = "text/html"
-      if offset > 0
-        ECR.render "src/views/episode_items.ecr"
-      else
-        ECR.render "src/views/episode_list.ecr"
-      end
+      items = Web.build_episode_list(episodes, user.id)
+
+      env.response.content_type = "application/json"
+      {episodes: items, has_more: has_more}.to_json
     end
 
     # Get player for a single episode
@@ -133,29 +131,18 @@ module Web::Routes::Episodes
       "Proxy error"
     end
 
-    # Save like/dislike signal
+    # Toggle like signal
     put "/episodes/:id/signal" do |env|
       user = Auth.current_user(env)
       halt env, status_code: 401, response: "Unauthorized" unless user
 
-      episode_id = env.params.url["id"].to_i64
-
-      liked = case env.params.body["liked"]?
-              when "true"  then true
-              when "false" then false
-              else
-                halt env, status_code: 400, response: "liked field required"
-                next
-              end
-
-      UserEpisode.upsert_signal(user.id, episode_id, liked)
-
-      episode = Episode.find(episode_id)
-      halt env, status_code: 404, response: "Episode not found" unless episode
+      episode_id   = env.params.url["id"].to_i64
+      UserEpisode.toggle_like(user.id, episode_id)
       user_episode = UserEpisode.find(user.id, episode_id)
+      liked        = user_episode.try(&.liked) == true
 
-      env.response.content_type = "text/html"
-      ECR.render "src/views/like_buttons.ecr"
+      env.response.content_type = "application/json"
+      {liked: liked}.to_json
     end
   end
 end
