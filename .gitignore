@@ -23,6 +23,9 @@ buzz_bot
 node_modules/
 public/js/miniplayer.js
 
+# Git worktrees
+.worktrees/
+
 # Temp files
 *.tmp
 *.log
