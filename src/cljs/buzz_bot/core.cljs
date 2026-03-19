@@ -24,10 +24,11 @@
         (when v (.setProperty root k v))))))
 
 (defn- check-deep-link []
-  (let [start  (.. (tg) -initDataUnsafe -start_param)
+  (let [unsafe (some-> (tg) (.-initDataUnsafe))
+        start  (when unsafe (.-start_param unsafe))
         url-ep (-> js/window .-location .-search js/URLSearchParams. (.get "episode"))
         ep-id  (or url-ep
-                   (when (str/starts-with? (str start) "ep_")
+                   (when (and start (str/starts-with? start "ep_"))
                      (subs start 3)))]
     (if ep-id
       (rf/dispatch [::events/navigate :player {:episode-id ep-id}])
@@ -39,7 +40,8 @@
                        js/JSON.parse
                        (js->clj :keywordize-keys true))
                    (catch :default _ {}))
-        rate  (or (js/parseFloat (js/localStorage.getItem "buzz-playback-speed")) 1)
+        rate  (let [r (js/parseFloat (js/localStorage.getItem "buzz-playback-speed"))]
+                (if (js/isNaN r) 1 r))
         auto? (= "true" (js/localStorage.getItem "buzz-autoplay"))]
     (when ep-id
       (rf/dispatch-sync [::events/init-audio-meta ep-id meta rate auto?]))))
