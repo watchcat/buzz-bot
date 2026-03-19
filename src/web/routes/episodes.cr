@@ -27,30 +27,45 @@ module Web::Routes::Episodes
       {episodes: items, has_more: has_more}.to_json
     end
 
-    # Get player for a single episode
+    # Get player data for a single episode
     get "/episodes/:id/player" do |env|
       user = Auth.current_user(env)
       halt env, status_code: 401, response: "Unauthorized" unless user
 
-      episode_id = env.params.url["id"].to_i64
-      episode = Episode.find(episode_id)
-      halt env, status_code: 404, response: "Episode not found" unless episode
+      episode_id   = env.params.url["id"].to_i64
+      episode      = Episode.find(episode_id)
+      halt env, status_code: 404, response: %({"error":"Episode not found"}) unless episode
 
-      feed            = Feed.find(episode.feed_id)
-      user_episode    = UserEpisode.find(user.id, episode_id)
-      should_autoplay = env.params.query["autoplay"]? == "1"
-      from            = env.params.query["from"]? || "feed"  # "inbox" | "discover" | "feed"
-      from_inbox      = from == "inbox"
-      order           = env.params.query["order"]? == "asc" ? "asc" : "desc"
-      next_episode_id = Episode.next_in_feed(episode.feed_id, episode_id, order)
-      is_subscribed   = Feed.subscribed?(user.id, episode.feed_id)
-      is_premium      = user.subscribed?
-      recs            = Episode.recommended_for_episode(episode_id)
-      rec_feeds_map   = recs.map(&.feed_id).uniq.each_with_object({} of Int64 => String) do |fid, h|
+      feed          = Feed.find(episode.feed_id)
+      user_episode  = UserEpisode.find(user.id, episode_id)
+      order         = env.params.query["order"]? == "asc" ? "asc" : "desc"
+      next_id       = Episode.next_in_feed(episode.feed_id, episode_id, order)
+      is_subscribed = Feed.subscribed?(user.id, episode.feed_id)
+      is_premium    = user.subscribed?
+      recs_raw      = Episode.recommended_for_episode(episode_id)
+
+      rec_feeds_map = recs_raw.map(&.feed_id).uniq.each_with_object({} of Int64 => String) do |fid, h|
         h[fid] = Feed.find(fid).try(&.title) || ""
       end
-      env.response.content_type = "text/html"
-      ECR.render "src/views/player.ecr"
+      recs = recs_raw.map { |r| Web::RecJson.new(r, rec_feeds_map[r.feed_id]? || "") }
+
+      ep_json = Web::EpisodeJson.new(
+        episode,
+        feed.try(&.title) || "",
+        feed.try(&.image_url),
+        user_episode
+      )
+
+      env.response.content_type = "application/json"
+      {
+        episode:      ep_json,
+        feed:         feed,
+        user_episode: user_episode,
+        next_id:      next_id,
+        recs:         recs,
+        is_subscribed: is_subscribed,
+        is_premium:    is_premium,
+      }.to_json
     end
 
     # Save progress
