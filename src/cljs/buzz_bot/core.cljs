@@ -1,5 +1,6 @@
 (ns buzz-bot.core
   (:require [reagent.dom :as rdom]
+            [reagent.core :as r]
             [re-frame.core :as rf]
             [clojure.string :as str]
             [buzz-bot.events :as events]
@@ -57,6 +58,21 @@
            "</div>"))
     (.appendChild js/document.body div)))
 
+(defn- error-boundary []
+  (let [err (r/atom nil)]
+    (r/create-class
+      {:display-name      "ErrorBoundary"
+       :component-did-catch (fn [_this e info]
+                              (reset! err {:msg   (.-message e)
+                                           :stack (.-componentStack info)}))
+       :render (fn [this]
+                 (if-let [{:keys [msg stack]} @err]
+                   [:div {:style {:padding "16px" :color "red"
+                                  :font-size "11px" :white-space "pre-wrap"
+                                  :overflow "auto"}}
+                    "RENDER ERROR:\n" msg "\n\nComponent stack:\n" stack]
+                   (first (r/children this))))})))
+
 (defn- mount! []
   (.ready (tg))
   (.expand (tg))
@@ -66,7 +82,7 @@
   (restore-audio-state!)
   (audio/init!)
   (check-deep-link)
-  (rdom/render [layout/root] (js/document.getElementById "app")))
+  (rdom/render [error-boundary [layout/root]] (js/document.getElementById "app")))
 
 (defn- cleanup-legacy! []
   (when (.-serviceWorker js/navigator)
