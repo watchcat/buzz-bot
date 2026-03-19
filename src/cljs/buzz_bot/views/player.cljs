@@ -70,7 +70,15 @@
             [:button#player-speed-btn.btn-speed
              {:class    (when (not= rate 1) "btn-speed--active")
               :on-click #(rf/dispatch [::events/cycle-speed])}
-             (if (= rate 1) "1×" (str rate "×"))]]]
+             (if (= rate 1) "1×" (str rate "×"))]
+            [:button.btn-bookmark
+             {:class    (when liked? "active")
+              :title    (if liked? "Remove bookmark" "Bookmark")
+              :on-click #(rf/dispatch [::events/toggle-bookmark (:id episode)])}
+             [:svg {:viewBox "0 0 24 24" :xmlns "http://www.w3.org/2000/svg"}
+              (if liked?
+                [:path {:d "M17 3H7c-1.1 0-2 .9-2 2v16l7-3 7 3V5c0-1.1-.9-2-2-2z"}]
+                [:path {:d "M17 3H7c-1.1 0-2 .9-2 2v16l7-3 7 3V5c0-1.1-.9-2-2-2zm0 15-5-2.18L7 18V5h10v13z"}])]]]]
 
           [:div.autoplay-row
            [:label.autoplay-label {:class (when-not next_id "autoplay-label--disabled")}
@@ -82,13 +90,6 @@
             [:span.autoplay-switch]
             [:span.autoplay-text
              (if next_id "Play next episode after this one" "Last episode in feed")]]]
-
-          [:div.player-actions
-           [:div.like-buttons
-            [:button.btn-like
-             {:class    (when liked? "active")
-              :on-click #(rf/dispatch [::events/toggle-bookmark (:id episode)])}
-             (if liked? "Bookmarked" "Bookmark")]]]
 
           (when-not is_subscribed
             [:div.subscribe-row
