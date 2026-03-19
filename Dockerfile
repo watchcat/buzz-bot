@@ -5,11 +5,6 @@ FROM crystallang/crystal:latest-alpine AS builder
 
 WORKDIR /app
 
-# ── JS bundle (Preact + Signals) ──────────────────────────────────────────────
-RUN apk add --no-cache nodejs npm
-COPY package.json package-lock.json ./
-RUN npm ci
-
 # ── Crystal dependencies ──────────────────────────────────────────────────────
 COPY shard.yml shard.lock* ./
 RUN shards install --production
@@ -42,10 +37,9 @@ open(path, 'w').write(src)
 print('crystal-pg patched OK')
 PYEOF
 
-# Copy source + public, then build JS bundle
+# Copy source + pre-built public/ (JS compiled locally by deploy.sh before docker build)
 COPY src/ ./src/
 COPY public/ ./public/
-RUN npm run build
 
 # Build release binary
 RUN crystal build src/buzz_bot.cr \
@@ -67,7 +61,6 @@ WORKDIR /app
 
 COPY --from=builder /app/buzz-bot ./buzz-bot
 COPY --from=builder /app/public ./public
-COPY src/views/ ./src/views/
 
 EXPOSE 3000
 

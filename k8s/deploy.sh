@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Build and deploy buzz-bot to the k3s cluster.
-# Exports the image as a tar, transfers it to the node, imports into k3s containerd.
+# Compiles ClojureScript, builds a Docker image, transfers it to the node,
+# imports into k3s containerd, and rolls out the deployment.
 # Usage: ./k8s/deploy.sh
 set -euo pipefail
 
@@ -8,6 +9,9 @@ NODE="root@46.225.0.50"
 SSH_KEY="$HOME/.ssh/id_rsa"
 IMAGE="ghcr.io/watchcat/buzz-bot:latest"
 TMPFILE="/tmp/buzz-bot.tar.gz"
+
+echo "==> Compiling ClojureScript"
+npx shadow-cljs release app
 
 echo "==> Building $IMAGE"
 docker build -t buzz-bot:latest .
