@@ -1,7 +1,8 @@
 (ns buzz-bot.fx
   (:require [re-frame.core :as rf]
             [re-frame.db]
-            [buzz-bot.audio :as audio]))
+            [buzz-bot.audio :as audio]
+            [buzz-bot.cache :as cache]))
 
 ;; ── ::http-fetch ────────────────────────────────────────────────────────────
 ;; Options map:
@@ -119,3 +120,110 @@
              (when-let [el (.querySelector js/document
                              (str "[data-episode-id='" episode-id "']"))]
                (.scrollIntoView el #js{:block "center" :behavior "smooth"})))))))))
+
+;; ── ::open-cache-db ──────────────────────────────────────────────────────────
+;; Opens the IndexedDB connection once at app startup.
+
+(rf/reg-fx
+ ::open-cache-db
+ (fn [_]
+   (-> (cache/open-db!)
+       (.catch (fn [e] (js/console.warn "IDB open failed:" e))))))
+
+;; ── ::start-cache-download ───────────────────────────────────────────────────
+;; Streams audio from audio_proxy and stores the full blob in IDB.
+;; Options: :episode-id, :url, :init-data
+;; Dispatches:
+;;   [:buzz-bot.events/cache-progress {:episode-id id :bytes-downloaded N :bytes-total N}]
+;;   [:buzz-bot.events/cache-complete {:episode-id id :blob-url url}]
+;;   [:buzz-bot.events/cache-error    {:episode-id id :error msg}]
+
+(rf/reg-fx
+ ::start-cache-download
+ (fn [{:keys [episode-id url init-data]}]
+   (let [chunks  #js []
+         headers (js-obj "X-Init-Data" (or init-data ""))]
+     (-> (js/fetch url #js{:headers headers})
+         (.then
+           (fn [resp]
+             (let [total  (js/parseInt (.get (.-headers resp) "content-length") 10)
+                   reader (.getReader (.-body resp))]
+               (rf/dispatch [:buzz-bot.events/cache-progress
+                             {:episode-id episode-id :bytes-downloaded 0 :bytes-total (or total 0)}])
+               (letfn [(read-chunk []
+                         (-> (.read reader)
+                             (.then
+                               (fn [result]
+                                 (if (.-done result)
+                                   ;; All chunks received — write to IDB
+                                   (let [full-blob (js/Blob. chunks #js{:type "audio/mpeg"})]
+                                     (-> (cache/put-blob! episode-id full-blob)
+                                         (.then
+                                           (fn [_]
+                                             (when (.. js/navigator -storage -persist)
+                                               (.. js/navigator -storage (persist)))
+                                             (let [blob-url (js/URL.createObjectURL full-blob)]
+                                               (rf/dispatch [:buzz-bot.events/cache-complete
+                                                             {:episode-id episode-id
+                                                              :blob-url   blob-url}]))))
+                                         (.catch
+                                           (fn [e]
+                                             (rf/dispatch [:buzz-bot.events/cache-error
+                                                           {:episode-id episode-id
+                                                            :error      (str e)}])))))
+                                   ;; More data — accumulate and report progress
+                                   (do (.push chunks (.-value result))
+                                       (let [downloaded (reduce + 0 (map #(.-byteLength %) chunks))]
+                                         (rf/dispatch [:buzz-bot.events/cache-progress
+                                                       {:episode-id      episode-id
+                                                        :bytes-downloaded downloaded
+                                                        :bytes-total     (or total 0)}]))
+                                       (read-chunk)))))
+                             (.catch
+                               (fn [e]
+                                 (rf/dispatch [:buzz-bot.events/cache-error
+                                               {:episode-id episode-id
+                                                :error      (str e)}])))))]
+                 (read-chunk)))))
+         (.catch
+           (fn [e]
+             (rf/dispatch [:buzz-bot.events/cache-error
+                           {:episode-id episode-id :error (str e)}])))))))
+
+;; ── ::get-cached-blob ────────────────────────────────────────────────────────
+;; Reads a blob from IDB and dispatches :on-ready with the blob URL,
+;; or :on-missing if the record is not found.
+;; Options: :episode-id, :on-ready (event vec), :on-missing (event vec)
+
+(rf/reg-fx
+ ::get-cached-blob
+ (fn [{:keys [episode-id on-ready on-missing]}]
+   (-> (cache/get-blob! episode-id)
+       (.then
+         (fn [record]
+           (if record
+             (rf/dispatch (conj on-ready (js/URL.createObjectURL (.-blob record))))
+             (rf/dispatch on-missing))))
+       (.catch
+         (fn [_] (rf/dispatch on-missing))))))
+
+;; ── ::delete-cache-blob ──────────────────────────────────────────────────────
+;; Revokes a blob URL and deletes the IDB record.
+;; Options: :episode-id, :blob-url
+
+(rf/reg-fx
+ ::delete-cache-blob
+ (fn [{:keys [episode-id blob-url]}]
+   (when blob-url (js/URL.revokeObjectURL blob-url))
+   (cache/delete-blob! episode-id)))
+
+;; ── ::clear-cache-db ─────────────────────────────────────────────────────────
+;; Revokes all blob URLs and clears the entire IDB store.
+;; Value: sequence of blob URL strings to revoke.
+
+(rf/reg-fx
+ ::clear-cache-db
+ (fn [blob-urls]
+   (doseq [url blob-urls]
+     (when url (js/URL.revokeObjectURL url)))
+   (cache/clear-all-blobs!)))
