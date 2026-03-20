@@ -195,6 +195,7 @@
          {:dispatch [::fetch-player-forced ep-id]})
        {:db           (-> db
                           (assoc-in [:player :loading?] false)
+                          (assoc-in [:cache :blob-urls ep-id] blob-url)
                           (assoc-in [:player :data]
                                     {:episode      meta
                                      :feed         {:title (:artist meta)}
