@@ -162,11 +162,59 @@
 (rf/reg-event-fx
  ::fetch-player
  (fn [{:keys [db]} [_ episode-id]]
+   (let [order      (name (get-in db [:episodes :order] :desc))
+         ep-id      (str episode-id)
+         cached-ids (get-in db [:cache :cached-ids])
+         cached?    (contains? (set cached-ids) ep-id)
+         offline?   (not (.-onLine js/navigator))]
+     (if (and offline? cached?)
+       {:db       (assoc-in db [:player :loading?] true)
+        :dispatch [::cache-load-blob ep-id]}
+       {:db           (assoc-in db [:player :loading?] true)
+        ::buzz-bot.fx/http-fetch {:method :get
+                                  :url    (str "/episodes/" episode-id "/player?order=" order)
+                                  :on-ok  [::player-loaded] :on-err [::fetch-error]}}))))
+
+(rf/reg-event-fx
+ ::cache-load-blob
+ (fn [_ [_ ep-id]]
+   {::buzz-bot.fx/get-cached-blob {:episode-id ep-id
+                                    :on-ready   [::cached-blob-ready ep-id]
+                                    :on-missing [::fetch-player-forced ep-id]}}))
+
+(rf/reg-event-fx
+ ::cached-blob-ready
+ (fn [{:keys [db]} [_ ep-id blob-url]]
+   (let [raw  (js/localStorage.getItem (str "buzz-episode-meta-" ep-id))
+         meta (when raw
+                (try (js->clj (.parse js/JSON raw) :keywordize-keys true)
+                     (catch :default _ nil)))]
+     (if (nil? meta)
+       {:dispatch [::fetch-player-forced ep-id]}
+       {:db           (-> db
+                          (assoc-in [:player :loading?] false)
+                          (assoc-in [:player :data]
+                                    {:episode      meta
+                                     :feed         {:title (:artist meta)}
+                                     :user_episode {}
+                                     :is_subscribed true
+                                     :is_premium    true}))
+        ::buzz-bot.fx/audio-cmd {:op       :load
+                                  :src      blob-url
+                                  :start    0
+                                  :autoplay? true
+                                  :title    (:title meta)
+                                  :artist   (:artist meta)
+                                  :artwork  (:artwork meta)}}))))
+
+(rf/reg-event-fx
+ ::fetch-player-forced
+ (fn [{:keys [db]} [_ ep-id]]
    (let [order (name (get-in db [:episodes :order] :desc))]
-     {:db         (assoc-in db [:player :loading?] true)
+     {:db           (assoc-in db [:player :loading?] true)
       ::buzz-bot.fx/http-fetch {:method :get
-                                :url    (str "/episodes/" episode-id "/player?order=" order)
-                                :on-ok  [::player-loaded] :on-err [::fetch-error]}})))
+                                 :url    (str "/episodes/" ep-id "/player?order=" order)
+                                 :on-ok  [::player-loaded] :on-err [::fetch-error]}})))
 
 (rf/reg-event-fx
  ::player-loaded
@@ -478,6 +526,23 @@
          ids    (if raw (js->clj (js/JSON.parse raw)) [])]
      {:db (assoc-in db [:cache :cached-ids] ids)
       :buzz-bot.fx/open-cache-db nil})))
+
+(rf/reg-event-fx
+ ::cache-start
+ (fn [{:keys [db]} [_ {:keys [episode-id]}]]
+   (let [cached-ids  (get-in db [:cache :cached-ids])
+         in-progress (get-in db [:cache :in-progress])
+         init-data   (:init-data db)]
+     (cond
+       (contains? (set cached-ids) episode-id)  nil
+       (contains? in-progress episode-id)        nil
+       :else
+       {:db (assoc-in db [:cache :in-progress episode-id]
+                      {:bytes-downloaded 0 :bytes-total 0})
+        ::buzz-bot.fx/start-cache-download
+        {:episode-id episode-id
+         :url        (str "/episodes/" episode-id "/audio_proxy")
+         :init-data  init-data}}))))
 
 (rf/reg-event-db
  ::cache-progress
