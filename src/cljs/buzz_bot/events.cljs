@@ -165,7 +165,7 @@
    (let [order      (name (get-in db [:episodes :order] :desc))
          ep-id      (str episode-id)
          cached-ids (get-in db [:cache :cached-ids])
-         cached?    (contains? (set cached-ids) ep-id)
+         cached?    (some #{ep-id} cached-ids)
          offline?   (not (.-onLine js/navigator))]
      (if (and offline? cached?)
        {:db       (assoc-in db [:player :loading?] true)
@@ -190,7 +190,9 @@
                 (try (js->clj (.parse js/JSON raw) :keywordize-keys true)
                      (catch :default _ nil)))]
      (if (nil? meta)
-       {:dispatch [::fetch-player-forced ep-id]}
+       (do
+         (js/URL.revokeObjectURL blob-url)
+         {:dispatch [::fetch-player-forced ep-id]})
        {:db           (-> db
                           (assoc-in [:player :loading?] false)
                           (assoc-in [:player :data]
@@ -534,8 +536,8 @@
          in-progress (get-in db [:cache :in-progress])
          init-data   (:init-data db)]
      (cond
-       (contains? (set cached-ids) episode-id)  nil
-       (contains? in-progress episode-id)        nil
+       (some #{episode-id} cached-ids)  {}
+       (contains? in-progress episode-id)        {}
        :else
        {:db (assoc-in db [:cache :in-progress episode-id]
                       {:bytes-downloaded 0 :bytes-total 0})
