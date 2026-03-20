@@ -489,16 +489,20 @@
 (rf/reg-event-fx
  ::cache-complete
  (fn [{:keys [db]} [_ {:keys [episode-id blob-url]}]]
-   (let [old-ids  (get-in db [:cache :cached-ids])
-         new-ids  (vec (take 5 (distinct (cons episode-id old-ids))))
-         evicted  (vec (remove (set new-ids) old-ids))
+   (let [old-ids   (get-in db [:cache :cached-ids])
          blob-urls (get-in db [:cache :blob-urls])
-         new-db   (-> db
-                      (assoc-in [:cache :cached-ids] new-ids)
-                      (assoc-in [:cache :blob-urls episode-id] blob-url)
-                      (update-in [:cache :in-progress] dissoc episode-id))]
-     (js/localStorage.setItem "buzz-cached-ids" (.stringify js/JSON (clj->js new-ids)))
+         old-url   (get blob-urls episode-id)
+         new-ids   (vec (take 5 (distinct (cons episode-id old-ids))))
+         evicted   (vec (remove (set new-ids) old-ids))
+         new-db    (-> db
+                       (assoc-in [:cache :cached-ids] new-ids)
+                       (assoc-in [:cache :blob-urls episode-id] blob-url)
+                       (update-in [:cache :in-progress] dissoc episode-id))]
+     ;; Revoke old blob URL for this episode if it exists (re-cache case)
+     (when (and old-url (not= old-url blob-url))
+       (js/URL.revokeObjectURL old-url))
      {:db       new-db
+      ::buzz-bot.fx/persist-cached-ids new-ids
       :dispatch-n (mapv (fn [id]
                           [::cache-evict {:episode-id id
                                           :blob-url   (get blob-urls id)}])
@@ -514,16 +518,16 @@
  ::cache-evict
  (fn [{:keys [db]} [_ {:keys [episode-id blob-url]}]]
    (let [new-ids (vec (remove #{episode-id} (get-in db [:cache :cached-ids])))]
-     (js/localStorage.setItem "buzz-cached-ids" (.stringify js/JSON (clj->js new-ids)))
      {:db       (-> db
                     (assoc-in [:cache :cached-ids] new-ids)
                     (update-in [:cache :blob-urls] dissoc episode-id))
+      ::buzz-bot.fx/persist-cached-ids new-ids
       ::buzz-bot.fx/delete-cache-blob {:episode-id episode-id :blob-url blob-url}})))
 
 (rf/reg-event-fx
  ::cache-clear-all
  (fn [{:keys [db]} _]
-   (js/localStorage.setItem "buzz-cached-ids" "[]")
    (let [blob-urls (vals (get-in db [:cache :blob-urls]))]
      {:db       (update db :cache merge {:cached-ids [] :in-progress {} :blob-urls {}})
+      ::buzz-bot.fx/persist-cached-ids []
       ::buzz-bot.fx/clear-cache-db blob-urls})))

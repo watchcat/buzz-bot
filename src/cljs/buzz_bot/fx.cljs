@@ -130,6 +130,14 @@
    (-> (cache/open-db!)
        (.catch (fn [e] (js/console.warn "IDB open failed:" e))))))
 
+;; ── ::persist-cached-ids ─────────────────────────────────────────────────────
+;; Writes the given vector of episode IDs to localStorage under "buzz-cached-ids".
+
+(rf/reg-fx
+ ::persist-cached-ids
+ (fn [ids]
+   (js/localStorage.setItem "buzz-cached-ids" (.stringify js/JSON (clj->js ids)))))
+
 ;; ── ::start-cache-download ───────────────────────────────────────────────────
 ;; Streams audio from audio_proxy and stores the full blob in IDB.
 ;; Options: :episode-id, :url, :init-data
