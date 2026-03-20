@@ -225,10 +225,6 @@
          cur-id    (str (get-in db [:audio :episode-id]))
          playing?  (get-in db [:audio :playing?])
          episode   (get-in resp [:episode])
-         ;; Only overwrite mini-player metadata when we are actually going to
-         ;; load/play this episode.  When a different episode is opened while
-         ;; something is already playing we keep the existing title/artist/artwork
-         ;; so the mini-player keeps showing what is actually playing.
          loading-new? (not (and playing? (not= cur-id new-id)))
          db'       (cond-> (-> db
                                (assoc-in [:player :data]        resp)
@@ -238,6 +234,15 @@
                      (-> (assoc-in [:audio :title]   (:title episode))
                          (assoc-in [:audio :artist]  (:feed_title episode))
                          (assoc-in [:audio :artwork] (:feed_image_url episode))))]
+     ;; Persist episode metadata for offline playback reconstruction
+     (js/localStorage.setItem
+       (str "buzz-episode-meta-" new-id)
+       (.stringify js/JSON
+         (clj->js {:id        new-id
+                   :title     (:title episode)
+                   :artist    (get-in resp [:feed :title])
+                   :artwork   (:feed_image_url episode)
+                   :audio_url (:audio_url episode)})))
      (let [autoplay? (get-in db [:view-params :autoplay?])]
        (cond
          (= cur-id new-id)                   {:db db'}
@@ -317,7 +322,8 @@
                                :autoplay? autoplay?
                                :title   (get-in db [:player :data :episode :title])
                                :artist  (get-in db [:player :data :episode :feed_title])
-                               :artwork (get-in db [:player :data :episode :feed_image_url])}})))
+                               :artwork (get-in db [:player :data :episode :feed_image_url])}
+      :dispatch [::cache-start {:episode-id ep-id}]})))
 
 (rf/reg-event-db
  ::audio-queue-pending
