@@ -109,8 +109,13 @@
  ::scroll-to-episode
  (fn [episode-id]
    (when episode-id
+     ;; Double-rAF: Reagent batches DOM commits in its own rAF. The first rAF here fires
+     ;; in the same frame as Reagent's render but before React has committed. The second
+     ;; fires after Reagent's commit phase, so the element is guaranteed to be in the DOM.
      (js/requestAnimationFrame
        (fn []
-         (when-let [el (.querySelector js/document
-                         (str "[data-episode-id='" episode-id "']"))]
-           (.scrollIntoView el #js{:block "center" :behavior "smooth"})))))))
+         (js/requestAnimationFrame
+           (fn []
+             (when-let [el (.querySelector js/document
+                             (str "[data-episode-id='" episode-id "']"))]
+               (.scrollIntoView el #js{:block "center" :behavior "smooth"})))))))))

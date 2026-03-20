@@ -162,10 +162,11 @@
 (rf/reg-event-fx
  ::fetch-player
  (fn [{:keys [db]} [_ episode-id]]
-   {:db         (assoc-in db [:player :loading?] true)
-    ::buzz-bot.fx/http-fetch {:method :get
-                              :url    (str "/episodes/" episode-id "/player")
-                              :on-ok  [::player-loaded] :on-err [::fetch-error]}}))
+   (let [order (name (get-in db [:episodes :order] :desc))]
+     {:db         (assoc-in db [:player :loading?] true)
+      ::buzz-bot.fx/http-fetch {:method :get
+                                :url    (str "/episodes/" episode-id "/player?order=" order)
+                                :on-ok  [::player-loaded] :on-err [::fetch-error]}})))
 
 (rf/reg-event-fx
  ::player-loaded
