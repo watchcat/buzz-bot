@@ -266,6 +266,20 @@ main {
 
 .btn-icon:hover { background: rgba(0,0,0,0.08); }
 
+.btn-clear-cache {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 16px;
+  padding: 4px 8px;
+  opacity: 0.7;
+  transition: opacity 0.15s;
+}
+
+.btn-clear-cache:hover {
+  opacity: 1;
+}
+
 @keyframes spin { to { transform: rotate(360deg); } }
 .btn-icon--spinning { animation: spin 0.7s linear infinite; pointer-events: none; }
 
@@ -597,6 +611,11 @@ main {
   font-size: 16px;
 }
 
+/* Cached episodes */
+.episode-item.cached .episode-title {
+  font-weight: 700;
+}
+
 /* Currently playing episode */
 .episode-item.is-playing {
   background: color-mix(in srgb, var(--button-color) 14%, transparent);
@@ -758,12 +777,12 @@ main {
   cursor: pointer;
   background: linear-gradient(
     to right,
-    var(--button-color)      0%,
-    var(--button-color)      var(--pct, 0%),
-    rgba(76,175,80,0.45)     var(--pct, 0%),
-    rgba(76,175,80,0.45)     var(--cache-pct, 0%),
-    rgba(128,128,128,0.3)    var(--cache-pct, 0%),
-    rgba(128,128,128,0.3)    100%
+    var(--button-color)    0%,
+    var(--button-color)    var(--pct),
+    #4caf50                var(--pct),
+    #4caf50                var(--cache-pct, 0%),
+    rgba(0,0,0,0.15)       var(--cache-pct, 0%),
+    rgba(0,0,0,0.15)       100%
   );
 }
 
