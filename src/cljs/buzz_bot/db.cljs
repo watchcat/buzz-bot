@@ -15,4 +15,7 @@
    :audio       {:episode-id nil :title "" :artist "" :artwork ""
                  :src "" :playing? false :current-time 0 :duration 0
                  :rate 1 :autoplay? false :pending? false}
-   :saved-list  {:view nil :count 0}})
+   :saved-list  {:view nil :count 0}
+   :cache       {:cached-ids  []   ;; most-recent first, max 5
+                 :in-progress {}   ;; ep-id (string) → {:bytes-downloaded N :bytes-total N}
+                 :blob-urls   {}}}) ;; ep-id (string) → blob URL string
