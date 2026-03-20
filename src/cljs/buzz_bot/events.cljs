@@ -478,3 +478,52 @@
          ids    (if raw (js->clj (js/JSON.parse raw)) [])]
      {:db (assoc-in db [:cache :cached-ids] ids)
       :buzz-bot.fx/open-cache-db nil})))
+
+(rf/reg-event-db
+ ::cache-progress
+ (fn [db [_ {:keys [episode-id bytes-downloaded bytes-total]}]]
+   (assoc-in db [:cache :in-progress episode-id]
+             {:bytes-downloaded bytes-downloaded
+              :bytes-total      bytes-total})))
+
+(rf/reg-event-fx
+ ::cache-complete
+ (fn [{:keys [db]} [_ {:keys [episode-id blob-url]}]]
+   (let [old-ids  (get-in db [:cache :cached-ids])
+         new-ids  (vec (take 5 (distinct (cons episode-id old-ids))))
+         evicted  (vec (remove (set new-ids) old-ids))
+         blob-urls (get-in db [:cache :blob-urls])
+         new-db   (-> db
+                      (assoc-in [:cache :cached-ids] new-ids)
+                      (assoc-in [:cache :blob-urls episode-id] blob-url)
+                      (update-in [:cache :in-progress] dissoc episode-id))]
+     (js/localStorage.setItem "buzz-cached-ids" (.stringify js/JSON (clj->js new-ids)))
+     {:db       new-db
+      :dispatch-n (mapv (fn [id]
+                          [::cache-evict {:episode-id id
+                                          :blob-url   (get blob-urls id)}])
+                        evicted)})))
+
+(rf/reg-event-fx
+ ::cache-error
+ (fn [{:keys [db]} [_ {:keys [episode-id error]}]]
+   (js/console.warn "Cache error for episode" episode-id error)
+   {:db (update-in db [:cache :in-progress] dissoc episode-id)}))
+
+(rf/reg-event-fx
+ ::cache-evict
+ (fn [{:keys [db]} [_ {:keys [episode-id blob-url]}]]
+   (let [new-ids (vec (remove #{episode-id} (get-in db [:cache :cached-ids])))]
+     (js/localStorage.setItem "buzz-cached-ids" (.stringify js/JSON (clj->js new-ids)))
+     {:db       (-> db
+                    (assoc-in [:cache :cached-ids] new-ids)
+                    (update-in [:cache :blob-urls] dissoc episode-id))
+      ::buzz-bot.fx/delete-cache-blob {:episode-id episode-id :blob-url blob-url}})))
+
+(rf/reg-event-fx
+ ::cache-clear-all
+ (fn [{:keys [db]} _]
+   (js/localStorage.setItem "buzz-cached-ids" "[]")
+   (let [blob-urls (vals (get-in db [:cache :blob-urls]))]
+     {:db       (update db :cache merge {:cached-ids [] :in-progress {} :blob-urls {}})
+      ::buzz-bot.fx/clear-cache-db blob-urls})))
