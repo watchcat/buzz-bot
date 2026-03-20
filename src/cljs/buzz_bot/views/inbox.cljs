@@ -9,11 +9,12 @@
     (and (not (and hide-listened? (:listened ep)))
          (not (contains? excluded-feeds (str (:feed_id ep)))))))
 
-(defn- episode-item [ep playing-id]
+(defn- episode-item [ep playing-id cached-ids]
   [:li.episode-item
    {:class           (cond-> ""
                        (:listened ep)                         (str " listened")
-                       (= (str (:id ep)) (str playing-id))   (str " is-playing"))
+                       (= (str (:id ep)) (str playing-id))   (str " is-playing")
+                       (contains? cached-ids (str (:id ep))) (str " cached"))
     :data-episode-id (str (:id ep))
     :data-feed-id    (str (:feed_id ep))
     :on-click        #(rf/dispatch [::events/navigate :player
@@ -23,18 +24,19 @@
     [:strong.episode-title   (:title ep)]]
    [:span.episode-play-icon "▶"]])
 
-(defn- compact-group [eps playing-id expanded-feeds-atom]
+(defn- compact-group [eps playing-id cached-ids expanded-feeds-atom]
   (let [feed-id  (:feed_id (first eps))
         expanded @expanded-feeds-atom]
     (if (or (= 1 (count eps)) (contains? expanded feed-id))
       (for [ep eps]
-        ^{:key (:id ep)} [episode-item ep playing-id])
+        ^{:key (:id ep)} [episode-item ep playing-id cached-ids])
       (list
         ^{:key (:id (first eps))}
         [:li.episode-item.compact-first
          {:class           (cond-> ""
                              (:listened (first eps))                        (str " listened")
-                             (= (str (:id (first eps))) (str playing-id))   (str " is-playing"))
+                             (= (str (:id (first eps))) (str playing-id))   (str " is-playing")
+                             (contains? cached-ids (str (:id (first eps)))) (str " cached"))
           :data-episode-id (str (:id (first eps)))
           :data-feed-id    (str feed-id)
           :on-click        #(rf/dispatch [::events/navigate :player
@@ -56,12 +58,18 @@
             loading?   @(rf/subscribe [::subs/inbox-loading?])
             filters    @(rf/subscribe [::subs/inbox-filters])
             playing-id @(rf/subscribe [::subs/audio-episode-id])
+            cached-ids @(rf/subscribe [::subs/cached-ids])
             {:keys [hide-listened? compact?]} filters
             visible    (filter #(episode-visible? % filters) episodes)]
         [:div.episodes-container
          [:div.section-header
           [:div.section-header-row
            [:h2 "Inbox"]
+           (when (seq cached-ids)
+             [:button.btn-clear-cache
+              {:title    "Clear cached audio"
+               :on-click #(rf/dispatch [::events/cache-clear-all])}
+              "🗑"])
            [:button.btn-icon
             {:title    "Refresh"
              :class    (when loading? "btn-icon--spinning")
@@ -97,6 +105,6 @@
             (if compact?
               (let [groups (partition-by :feed_id visible)]
                 (for [grp groups]
-                  (compact-group grp playing-id expanded-feeds)))
+                  (compact-group grp playing-id cached-ids expanded-feeds)))
               (for [ep visible]
-                ^{:key (:id ep)} [episode-item ep playing-id]))])]))))
+                ^{:key (:id ep)} [episode-item ep playing-id cached-ids]))])]))))
