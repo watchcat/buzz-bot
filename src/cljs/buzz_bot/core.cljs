@@ -82,6 +82,7 @@
   (rf/dispatch-sync [::events/initialize-db])
   (rf/dispatch-sync [::events/set-init-data (.. (tg) -initData)])
   (restore-audio-state!)
+  (rf/dispatch-sync [::events/cache-init])
   (audio/init!)
   (check-deep-link)
   (rdom/render [error-boundary [layout/root]] (js/document.getElementById "app")))

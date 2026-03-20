@@ -468,3 +468,13 @@
        (assoc-in [:audio :artwork]   (:artwork meta ""))
        (assoc-in [:audio :rate]      rate)
        (assoc-in [:audio :autoplay?] auto?))))
+
+;; ── Cache lifecycle ───────────────────────────────────────────────────────────
+
+(rf/reg-event-fx
+ ::cache-init
+ (fn [{:keys [db]} _]
+   (let [raw    (js/localStorage.getItem "buzz-cached-ids")
+         ids    (if raw (js->clj (js/JSON.parse raw)) [])]
+     {:db (assoc-in db [:cache :cached-ids] ids)
+      :buzz-bot.fx/open-cache-db nil})))
