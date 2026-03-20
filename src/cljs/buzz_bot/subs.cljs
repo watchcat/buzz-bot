@@ -63,3 +63,17 @@
 (rf/reg-sub ::audio-title    :<- [::audio] (fn [a _] (:title a)))
 (rf/reg-sub ::audio-artist   :<- [::audio] (fn [a _] (:artist a)))
 (rf/reg-sub ::audio-artwork  :<- [::audio] (fn [a _] (:artwork a)))
+
+;; Cache
+(rf/reg-sub ::cached-ids
+  (fn [db _]
+    (set (get-in db [:cache :cached-ids]))))
+
+(rf/reg-sub ::episode-cached?
+  :<- [::cached-ids]
+  (fn [cached-ids [_ episode-id]]
+    (contains? cached-ids episode-id)))
+
+(rf/reg-sub ::cache-progress
+  (fn [db [_ episode-id]]
+    (get-in db [:cache :in-progress episode-id])))
