@@ -15,13 +15,15 @@
         (str h ":" (.padStart (str m) 2 "0") ":" (.padStart (str s) 2 "0"))
         (str m ":" (.padStart (str s) 2 "0"))))))
 
-(defn- seek-bar [current duration pending?]
-  (let [pct (if (pos? duration) (* 100 (/ current duration)) 0)]
+(defn- seek-bar [current duration pending? cache-pct]
+  (let [pct       (if (pos? duration) (* 100 (/ current duration)) 0)
+        cpct      (or cache-pct 0)]
     [:input#player-seek.player-seek-bar
      {:type      "range" :min 0 :max 100 :step 0.1
       :value     pct
       :disabled  pending?
-      :style     {"--pct" (str (.toFixed pct 2) "%")}
+      :style     {"--pct"       (str (.toFixed pct 2) "%")
+                  "--cache-pct" (str (.toFixed cpct 2) "%")}
       :on-change #(when (pos? duration)
                     (rf/dispatch [::events/audio-seek
                                   (* (/ (.. % -target -value) 100) duration)]))}]))
@@ -36,15 +38,24 @@
   (let [share-open? (r/atom false)
         share-msg   (r/atom "")]
     (fn []
-      (let [data        @(rf/subscribe [::subs/player-data])
-            loading?    @(rf/subscribe [::subs/player-loading?])
-            playing?    @(rf/subscribe [::subs/audio-playing?])
-            pending?    @(rf/subscribe [::subs/audio-pending?])
-            cur-time    @(rf/subscribe [::subs/audio-current-time])
-            duration    @(rf/subscribe [::subs/audio-duration])
-            rate        @(rf/subscribe [::subs/audio-rate])
-            send-status @(rf/subscribe [::subs/player-send-status])
-            params      @(rf/subscribe [:buzz-bot.subs/view-params])]
+      (let [data           @(rf/subscribe [::subs/player-data])
+            loading?       @(rf/subscribe [::subs/player-loading?])
+            playing?       @(rf/subscribe [::subs/audio-playing?])
+            pending?       @(rf/subscribe [::subs/audio-pending?])
+            cur-time       @(rf/subscribe [::subs/audio-current-time])
+            duration       @(rf/subscribe [::subs/audio-duration])
+            rate           @(rf/subscribe [::subs/audio-rate])
+            send-status    @(rf/subscribe [::subs/player-send-status])
+            params         @(rf/subscribe [:buzz-bot.subs/view-params])
+            ep-id          (str (get-in data [:episode :id] ""))
+            cache-progress @(rf/subscribe [::subs/cache-progress ep-id])
+            cached?        @(rf/subscribe [::subs/episode-cached? ep-id])
+            cache-pct      (cond
+                             cached?                                  100
+                             (pos? (:bytes-total cache-progress 0))  (* 100.0
+                                                                        (/ (:bytes-downloaded cache-progress)
+                                                                           (:bytes-total cache-progress)))
+                             :else                                    0)]
         (cond
           loading?    [:div.loading "Loading episode..."]
           (nil? data) [:div.error-msg "Episode not found."]
@@ -110,7 +121,7 @@
               [:div.player-controls
                [:div.player-progress-row
                 [:span#player-current-time.player-time (fmt-time cur-time)]
-                [seek-bar cur-time duration pending?]
+                [seek-bar cur-time duration pending? cache-pct]
                 [:span#player-duration.player-time (fmt-time duration)]]
                [:div.player-buttons-row
                 [:button.btn-seek {:on-click #(rf/dispatch [::events/audio-seek-relative -15])}
