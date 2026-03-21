@@ -10,11 +10,8 @@ SSH_KEY="$HOME/.ssh/id_rsa"
 IMAGE="ghcr.io/watchcat/buzz-bot:latest"
 TMPFILE="/tmp/buzz-bot.tar.gz"
 
-echo "==> Compiling ClojureScript"
-node node_modules/.bin/shadow-cljs release app
-
 echo "==> Building $IMAGE"
-docker build -t buzz-bot:latest .
+docker build --no-cache -t buzz-bot:latest .
 
 echo "==> Exporting image"
 docker save buzz-bot:latest | gzip > "$TMPFILE"
