@@ -7,6 +7,7 @@
   --button-color: var(--tg-theme-button-color, #2481cc);
   --button-text-color: var(--tg-theme-button-text-color, #ffffff);
   --secondary-bg: var(--tg-theme-secondary-bg-color, #f1f1f1);
+  --cache-color: var(--tg-theme-accent-text-color, var(--link-color, #4caf50));
   --radius: 12px;
   --gap: 12px;
 }
@@ -613,7 +614,7 @@ main {
 
 /* Cached episodes — green bottom border */
 .episode-item.cached {
-  border-bottom: 2px solid #4caf50;
+  border-bottom: 2px solid var(--cache-color);
 }
 
 /* Currently playing episode */
@@ -779,8 +780,8 @@ main {
     to right,
     var(--button-color)       0%,
     var(--button-color)       var(--pct),
-    #4caf50                   var(--pct),
-    #4caf50                   var(--cache-pct, 0%),
+    var(--cache-color)        var(--pct),
+    var(--cache-color)        var(--cache-pct, 0%),
     rgba(0,0,0,0.15)          var(--cache-pct, 0%),
     rgba(0,0,0,0.15)          100%
   );
@@ -790,10 +791,19 @@ main {
 .player-seek-bar.player-seek-bar--cached {
   background: linear-gradient(
     to right,
-    var(--button-color)  0%,
-    var(--button-color)  var(--pct),
-    #81c784              var(--pct),
-    #81c784              100%
+    var(--button-color)              0%,
+    var(--button-color)              var(--pct),
+    color-mix(in srgb, var(--cache-color) 40%, transparent) var(--pct),
+    color-mix(in srgb, var(--cache-color) 40%, transparent) 100%
+  );
+}
+.player-seek-bar.player-seek-bar--cached::-webkit-slider-runnable-track {
+  background: linear-gradient(
+    to right,
+    var(--button-color)              0%,
+    var(--button-color)              var(--pct),
+    color-mix(in srgb, var(--cache-color) 40%, transparent) var(--pct),
+    color-mix(in srgb, var(--cache-color) 40%, transparent) 100%
   );
 }
 
@@ -801,10 +811,19 @@ main {
 .player-seek-bar.player-seek-bar--from-cache {
   background: linear-gradient(
     to right,
-    #4caf50   0%,
-    #4caf50   var(--pct),
-    #81c784   var(--pct),
-    #81c784   100%
+    var(--cache-color)               0%,
+    var(--cache-color)               var(--pct),
+    color-mix(in srgb, var(--cache-color) 40%, transparent) var(--pct),
+    color-mix(in srgb, var(--cache-color) 40%, transparent) 100%
+  );
+}
+.player-seek-bar.player-seek-bar--from-cache::-webkit-slider-runnable-track {
+  background: linear-gradient(
+    to right,
+    var(--cache-color)               0%,
+    var(--cache-color)               var(--pct),
+    color-mix(in srgb, var(--cache-color) 40%, transparent) var(--pct),
+    color-mix(in srgb, var(--cache-color) 40%, transparent) 100%
   );
 }
 
