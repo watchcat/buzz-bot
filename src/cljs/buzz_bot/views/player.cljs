@@ -44,16 +44,22 @@
             loading?       @(rf/subscribe [::subs/player-loading?])
             playing?       @(rf/subscribe [::subs/audio-playing?])
             pending?       @(rf/subscribe [::subs/audio-pending?])
-            cur-time       @(rf/subscribe [::subs/audio-current-time])
-            duration       @(rf/subscribe [::subs/audio-duration])
+            audio-ep-id    @(rf/subscribe [::subs/audio-episode-id])
+            audio-time     @(rf/subscribe [::subs/audio-current-time])
+            audio-duration @(rf/subscribe [::subs/audio-duration])
             rate           @(rf/subscribe [::subs/audio-rate])
             send-status    @(rf/subscribe [::subs/player-send-status])
             params         @(rf/subscribe [:buzz-bot.subs/view-params])
             ep-id          (str (get-in data [:episode :id] ""))
+            this-ep?       (= ep-id (str audio-ep-id))
+            cur-time       (if this-ep? audio-time
+                               (get-in data [:user_episode :progress_seconds] 0))
+            duration       (if this-ep? audio-duration
+                               (or (get-in data [:episode :duration]) 0))
             audio-src      @(rf/subscribe [::subs/audio-src])
             cache-progress @(rf/subscribe [::subs/cache-progress ep-id])
             cached?        @(rf/subscribe [::subs/episode-cached? ep-id])
-            from-cache?    (some-> audio-src (.startsWith "blob:"))
+            from-cache?    (and this-ep? (some-> audio-src (.startsWith "blob:")))
             cache-pct      (cond
                              (or from-cache? cached?)                0
                              (pos? (:bytes-total cache-progress 0))  (* 100.0
