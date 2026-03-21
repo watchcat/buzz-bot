@@ -29,11 +29,15 @@
                        :bookmarks [::fetch-bookmarks]
                        :episodes  [::fetch-episodes (:feed-id params)]
                        nil)]
-     (cond-> {:db (-> db
-                      (assoc :view view)
-                      (assoc :view-params (or params {}))
-                      (assoc :saved-list saved-list))}
-       fetch-event (assoc :dispatch fetch-event)))))
+     (let [restore-id (when (and (= view :episodes) (= cur-view :player))
+                        (str (get-in db [:player :data :episode :id])))]
+       (cond-> {:db (-> db
+                        (assoc :view view)
+                        (assoc :view-params (or params {}))
+                        (assoc :saved-list saved-list)
+                        (cond-> restore-id
+                          (assoc-in [:episodes :restore-to-id] restore-id)))}
+         fetch-event (assoc :dispatch fetch-event))))))
 
 ;; ── Inbox ────────────────────────────────────────────────────────────────────
 
@@ -119,15 +123,22 @@
 (rf/reg-event-fx
  ::episodes-loaded
  (fn [{:keys [db]} [_ resp]]
-   (let [db'        (-> db
-                        (assoc-in [:episodes :list]      (:episodes resp))
-                        (assoc-in [:episodes :has-more?] (:has_more resp))
-                        (assoc-in [:episodes :loading?]  false))
-         playing-id (get-in db [:audio :episode-id])]
+   (let [restore-id (get-in db [:episodes :restore-to-id])
+         db'        (-> db
+                        (assoc-in [:episodes :list]           (:episodes resp))
+                        (assoc-in [:episodes :has-more?]      (:has_more resp))
+                        (assoc-in [:episodes :loading?]       false)
+                        (assoc-in [:episodes :restore-to-id]  nil))
+         playing-id (get-in db [:audio :episode-id])
+         eps        (:episodes resp)
+         scroll-id  (or (when (and restore-id
+                                   (some #(= (str (:id %)) restore-id) eps))
+                          restore-id)
+                        (when (and playing-id
+                                   (some #(= (str (:id %)) (str playing-id)) eps))
+                          playing-id))]
      (cond-> {:db db'}
-       (and playing-id
-            (some #(= (str (:id %)) (str playing-id)) (:episodes resp)))
-       (assoc ::buzz-bot.fx/scroll-to-episode playing-id)))))
+       scroll-id (assoc ::buzz-bot.fx/scroll-to-episode scroll-id)))))
 
 (rf/reg-event-fx
  ::load-more-episodes
