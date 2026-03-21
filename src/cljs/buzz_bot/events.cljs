@@ -334,7 +334,10 @@
                       (assoc-in [:audio :feed-id]      (str (get-in db [:player :data :episode :feed_id])))
                       (assoc-in [:audio :src]          src)
                       (assoc-in [:audio :current-time] 0)
-                      (assoc-in [:audio :pending?]     false))
+                      (assoc-in [:audio :pending?]     false)
+                      (assoc-in [:audio :title]        (get-in db [:player :data :episode :title]))
+                      (assoc-in [:audio :artist]       (get-in db [:player :data :episode :feed_title]))
+                      (assoc-in [:audio :artwork]      (get-in db [:player :data :episode :feed_image_url])))
       ::buzz-bot.fx/audio-cmd {:op      :load
                                :src     src
                                :start   start
