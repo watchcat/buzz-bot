@@ -15,7 +15,7 @@
         (str h ":" (.padStart (str m) 2 "0") ":" (.padStart (str s) 2 "0"))
         (str m ":" (.padStart (str s) 2 "0"))))))
 
-(defn- seek-bar [current duration pending? cache-pct from-cache?]
+(defn- seek-bar [current duration pending? cache-pct from-cache? cached?]
   (let [pct       (if (pos? duration) (* 100 (/ current duration)) 0)
         cpct      (or cache-pct 0)]
     [:input#player-seek.player-seek-bar
@@ -24,7 +24,8 @@
       :disabled  pending?
       :style     {"--pct"        (str (.toFixed pct 2) "%")
                   "--cache-pct"  (str (.toFixed cpct 2) "%")
-                  "--play-color" (when from-cache? "#4caf50")}
+                  "--play-color" (when from-cache? "#4caf50")
+                  "--track-bg"   (when (or from-cache? cached?) "rgba(76,175,80,0.25)")}
       :on-change #(when (pos? duration)
                     (rf/dispatch [::events/audio-seek
                                   (* (/ (.. % -target -value) 100) duration)]))}]))
@@ -54,8 +55,7 @@
             cached?        @(rf/subscribe [::subs/episode-cached? ep-id])
             from-cache?    (some-> audio-src (.startsWith "blob:"))
             cache-pct      (cond
-                             from-cache?                              0
-                             cached?                                  100
+                             (or from-cache? cached?)                0
                              (pos? (:bytes-total cache-progress 0))  (* 100.0
                                                                         (/ (:bytes-downloaded cache-progress)
                                                                            (:bytes-total cache-progress)))
@@ -125,7 +125,7 @@
               [:div.player-controls
                [:div.player-progress-row
                 [:span#player-current-time.player-time (fmt-time cur-time)]
-                [seek-bar cur-time duration pending? cache-pct from-cache?]
+                [seek-bar cur-time duration pending? cache-pct from-cache? cached?]
                 [:span#player-duration.player-time (fmt-time duration)]]
                [:div.player-buttons-row
                 [:button.btn-seek {:on-click #(rf/dispatch [::events/audio-seek-relative -15])}

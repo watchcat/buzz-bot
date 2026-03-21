@@ -777,12 +777,12 @@ main {
   cursor: pointer;
   background: linear-gradient(
     to right,
-    var(--play-color, var(--button-color))    0%,
-    var(--play-color, var(--button-color))    var(--pct),
-    #4caf50                                  var(--pct),
-    #4caf50                                  var(--cache-pct, 0%),
-    rgba(0,0,0,0.15)                         var(--cache-pct, 0%),
-    rgba(0,0,0,0.15)                         100%
+    var(--play-color, var(--button-color))          0%,
+    var(--play-color, var(--button-color))          var(--pct),
+    #4caf50                                         var(--pct),
+    #4caf50                                         var(--cache-pct, 0%),
+    var(--track-bg, rgba(0,0,0,0.15))               var(--cache-pct, 0%),
+    var(--track-bg, rgba(0,0,0,0.15))               100%
   );
 }
 
