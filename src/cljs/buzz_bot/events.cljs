@@ -162,15 +162,22 @@
 (rf/reg-event-fx
  ::fetch-player
  (fn [{:keys [db]} [_ episode-id]]
-   (let [order      (name (get-in db [:episodes :order] :desc))
-         ep-id      (str episode-id)
-         cached-ids (get-in db [:cache :cached-ids])
-         cached?    (some #{ep-id} cached-ids)
-         offline?   (not (.-onLine js/navigator))]
+   (let [order        (name (get-in db [:episodes :order] :desc))
+         ep-id        (str episode-id)
+         cached-ids   (get-in db [:cache :cached-ids])
+         cached?      (some #{ep-id} cached-ids)
+         offline?     (not (.-onLine js/navigator))
+         ;; Snapshot playing? at navigation time — it can change during the HTTP
+         ;; round-trip (buffering pause, WebView backgrounding, etc.)
+         was-playing? (get-in db [:audio :playing?])]
      (if (and offline? cached?)
-       {:db       (assoc-in db [:player :loading?] true)
+       {:db       (-> db
+                      (assoc-in [:player :loading?]     true)
+                      (assoc-in [:player :was-playing?] was-playing?))
         :dispatch [::cache-load-blob ep-id]}
-       {:db           (assoc-in db [:player :loading?] true)
+       {:db           (-> db
+                          (assoc-in [:player :loading?]     true)
+                          (assoc-in [:player :was-playing?] was-playing?))
         ::buzz-bot.fx/http-fetch {:method :get
                                   :url    (str "/episodes/" episode-id "/player?order=" order)
                                   :on-ok  [::player-loaded] :on-err [::fetch-error]}}))))
@@ -228,11 +235,13 @@
 (rf/reg-event-fx
  ::player-loaded
  (fn [{:keys [db]} [_ resp]]
-   (let [new-id    (str (get-in resp [:episode :id]))
-         cur-id    (str (get-in db [:audio :episode-id]))
-         playing?  (get-in db [:audio :playing?])
-         episode   (get-in resp [:episode])
-         loading-new? (not (and playing? (not= cur-id new-id)))
+   (let [new-id       (str (get-in resp [:episode :id]))
+         cur-id       (str (get-in db [:audio :episode-id]))
+         ;; Use snapshot from navigation time, not live playing? which may have
+         ;; flipped false during the HTTP round-trip due to a buffering pause.
+         was-playing? (get-in db [:player :was-playing?])
+         episode      (get-in resp [:episode])
+         loading-new? (not (and was-playing? (not= cur-id new-id)))
          db'       (cond-> (-> db
                                (assoc-in [:player :data]        resp)
                                (assoc-in [:player :loading?]    false)
@@ -253,7 +262,7 @@
      (let [autoplay? (get-in db [:view-params :autoplay?])]
        (cond
          (= cur-id new-id)                   {:db db'}
-         (and playing? (not= cur-id new-id)) {:db db' :dispatch [::audio-queue-pending]}
+         (and was-playing? (not= cur-id new-id))  {:db db' :dispatch [::audio-queue-pending]}
          :else {:db db' :dispatch [::audio-load {:autoplay? (boolean autoplay?)}]})))))
 
 ;; ── Bookmarks ────────────────────────────────────────────────────────────────
