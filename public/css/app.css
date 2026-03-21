@@ -777,12 +777,34 @@ main {
   cursor: pointer;
   background: linear-gradient(
     to right,
-    var(--play-color, var(--button-color))          0%,
-    var(--play-color, var(--button-color))          var(--pct),
-    #4caf50                                         var(--pct),
-    #4caf50                                         var(--cache-pct, 0%),
-    var(--track-bg, rgba(0,0,0,0.15))               var(--cache-pct, 0%),
-    var(--track-bg, rgba(0,0,0,0.15))               100%
+    var(--button-color)       0%,
+    var(--button-color)       var(--pct),
+    #4caf50                   var(--pct),
+    #4caf50                   var(--cache-pct, 0%),
+    rgba(0,0,0,0.15)          var(--cache-pct, 0%),
+    rgba(0,0,0,0.15)          100%
+  );
+}
+
+/* Episode is fully cached but playing from network stream */
+.player-seek-bar.player-seek-bar--cached {
+  background: linear-gradient(
+    to right,
+    var(--button-color)  0%,
+    var(--button-color)  var(--pct),
+    #81c784              var(--pct),
+    #81c784              100%
+  );
+}
+
+/* Playing from cached blob */
+.player-seek-bar.player-seek-bar--from-cache {
+  background: linear-gradient(
+    to right,
+    #4caf50   0%,
+    #4caf50   var(--pct),
+    #81c784   var(--pct),
+    #81c784   100%
   );
 }
 

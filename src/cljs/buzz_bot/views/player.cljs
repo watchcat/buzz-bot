@@ -22,10 +22,10 @@
      {:type      "range" :min 0 :max 100 :step 0.1
       :value     pct
       :disabled  pending?
-      :style     {"--pct"        (str (.toFixed pct 2) "%")
-                  "--cache-pct"  (str (.toFixed cpct 2) "%")
-                  "--play-color" (when from-cache? "#4caf50")
-                  "--track-bg"   (when (or from-cache? cached?) "rgba(76,175,80,0.25)")}
+      :class     (cond from-cache? "player-seek-bar--from-cache"
+                       cached?     "player-seek-bar--cached")
+      :style     {"--pct"       (str (.toFixed pct 2) "%")
+                  "--cache-pct" (str (.toFixed cpct 2) "%")}
       :on-change #(when (pos? duration)
                     (rf/dispatch [::events/audio-seek
                                   (* (/ (.. % -target -value) 100) duration)]))}]))
