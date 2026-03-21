@@ -3,11 +3,12 @@
             [buzz-bot.subs :as subs]
             [buzz-bot.events :as events]))
 
-(defn- episode-item [ep playing-id]
+(defn- episode-item [ep playing-id cached-ids]
   [:li.episode-item
    {:class           (cond-> ""
-                       (:listened ep)                       (str " listened")
-                       (= (str (:id ep)) (str playing-id)) (str " is-playing"))
+                       (:listened ep)                              (str " listened")
+                       (= (str (:id ep)) (str playing-id))        (str " is-playing")
+                       (contains? cached-ids (str (:id ep)))      (str " cached"))
     :data-episode-id (str (:id ep))
     :on-click        #(rf/dispatch [::events/navigate :player
                                     {:episode-id (:id ep) :from "episodes"}])}
@@ -16,11 +17,12 @@
    [:span.episode-play-icon "▶"]])
 
 (defn view []
-  (let [episodes  @(rf/subscribe [::subs/episodes-list])
-        loading?  @(rf/subscribe [::subs/episodes-loading?])
-        has-more? @(rf/subscribe [::subs/episodes-has-more?])
-        order     @(rf/subscribe [::subs/episodes-order])
+  (let [episodes   @(rf/subscribe [::subs/episodes-list])
+        loading?   @(rf/subscribe [::subs/episodes-loading?])
+        has-more?  @(rf/subscribe [::subs/episodes-has-more?])
+        order      @(rf/subscribe [::subs/episodes-order])
         playing-id @(rf/subscribe [::subs/audio-episode-id])
+        cached-ids @(rf/subscribe [::subs/cached-ids])
         {:keys [feed-id feed-url]} @(rf/subscribe [:buzz-bot.subs/view-params])]
     [:div.episodes-container
      [:div.section-header
@@ -58,7 +60,7 @@
         [:ul#episode-list.episode-list
          {:data-feed-id (str feed-id)}
          (for [ep episodes]
-           ^{:key (:id ep)} [episode-item ep playing-id])]
+           ^{:key (:id ep)} [episode-item ep playing-id cached-ids])]
         (when has-more?
           [:button.btn-load-more
            {:on-click #(rf/dispatch [::events/load-more-episodes])

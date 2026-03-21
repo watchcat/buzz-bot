@@ -63,6 +63,7 @@
 (rf/reg-sub ::audio-title    :<- [::audio] (fn [a _] (:title a)))
 (rf/reg-sub ::audio-artist   :<- [::audio] (fn [a _] (:artist a)))
 (rf/reg-sub ::audio-artwork  :<- [::audio] (fn [a _] (:artwork a)))
+(rf/reg-sub ::audio-src      :<- [::audio] (fn [a _] (:src a)))
 
 ;; Cache
 (rf/reg-sub ::cached-ids

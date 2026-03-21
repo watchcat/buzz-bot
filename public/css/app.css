@@ -611,9 +611,9 @@ main {
   font-size: 16px;
 }
 
-/* Cached episodes */
-.episode-item.cached .episode-title {
-  font-weight: 700;
+/* Cached episodes — green bottom border */
+.episode-item.cached {
+  border-bottom: 2px solid #4caf50;
 }
 
 /* Currently playing episode */
@@ -777,12 +777,12 @@ main {
   cursor: pointer;
   background: linear-gradient(
     to right,
-    var(--button-color)    0%,
-    var(--button-color)    var(--pct),
-    #4caf50                var(--pct),
-    #4caf50                var(--cache-pct, 0%),
-    rgba(0,0,0,0.15)       var(--cache-pct, 0%),
-    rgba(0,0,0,0.15)       100%
+    var(--play-color, var(--button-color))    0%,
+    var(--play-color, var(--button-color))    var(--pct),
+    #4caf50                                  var(--pct),
+    #4caf50                                  var(--cache-pct, 0%),
+    rgba(0,0,0,0.15)                         var(--cache-pct, 0%),
+    rgba(0,0,0,0.15)                         100%
   );
 }
 

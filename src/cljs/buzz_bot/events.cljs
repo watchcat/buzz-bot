@@ -194,8 +194,14 @@
          (js/URL.revokeObjectURL blob-url)
          {:dispatch [::fetch-player-forced ep-id]})
        {:db           (-> db
-                          (assoc-in [:player :loading?] false)
+                          (assoc-in [:player :loading?]      false)
                           (assoc-in [:cache :blob-urls ep-id] blob-url)
+                          (assoc-in [:audio :episode-id]     ep-id)
+                          (assoc-in [:audio :title]          (:title meta))
+                          (assoc-in [:audio :artist]         (:artist meta))
+                          (assoc-in [:audio :artwork]        (:artwork meta))
+                          (assoc-in [:audio :src]            blob-url)
+                          (assoc-in [:audio :current-time]   0)
                           (assoc-in [:player :data]
                                     {:episode      meta
                                      :feed         {:title (:artist meta)}
@@ -302,7 +308,9 @@
 (rf/reg-event-fx
  ::audio-load
  (fn [{:keys [db]} [_ opts]]
-   (let [src       (get-in db [:player :data :episode :audio_url])
+   (let [audio-url (get-in db [:player :data :episode :audio_url])
+         blob-url  (get-in db [:cache :blob-urls (str (get-in db [:player :data :episode :id]))])
+         src       (or blob-url audio-url)
          start     (get-in db [:player :data :user_episode :progress_seconds] 0)
          ep-id     (str (get-in db [:player :data :episode :id]))
          autoplay? (:autoplay? opts false)]
@@ -313,10 +321,11 @@
                    :podcast (get-in db [:player :data :episode :feed_title])
                    :artwork (get-in db [:player :data :episode :feed_image_url])})))
      {:db         (-> db
-                      (assoc-in [:audio :episode-id] ep-id)
-                      (assoc-in [:audio :feed-id]    (str (get-in db [:player :data :episode :feed_id])))
-                      (assoc-in [:audio :src]        src)
-                      (assoc-in [:audio :pending?]   false))
+                      (assoc-in [:audio :episode-id]   ep-id)
+                      (assoc-in [:audio :feed-id]      (str (get-in db [:player :data :episode :feed_id])))
+                      (assoc-in [:audio :src]          src)
+                      (assoc-in [:audio :current-time] 0)
+                      (assoc-in [:audio :pending?]     false))
       ::buzz-bot.fx/audio-cmd {:op      :load
                                :src     src
                                :start   start
