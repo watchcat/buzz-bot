@@ -108,8 +108,7 @@
                                              :feed-url (:url feed)}])}
                   (str (or (:title feed) "Feed") " →")])]]
              [:div.player-card
-              (when-let [img (or (get-in data [:episode :episode_image_url])
-                                 (get-in data [:feed :image_url]))]
+              (when-let [img (get-in data [:episode :episode_image_url])]
                 [:img.player-cover {:src img :alt ""}])
               [:div.player-title-row
                [:h2.player-title (:title episode)]
