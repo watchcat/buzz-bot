@@ -106,12 +106,19 @@
 (rf/reg-event-fx
  ::fetch-episodes
  (fn [{:keys [db]} [_ feed-id order]]
-   (let [saved (:saved-list db)
+   (let [;; When revisiting the same feed, send the in-memory order so the
+         ;; server returns episodes in the right order even if the DB default
+         ;; hasn't been saved yet (e.g. user set oldest-first this session).
+         ;; When opening a different feed for the first time, omit order so the
+         ;; server applies its saved preference and we learn it from the response.
+         same-feed?      (= (str (get-in db [:episodes :feed-id])) (str feed-id))
+         effective-order (or order (when same-feed? (get-in db [:episodes :order] :desc)))
+         saved (:saved-list db)
          limit (when (and (= (:view saved) :episodes) (pos? (:count saved)))
                  (:count saved))
          url   (cond-> (str "/episodes?feed_id=" feed-id)
-                 order (str "&order=" (name order))
-                 limit (str "&limit=" limit))]
+                 effective-order (str "&order=" (name effective-order))
+                 limit           (str "&limit=" limit))]
      {:db         (-> db
                       (assoc-in [:episodes :feed-id]  feed-id)
                       (assoc-in [:episodes :list]     [])
