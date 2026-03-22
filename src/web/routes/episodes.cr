@@ -32,6 +32,21 @@ module Web::Routes::Episodes
         order = saved || "desc"
       end
 
+      # If seeking to a specific episode, extend the limit to include its position.
+      seek_to_id = env.params.query["seek_to_id"]?.try(&.to_i64)
+      if seek_to_id
+        dir = order == "asc" ? "ASC" : "DESC"
+        pos = AppDB.pool.query_one?(<<-SQL, feed_id, seek_to_id, as: Int64?)
+          SELECT rn FROM (
+            SELECT id,
+                   ROW_NUMBER() OVER (ORDER BY COALESCE(published_at, created_at) #{dir}, id #{dir}) AS rn
+            FROM episodes
+            WHERE feed_id = $1
+          ) t WHERE id = $2
+        SQL
+        limit = [limit, pos.try(&.to_i32) || limit].max.clamp(1, 500)
+      end
+
       episodes = Episode.for_feed(feed_id, limit + 1, offset, order)
       has_more = episodes.size > limit
       episodes = episodes.first(limit) if has_more

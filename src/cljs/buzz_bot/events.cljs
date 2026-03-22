@@ -113,12 +113,16 @@
          ;; server applies its saved preference and we learn it from the response.
          same-feed?      (= (str (get-in db [:episodes :feed-id])) (str feed-id))
          effective-order (or order (when same-feed? (get-in db [:episodes :order] :desc)))
+         ;; seek-to-id tells the server to extend the limit to include this episode,
+         ;; so it's always in the response regardless of its position in the feed.
+         seek-to-id      (get-in db [:episodes :restore-to-id])
          saved (:saved-list db)
          limit (when (and (= (:view saved) :episodes) (pos? (:count saved)))
                  (:count saved))
          url   (cond-> (str "/episodes?feed_id=" feed-id)
                  effective-order (str "&order=" (name effective-order))
-                 limit           (str "&limit=" limit))]
+                 limit           (str "&limit=" limit)
+                 seek-to-id      (str "&seek_to_id=" seek-to-id))]
      {:db         (-> db
                       (assoc-in [:episodes :feed-id]  feed-id)
                       (assoc-in [:episodes :list]     [])
