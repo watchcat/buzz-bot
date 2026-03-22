@@ -14,9 +14,24 @@ module Web::Routes::Episodes
       feed = Feed.find(feed_id)
       halt env, status_code: 404, response: %({"error":"Feed not found"}) unless feed
 
-      limit    = (env.params.query["limit"]?.try(&.to_i32) || 50).clamp(1, 500)
-      offset   = env.params.query["offset"]?.try(&.to_i32) || 0
-      order    = env.params.query["order"]? == "asc" ? "asc" : "desc"
+      limit  = (env.params.query["limit"]?.try(&.to_i32) || 50).clamp(1, 500)
+      offset = env.params.query["offset"]?.try(&.to_i32) || 0
+
+      order_param = env.params.query["order"]?
+      if order_param
+        order = order_param == "asc" ? "asc" : "desc"
+        AppDB.pool.exec(
+          "UPDATE user_feeds SET episode_order = $1 WHERE user_id = $2 AND feed_id = $3",
+          order, user.id, feed_id
+        )
+      else
+        saved = AppDB.pool.query_one?(
+          "SELECT episode_order FROM user_feeds WHERE user_id = $1 AND feed_id = $2",
+          user.id, feed_id, as: String
+        )
+        order = saved || "desc"
+      end
+
       episodes = Episode.for_feed(feed_id, limit + 1, offset, order)
       has_more = episodes.size > limit
       episodes = episodes.first(limit) if has_more
@@ -24,7 +39,7 @@ module Web::Routes::Episodes
       items = Web.build_episode_list(episodes, user.id)
 
       env.response.content_type = "application/json"
-      {episodes: items, has_more: has_more}.to_json
+      {episodes: items, has_more: has_more, episode_order: order}.to_json
     end
 
     # Get player data for a single episode

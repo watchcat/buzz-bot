@@ -105,12 +105,12 @@
 
 (rf/reg-event-fx
  ::fetch-episodes
- (fn [{:keys [db]} [_ feed-id]]
-   (let [order (get-in db [:episodes :order] :desc)
-         saved (:saved-list db)
+ (fn [{:keys [db]} [_ feed-id order]]
+   (let [saved (:saved-list db)
          limit (when (and (= (:view saved) :episodes) (pos? (:count saved)))
                  (:count saved))
-         url   (cond-> (str "/episodes?feed_id=" feed-id "&order=" (name order))
+         url   (cond-> (str "/episodes?feed_id=" feed-id)
+                 order (str "&order=" (name order))
                  limit (str "&limit=" limit))]
      {:db         (-> db
                       (assoc-in [:episodes :feed-id]  feed-id)
@@ -124,11 +124,14 @@
  ::episodes-loaded
  (fn [{:keys [db]} [_ resp]]
    (let [restore-id (get-in db [:episodes :restore-to-id])
+         server-order (some-> (:episode_order resp) keyword)
          db'        (-> db
                         (assoc-in [:episodes :list]           (:episodes resp))
                         (assoc-in [:episodes :has-more?]      (:has_more resp))
                         (assoc-in [:episodes :loading?]       false)
-                        (assoc-in [:episodes :restore-to-id]  nil))
+                        (assoc-in [:episodes :restore-to-id]  nil)
+                        (cond-> server-order
+                          (assoc-in [:episodes :order] server-order)))
          playing-id (get-in db [:audio :episode-id])
          eps        (:episodes resp)
          scroll-id  (or (when (and restore-id
@@ -166,7 +169,7 @@
  (fn [{:keys [db]} [_ order]]
    (let [feed-id (get-in db [:episodes :feed-id])]
      {:db       (assoc-in db [:episodes :order] order)
-      :dispatch [::fetch-episodes feed-id]})))
+      :dispatch [::fetch-episodes feed-id order]})))
 
 ;; ── Player ───────────────────────────────────────────────────────────────────
 
