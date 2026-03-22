@@ -4,6 +4,27 @@
             [buzz-bot.subs :as subs]
             [buzz-bot.events :as events]))
 
+(defn- fmt-pub-date [published-at]
+  (when published-at
+    (let [d      (js/Date. published-at)
+          months #js ["Jan" "Feb" "Mar" "Apr" "May" "Jun"
+                      "Jul" "Aug" "Sep" "Oct" "Nov" "Dec"]]
+      (str (aget months (.getMonth d)) " " (.getDate d) ", " (.getFullYear d)))))
+
+(defn- fmt-duration [sec]
+  (when (and sec (pos? sec))
+    (let [h (js/Math.floor (/ sec 3600))
+          m (js/Math.floor (/ (mod sec 3600) 60))]
+      (if (pos? h) (str h "h " m "m") (str m " min")))))
+
+(defn- episode-meta [ep]
+  (let [date-str (fmt-pub-date (:published_at ep))
+        dur-str  (fmt-duration (:duration_seconds ep))
+        meta-str (cond (and date-str dur-str) (str date-str " · " dur-str)
+                       date-str date-str
+                       dur-str  dur-str)]
+    (when meta-str [:span.episode-meta meta-str])))
+
 (defn- episode-visible? [ep filters]
   (let [{:keys [hide-listened? excluded-feeds]} filters]
     (and (not (and hide-listened? (:listened ep)))
@@ -19,9 +40,12 @@
     :data-feed-id    (str (:feed_id ep))
     :on-click        #(rf/dispatch [::events/navigate :player
                                     {:episode-id (:id ep) :from "inbox"}])}
+   (when-let [img (:feed_image_url ep)]
+     [:img.episode-thumb {:src img :alt ""}])
    [:div.episode-info
     [:span.episode-feed-name (:feed_title ep)]
-    [:strong.episode-title   (:title ep)]]
+    [:strong.episode-title   (:title ep)]
+    [episode-meta ep]]
    [:span.episode-play-icon "▶"]])
 
 (defn- compact-group [eps playing-id cached-ids expanded-feeds-atom]
@@ -41,9 +65,12 @@
           :data-feed-id    (str feed-id)
           :on-click        #(rf/dispatch [::events/navigate :player
                                           {:episode-id (:id (first eps)) :from "inbox"}])}
+         (when-let [img (:feed_image_url (first eps))]
+           [:img.episode-thumb {:src img :alt ""}])
          [:div.episode-info
           [:span.episode-feed-name (:feed_title (first eps))]
-          [:strong.episode-title   (:title (first eps))]]
+          [:strong.episode-title   (:title (first eps))]
+          [episode-meta (first eps)]]
          [:span.episode-play-icon "▶"]
          [:button.compact-expand-btn
           {:on-click (fn [e]

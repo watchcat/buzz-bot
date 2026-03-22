@@ -3,18 +3,37 @@
             [buzz-bot.subs :as subs]
             [buzz-bot.events :as events]))
 
+(defn- fmt-pub-date [published-at]
+  (when published-at
+    (let [d      (js/Date. published-at)
+          months #js ["Jan" "Feb" "Mar" "Apr" "May" "Jun"
+                      "Jul" "Aug" "Sep" "Oct" "Nov" "Dec"]]
+      (str (aget months (.getMonth d)) " " (.getDate d) ", " (.getFullYear d)))))
+
+(defn- fmt-duration [sec]
+  (when (and sec (pos? sec))
+    (let [h (js/Math.floor (/ sec 3600))
+          m (js/Math.floor (/ (mod sec 3600) 60))]
+      (if (pos? h) (str h "h " m "m") (str m " min")))))
+
 (defn- episode-item [ep playing-id cached-ids]
-  [:li.episode-item
-   {:class           (cond-> ""
-                       (:listened ep)                              (str " listened")
-                       (= (str (:id ep)) (str playing-id))        (str " is-playing")
-                       (contains? cached-ids (str (:id ep)))      (str " cached"))
-    :data-episode-id (str (:id ep))
-    :on-click        #(rf/dispatch [::events/navigate :player
-                                    {:episode-id (:id ep) :from "episodes"}])}
-   [:div.episode-info
-    [:span.episode-title (:title ep)]]
-   [:span.episode-play-icon "▶"]])
+  (let [date-str (fmt-pub-date (:published_at ep))
+        dur-str  (fmt-duration (:duration_seconds ep))
+        meta-str (cond (and date-str dur-str) (str date-str " · " dur-str)
+                       date-str date-str
+                       dur-str  dur-str)]
+    [:li.episode-item
+     {:class           (cond-> ""
+                         (:listened ep)                              (str " listened")
+                         (= (str (:id ep)) (str playing-id))        (str " is-playing")
+                         (contains? cached-ids (str (:id ep)))      (str " cached"))
+      :data-episode-id (str (:id ep))
+      :on-click        #(rf/dispatch [::events/navigate :player
+                                      {:episode-id (:id ep) :from "episodes"}])}
+     [:div.episode-info
+      [:span.episode-title (:title ep)]
+      (when meta-str [:span.episode-meta meta-str])]
+     [:span.episode-play-icon "▶"]]))
 
 (defn view []
   (let [episodes   @(rf/subscribe [::subs/episodes-list])

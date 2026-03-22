@@ -5,6 +5,19 @@
             [buzz-bot.events :as events]
             [buzz-bot.fx :as fx]))
 
+(defn- fmt-pub-date [published-at]
+  (when published-at
+    (let [d      (js/Date. published-at)
+          months #js ["Jan" "Feb" "Mar" "Apr" "May" "Jun"
+                      "Jul" "Aug" "Sep" "Oct" "Nov" "Dec"]]
+      (str (aget months (.getMonth d)) " " (.getDate d) ", " (.getFullYear d)))))
+
+(defn- fmt-duration [sec]
+  (when (and sec (pos? sec))
+    (let [h (js/Math.floor (/ sec 3600))
+          m (js/Math.floor (/ (mod sec 3600) 60))]
+      (if (pos? h) (str h "h " m "m") (str m " min")))))
+
 (defn- fmt-time [sec]
   (if (or (js/isNaN sec) (neg? sec) (not (js/isFinite sec)))
     "--:--"
@@ -95,6 +108,9 @@
                                              :feed-url (:url feed)}])}
                   (str (or (:title feed) "Feed") " →")])]]
              [:div.player-card
+              (when-let [img (or (get-in data [:feed :image_url])
+                                 (get-in data [:episode :feed_image_url]))]
+                [:img.player-cover {:src img :alt ""}])
               [:div.player-title-row
                [:h2.player-title (:title episode)]
                (when-let [rss-url (:url feed)]
@@ -116,6 +132,13 @@
                  [:path {:d "M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"}]
                  [:polyline {:points "16 6 12 2 8 6"}]
                  [:line {:x1 "12" :y1 "2" :x2 "12" :y2 "15"}]]]]
+
+              (let [date-str (fmt-pub-date (get-in data [:episode :published_at]))
+                    dur-str  (fmt-duration (get-in data [:episode :duration_seconds]))
+                    meta-str (cond (and date-str dur-str) (str date-str " · " dur-str)
+                                   date-str date-str
+                                   dur-str  dur-str)]
+                (when meta-str [:div.player-episode-meta meta-str]))
 
               (when @share-open?
                 [:div.share-panel
