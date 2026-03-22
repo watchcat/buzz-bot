@@ -272,7 +272,7 @@
                    :audio_url (:audio_url episode)})))
      (let [autoplay? (get-in db [:view-params :autoplay?])]
        (cond
-         (= cur-id new-id)                   {:db db'}
+         (= cur-id new-id)                   {:db (assoc-in db' [:audio :pending?] false)}
          (and was-playing? (not= cur-id new-id))  {:db db' :dispatch [::audio-queue-pending]}
          :else {:db db' :dispatch [::audio-load {:autoplay? (boolean autoplay?)}]})))))
 
