@@ -164,10 +164,13 @@ module Web::Routes::Episodes
           else
             env.response.status_code = resp.status_code
             env.response.content_type = resp.content_type || "audio/mpeg"
-            if cl = resp.headers["Content-Length"]?
-              env.response.headers["Content-Length"] = cl
+            begin
+              IO.copy(resp.body_io, env.response)
+            rescue IO::Error
+              # Upstream closed early or client disconnected — headers already sent,
+              # nothing we can do except stop copying. Don't let the exception
+              # propagate to Kemal's rescue block (which would cause a TCP RST).
             end
-            IO.copy(resp.body_io, env.response)
             streamed = true
           end
         end
@@ -175,7 +178,7 @@ module Web::Routes::Episodes
       nil
     rescue ex
       Log.error { "audio_proxy error: #{ex.message}" }
-      env.response.status_code = 502
+      env.response.status_code = 502 unless streamed
       "Proxy error"
     end
 
