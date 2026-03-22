@@ -5,6 +5,13 @@ FROM crystallang/crystal:latest-alpine AS builder
 
 WORKDIR /app
 
+# ── ClojureScript bundle ──────────────────────────────────────────────────────
+RUN apk add --no-cache nodejs npm openjdk21-jre-headless
+COPY package.json package-lock.json shadow-cljs.edn ./
+RUN npm ci
+COPY src/cljs/ ./src/cljs/
+RUN node node_modules/.bin/shadow-cljs release app
+
 # ── Crystal dependencies ──────────────────────────────────────────────────────
 COPY shard.yml shard.lock* ./
 RUN shards install --production
@@ -37,7 +44,7 @@ open(path, 'w').write(src)
 print('crystal-pg patched OK')
 PYEOF
 
-# Copy source + pre-built public/ (JS compiled locally by deploy.sh before docker build)
+# Copy Crystal source + public assets (public/js/main.js already built above)
 COPY src/ ./src/
 COPY public/ ./public/
 

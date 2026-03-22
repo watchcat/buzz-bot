@@ -131,7 +131,7 @@ module FeedRefresher
     parsed.episodes.each do |ep|
       result = Episode.upsert(
         feed.id, ep.guid, ep.title, ep.description,
-        ep.audio_url, ep.duration_sec, ep.published_at
+        ep.audio_url, ep.duration_sec, ep.published_at, ep.image_url
       )
       new_count += 1 if result
     rescue ex

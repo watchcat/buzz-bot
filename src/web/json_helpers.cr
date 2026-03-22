@@ -11,10 +11,11 @@ module Web
     property description      : String?
     property published_at     : Time?
     property duration_seconds : Int32?
-    property feed_id          : Int64
-    property feed_title       : String
-    property feed_image_url   : String?
-    property listened         : Bool
+    property feed_id            : Int64
+    property feed_title         : String
+    property feed_image_url     : String?
+    property episode_image_url  : String?
+    property listened           : Bool
     property progress_seconds : Int32
     property liked            : Bool
 
@@ -26,10 +27,11 @@ module Web
       @description      = ep.description
       @published_at     = ep.published_at
       @duration_seconds = ep.duration_sec
-      @feed_id          = ep.feed_id
-      @feed_title       = feed_title
-      @feed_image_url   = feed_image_url
-      @listened         = ue.try(&.completed) || false
+      @feed_id           = ep.feed_id
+      @feed_title        = feed_title
+      @feed_image_url    = feed_image_url
+      @episode_image_url = ep.image_url
+      @listened          = ue.try(&.completed) || false
       @progress_seconds = ue.try(&.progress_seconds) || 0
       @liked            = ue.try(&.liked) == true
     end

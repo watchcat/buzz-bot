@@ -40,7 +40,7 @@
     :data-feed-id    (str (:feed_id ep))
     :on-click        #(rf/dispatch [::events/navigate :player
                                     {:episode-id (:id ep) :from "inbox"}])}
-   (when-let [img (:feed_image_url ep)]
+   (when-let [img (or (:episode_image_url ep) (:feed_image_url ep))]
      [:img.episode-thumb {:src img :alt ""}])
    [:div.episode-info
     [:span.episode-feed-name (:feed_title ep)]

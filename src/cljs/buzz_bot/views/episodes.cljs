@@ -30,6 +30,8 @@
       :data-episode-id (str (:id ep))
       :on-click        #(rf/dispatch [::events/navigate :player
                                       {:episode-id (:id ep) :from "episodes"}])}
+     (when-let [img (:episode_image_url ep)]
+       [:img.episode-thumb {:src img :alt ""}])
      [:div.episode-info
       [:span.episode-title (:title ep)]
       (when meta-str [:span.episode-meta meta-str])]
