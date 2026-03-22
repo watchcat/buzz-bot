@@ -1,16 +1,16 @@
 require "http/client"
 require "json"
-require "ecr"
 
 module Web::Routes::Search
   APPLE_SEARCH_API = "https://itunes.apple.com/search"
 
   struct PodcastResult
-    property name : String
-    property author : String
-    property feed_url : String
-    property artwork_url : String?
-    property genre : String?
+    include JSON::Serializable
+    property name          : String
+    property author        : String
+    property feed_url      : String
+    property artwork_url   : String?
+    property genre         : String?
     property episode_count : Int32?
 
     def initialize(@name, @author, @feed_url, @artwork_url, @genre, @episode_count)
@@ -18,7 +18,7 @@ module Web::Routes::Search
   end
 
   def self.register
-    # Search Apple Podcasts catalog — returns HTMX fragment
+    # Search Apple Podcasts catalog — returns JSON
     get "/search" do |env|
       user = Auth.current_user(env)
       halt env, status_code: 401, response: "Unauthorized" unless user
@@ -26,29 +26,29 @@ module Web::Routes::Search
       query = env.params.query["q"]?.try(&.strip)
 
       if query.nil? || query.empty?
-        env.response.content_type = "text/html"
-        next %(<div id="search-results"></div>)
+        env.response.content_type = "application/json"
+        next {results: [] of PodcastResult}.to_json
       end
 
       begin
         results = query_apple(query)
-        env.response.content_type = "text/html"
-        ECR.render "src/views/search_results.ecr"
+        env.response.content_type = "application/json"
+        {results: results}.to_json
       rescue ex
         Log.warn { "Apple search error: #{ex.message}" }
         env.response.status_code = 422
-        env.response.content_type = "text/html"
-        %(<div class="error">Search failed: #{HTML.escape(ex.message || "unknown error")}</div>)
+        env.response.content_type = "application/json"
+        {error: ex.message || "unknown error"}.to_json
       end
     end
 
-    # Subscribe from search results — returns a swapped button fragment
+    # Subscribe from search results
     post "/search/subscribe" do |env|
       user = Auth.current_user(env)
       halt env, status_code: 401, response: "Unauthorized" unless user
 
       url = env.params.body["url"]?.try(&.strip)
-      halt env, status_code: 400, response: "URL required" unless url && !url.empty?
+      halt env, status_code: 400, response: %({"error":"URL required"}) unless url && !url.empty?
 
       begin
         parsed = RSS.fetch_and_parse(url)
@@ -62,13 +62,12 @@ module Web::Routes::Search
           end
         end
 
-        feeds = Feed.for_user(user.id)
-        env.response.content_type = "text/html"
-        ECR.render "src/views/subscribe_success.ecr"
+        env.response.content_type = "application/json"
+        {feed: feed}.to_json
       rescue ex
         env.response.status_code = 422
-        env.response.content_type = "text/html"
-        %(<button class="btn-subscribe-error" title="#{HTML.escape(ex.message || "error")}">Failed — tap to retry</button>)
+        env.response.content_type = "application/json"
+        {error: ex.message || "unknown error"}.to_json
       end
     end
   end

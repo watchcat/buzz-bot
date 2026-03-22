@@ -4,12 +4,17 @@ A Telegram bot and Mini App for podcast listening. Subscribe to RSS feeds, track
 
 ## Features
 
-- **RSS subscriptions** — add any podcast by URL; bulk-import via OPML
-- **Episode player** — native audio playback inside Telegram with resume-from-position
-- **Progress tracking** — listening position saved automatically every 5 seconds
-- **Like / Dislike signals** — rate episodes to train recommendations
-- **Collaborative filtering** — surface episodes liked by users with similar taste
-- **Telegram-native UI** — adapts to the user's Telegram theme (dark/light, accent colours)
+- **RSS subscriptions** — add any podcast by RSS URL; bulk-import via OPML
+- **Podcast search** — search by name via the Apple Podcasts directory and subscribe in one tap
+- **Episode inbox** — unified feed of unheard episodes across all subscriptions, with "hide listened" and compact grouping filters
+- **Bookmarks** — bookmark episodes with a single tap; search your saved episodes
+- **Episode player** — native audio playback inside Telegram with resume-from-position, variable speed (1×/1.5×/2×), and ±15/30 s skip
+- **Autoplay** — automatically advance to the next episode in a feed when one finishes
+- **Progress tracking** — listening position saved automatically every 5 seconds; offline saves queued and replayed on reconnect
+- **Offline caching** — episode audio is progressively downloaded and cached; the player switches to the local copy after 5 minutes of buffering ahead, enabling interrupted listening
+- **Collaborative filtering recommendations** — surface episodes liked by users with similar taste
+- **Share & send** — share any episode via Telegram's share sheet, or send the audio file directly to your own Telegram chat (premium)
+- **Telegram-native UI** — adapts to the user's Telegram theme (dark/light, accent colours); persistent mini-player stays visible while browsing
 
 ## Tech Stack
 
@@ -20,7 +25,9 @@ A Telegram bot and Mini App for podcast listening. Subscribe to RSS feeds, track
 | Telegram bot | [Tourmaline](https://github.com/protoncr/tourmaline) |
 | Database driver | [crystal-pg](https://github.com/will/crystal-pg) + [crystal-db](https://github.com/crystal-lang/crystal-db) |
 | Database | PostgreSQL (tested with [Neon](https://neon.tech)) |
-| Frontend | HTMX + Telegram WebApp JS SDK |
+| Frontend | ClojureScript · [re-frame](https://github.com/day8/re-frame) · [Reagent](https://reagent-project.github.io/) |
+| Frontend build | [shadow-cljs](https://github.com/thheller/shadow-cljs) |
+| Service Worker | Custom SW for offline audio caching and offline write queue |
 | Deployment | Docker · k3s on Hetzner (via [hetzner-k3s](https://github.com/vitobotta/hetzner-k3s)) |
 
 ---
@@ -30,6 +37,7 @@ A Telegram bot and Mini App for podcast listening. Subscribe to RSS feeds, track
 ### Prerequisites
 
 - Crystal >= 1.6 and `shards` (for local development)
+- Node.js >= 18 and npm (to build the ClojureScript frontend)
 - Docker and Docker Compose (for production)
 - A PostgreSQL database (Neon free tier works)
 - A Telegram bot token from [@BotFather](https://t.me/BotFather)
@@ -41,6 +49,7 @@ A Telegram bot and Mini App for podcast listening. Subscribe to RSS feeds, track
 git clone https://github.com/yourname/buzz-bot.git
 cd buzz-bot
 shards install
+npm install
 ```
 
 ### 2. Configure environment
@@ -75,6 +84,8 @@ If you have `psql` available:
 ```sh
 psql "$DATABASE_URL" -f migrations/001_initial.sql
 psql "$DATABASE_URL" -f migrations/002_feed_refresh.sql
+psql "$DATABASE_URL" -f migrations/003_guid_per_feed.sql
+psql "$DATABASE_URL" -f migrations/004_subscriptions.sql
 ```
 
 Or use the included Crystal migration runner (no `psql` required — uses the same DB driver as the app):
@@ -83,7 +94,19 @@ Or use the included Crystal migration runner (no `psql` required — uses the sa
 crystal run migrate.cr
 ```
 
-### 4a. Run locally
+### 4. Build the frontend
+
+```sh
+# Development — fast incremental builds with live reloading
+npx shadow-cljs watch app
+
+# Production — minified output (also run by the Dockerfile)
+npx shadow-cljs release app
+```
+
+The compiled output lands in `public/js/main.js`.
+
+### 5a. Run locally
 
 Both the Telegram webhook and the Mini App require a public HTTPS URL — Telegram's servers push updates to `/webhook`, and Telegram's WebView refuses to load `http://` Mini App links. Use Cloudflare Tunnel to expose your local server for both — see [Local Development with Cloudflare Tunnel](#local-development-with-cloudflare-tunnel) below.
 
@@ -93,13 +116,13 @@ crystal run src/buzz_bot.cr
 
 On startup the bot automatically calls `setWebhook` to register `WEBHOOK_URL` with Telegram.
 
-### 4b. Run with Docker (single server)
+### 5b. Run with Docker (single server)
 
 ```sh
 docker compose up -d
 ```
 
-The image is built in two stages: a Crystal/Alpine builder compiles a fully static binary, which is then copied into a minimal Alpine runtime image.
+The image is built in two stages: a Crystal/Alpine builder compiles a fully static binary and runs `npx shadow-cljs release app`; the output is copied into a minimal Alpine runtime image.
 
 ---
 
@@ -114,8 +137,6 @@ A single `cpx11` node (2 vCPU, 2 GB RAM, ~€4/mo) is enough for the bot. The se
 
 ### 1. Install hetzner-k3s
 
-The binary is statically linked and runs on NixOS without any `nix-shell` wrapper:
-
 ```sh
 curl -L https://github.com/vitobotta/hetzner-k3s/releases/download/v2.4.6/hetzner-k3s-linux-amd64 \
   -o ~/.local/bin/hetzner-k3s
@@ -123,32 +144,19 @@ chmod +x ~/.local/bin/hetzner-k3s
 hetzner-k3s --version   # should print 2.4.6
 ```
 
+> **NixOS note:** use `k8s/hetzner-k3s.sh` instead of `hetzner-k3s` directly. The wrapper sets `SSL_CERT_FILE` and `ZONEINFO` which the statically-compiled binary cannot locate on NixOS.
+
 ### 2. Create the cluster
 
-Edit `k8s/cluster.yaml` and fill in your Hetzner API token (create one at [console.hetzner.cloud](https://console.hetzner.cloud) → Security → API Tokens):
-
-```yaml
-hetzner_token: <YOUR_HETZNER_API_TOKEN>
-```
-
-Then create the cluster (takes ~3 minutes):
+Edit `k8s/cluster.yaml` and fill in your Hetzner API token, then:
 
 ```sh
 ./k8s/hetzner-k3s.sh create --config k8s/cluster.yaml
-```
-
-> **NixOS note:** use `k8s/hetzner-k3s.sh` instead of `hetzner-k3s` directly. The wrapper sets `SSL_CERT_FILE` and `ZONEINFO` which the statically-compiled Crystal binary cannot locate on its own because NixOS doesn't follow standard FHS paths.
-
-This creates a single `cpx11` node in Nuremberg (`nbg1`), installs k3s, and writes `k8s/kubeconfig`.
-
-```sh
 export KUBECONFIG=k8s/kubeconfig
 kubectl get nodes   # should show one Ready node
 ```
 
 ### 3. Install cert-manager
-
-cert-manager handles Let's Encrypt certificate issuance and renewal automatically:
 
 ```sh
 kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.17.0/cert-manager.yaml
@@ -158,87 +166,45 @@ kubectl wait --for=condition=ready pod -l app.kubernetes.io/instance=cert-manage
 
 ### 4. Create secrets
 
-Copy the example and fill in real values:
-
 ```sh
 cp k8s/secret.example.yaml k8s/secret.yaml
+# Edit k8s/secret.yaml — fill in BOT_TOKEN, DATABASE_URL, BASE_URL, etc.
+
+cp k8s/cert-issuer.yaml k8s/cert-issuer.yaml
+# Replace <YOUR_EMAIL> with your Let's Encrypt registration email
 ```
-
-Edit `k8s/secret.yaml`:
-
-```yaml
-stringData:
-  BOT_TOKEN: "your-telegram-bot-token"
-  WEBHOOK_URL: "http://buzz-bot:3000/webhook"   # internal cluster URL (plain HTTP is fine — stays inside the cluster)
-  DATABASE_URL: "postgresql://user:pass@host/db?sslmode=require"
-  PORT: "3000"
-  BASE_URL: "https://app.yourdomain.com"
-  TELEGRAM_API_SERVER: "http://telegram-bot-api:8081/"   # remove if not using local bot API server
-```
-
-Edit `k8s/cert-issuer.yaml` and replace `<YOUR_EMAIL>` with your Let's Encrypt registration email.
 
 ### 5. Point DNS to the node
 
-Find the node's public IP:
-
 ```sh
-kubectl get nodes -o wide
-# NAME           STATUS   ...  EXTERNAL-IP
-# buzz-bot-...   Ready    ...  65.21.x.x
+kubectl get nodes -o wide   # note EXTERNAL-IP
+# Set an A record: app.yourdomain.com → <EXTERNAL-IP>
 ```
 
-In your DNS provider, set:
-
-```
-app.yourdomain.com  A  65.21.x.x
-```
-
-Use a short TTL (60 s) so the change propagates quickly. cert-manager needs this record to be live before it can issue a certificate — it proves domain ownership by serving a challenge token via Traefik on port 80.
-
-### 6. Deploy the app
+### 6. Deploy
 
 ```sh
 kubectl apply -f k8s/namespace.yaml
 kubectl apply -f k8s/secret.yaml
 kubectl apply -f k8s/cert-issuer.yaml
 kubectl apply -f k8s/deployment.yaml k8s/service.yaml k8s/ingress.yaml
+./k8s/deploy.sh   # builds image, transfers to node, rolls out
 ```
-
-Build and push the image, then roll it out:
-
-```sh
-# Authenticate with GitHub Container Registry once
-echo $GITHUB_TOKEN | docker login ghcr.io -u USERNAME --password-stdin
-
-./k8s/deploy.sh        # builds ghcr.io/watchcat/buzz-bot:<git-sha>, pushes, rolls out
-```
-
-cert-manager issues the TLS certificate automatically within ~30 seconds of DNS propagating.
 
 ### 7. Verify
 
 ```sh
-kubectl get pods -n buzz-bot        # buzz-bot pod should be Running
+kubectl get pods -n buzz-bot
 kubectl logs -n buzz-bot deploy/buzz-bot -f   # should show "Webhook registered"
-curl https://app.yourdomain.com/    # should return HTTP 200
+curl https://app.yourdomain.com/              # should return HTTP 200
 ```
 
 ### Day-2 operations
 
 ```sh
-# Redeploy after code changes
-./k8s/deploy.sh
-
-# View live logs
-kubectl logs -n buzz-bot deploy/buzz-bot -f
-
-# Apply updated secret (e.g. after rotating BOT_TOKEN)
-kubectl apply -f k8s/secret.yaml
-kubectl rollout restart deployment/buzz-bot -n buzz-bot
-
-# Delete the cluster entirely
-./k8s/hetzner-k3s.sh delete --config k8s/cluster.yaml
+./k8s/deploy.sh                              # redeploy after code changes
+kubectl logs -n buzz-bot deploy/buzz-bot -f  # live logs
+./k8s/hetzner-k3s.sh delete --config k8s/cluster.yaml  # tear down cluster
 ```
 
 ---
@@ -247,28 +213,11 @@ kubectl rollout restart deployment/buzz-bot -n buzz-bot
 
 By default bots are limited to 50 MB for file uploads/downloads. Running a local [Telegram Bot API server](https://github.com/tdlib/telegram-bot-api) inside the cluster removes this limit (up to 2 GB).
 
-### How it works
-
-```
-Telegram ◄──outbound──► telegram-bot-api pod (port 8081, ClusterIP)
-                                │
-                  forwards updates via HTTP
-                                │
-                                ▼
-                         buzz-bot :3000/webhook   (internal cluster DNS)
-```
-
-The bot API server is not publicly exposed — it communicates outbound to Telegram and inbound to `buzz-bot` entirely within the cluster. `WEBHOOK_URL` uses the internal service name (`http://buzz-bot:3000/webhook`) because the local bot API server allows plain HTTP in `--local` mode.
-
-### Get API credentials
-
-Go to [my.telegram.org](https://my.telegram.org) → *API development tools* and create an application. You need the **App api_id** and **App api_hash** — these are separate from the bot token.
-
 ### Deploy
 
 ```sh
 cp k8s/tg-api-secret.example.yaml k8s/tg-api-secret.yaml
-# Edit k8s/tg-api-secret.yaml — fill in TELEGRAM_API_ID and TELEGRAM_API_HASH
+# Edit — fill in TELEGRAM_API_ID and TELEGRAM_API_HASH from my.telegram.org
 
 kubectl apply -f k8s/tg-api-secret.yaml
 kubectl apply -f k8s/tg-api-pvc.yaml
@@ -276,142 +225,70 @@ kubectl apply -f k8s/tg-api-deployment.yaml
 kubectl apply -f k8s/tg-api-service.yaml
 ```
 
-### Migrate the bot from api.telegram.org (one-time)
-
-The bot must log out of the official API before the local server can take over:
+### One-time migration from api.telegram.org
 
 ```sh
-curl "https://api.telegram.org/bot<YOUR_BOT_TOKEN>/logOut"
+curl "https://api.telegram.org/bot<TOKEN>/logOut"
 # {"ok":true,"result":true}
 ```
 
-Then redeploy `buzz-bot` with the updated secret (which sets `TELEGRAM_API_SERVER` and the internal `WEBHOOK_URL`):
-
-```sh
-kubectl apply -f k8s/secret.yaml
-kubectl rollout restart deployment/buzz-bot -n buzz-bot
-```
-
-The local bot API server registers the webhook with Telegram automatically on startup.
+Then redeploy `buzz-bot` with `TELEGRAM_API_SERVER` set in the secret.
 
 ---
 
 ## Local Development with Cloudflare Tunnel
 
-Running the Mini App locally requires a public HTTPS URL for **two reasons**:
+Running the Mini App locally requires a public HTTPS URL for two reasons:
 
-1. **Telegram webhooks** — Telegram's servers push updates to your `/webhook` endpoint; it must be reachable from the internet over HTTPS.
-2. **Mini App serving** — Telegram's WebView refuses to load `http://` URLs. When a user taps "Open Buzz-Bot", Telegram fetches `BASE_URL/app` directly. That URL must also be public HTTPS — the same tunnel handles it.
+1. **Telegram webhooks** — Telegram pushes updates to `/webhook` over HTTPS from the internet.
+2. **Mini App serving** — Telegram's WebView refuses `http://` URLs.
 
-[Cloudflare Tunnel](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/) (`cloudflared`) creates a secure tunnel from Cloudflare's edge to your local machine — no port forwarding, no self-signed certificates.
+[Cloudflare Tunnel](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/) (`cloudflared`) handles both without port forwarding or self-signed certificates.
 
 ```
 Telegram servers  ──► https://your-tunnel.com/webhook   (bot updates)
-Telegram WebView  ──► https://your-tunnel.com/app        (Mini App UI)
+Telegram WebView  ──► https://your-tunnel.com/app        (Mini App)
                                │ Cloudflare Tunnel
                                ▼
-                     localhost:3000   (Kemal, all routes)
+                     localhost:3000   (Kemal — all routes)
 ```
 
-Both `WEBHOOK_URL` and `BASE_URL` in `.env` must point to the **same tunnel URL** — the single Kemal server handles all routes.
-
-### Install cloudflared
-
-```sh
-# macOS
-brew install cloudflared
-
-# Linux (amd64)
-curl -L https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 \
-  -o /usr/local/bin/cloudflared
-chmod +x /usr/local/bin/cloudflared
-```
-
-### Option A — Quick tunnel (no account, temporary URL)
+### Quick tunnel (no account needed)
 
 ```sh
 cloudflared tunnel --url http://localhost:3000
 ```
 
-Cloudflare prints a random URL such as `https://random-words.trycloudflare.com`. Update **both** values in `.env` to this URL:
+Update `.env` with the printed URL:
 
 ```env
 WEBHOOK_URL=https://random-words.trycloudflare.com/webhook
 BASE_URL=https://random-words.trycloudflare.com
 ```
 
-`WEBHOOK_URL` is where Telegram pushes bot updates; `BASE_URL` is what the bot sends to users as the Mini App link (the WebView opens `BASE_URL/app`). Both go through the same tunnel.
+> The URL changes on every restart. The app re-registers the webhook on startup automatically, so just restart the app after restarting the tunnel.
 
-> **Note:** The URL changes every time you restart `cloudflared`. Because the app re-registers the webhook on every startup, just restart the app after restarting the tunnel and it will pick up the new URL automatically.
+### One-command launcher
 
-### Option B — Named tunnel (free Cloudflare account, stable URL)
-
-Requires a domain managed by Cloudflare.
-
-**One-time setup:**
+`devrun.sh` starts the tunnel and the app together, handling URL patching automatically:
 
 ```sh
-cloudflared tunnel login                          # opens browser, saves cert
-cloudflared tunnel create buzz-bot                # creates tunnel, prints <tunnel-id>
-cloudflared tunnel route dns buzz-bot app.yourdomain.com
-```
-
-**Configure the tunnel:**
-
-```sh
-cp cloudflared.yml.example ~/.cloudflared/config.yml
-```
-
-Edit `~/.cloudflared/config.yml` — fill in your `<tunnel-id>`, credentials path, and hostname:
-
-```yaml
-tunnel: <tunnel-id>
-credentials-file: /home/<your-user>/.cloudflared/<tunnel-id>.json
-
-ingress:
-  - hostname: app.yourdomain.com
-    service: http://localhost:3000   # all routes: /webhook, /app, /feeds, …
-  - service: http_status:404
-```
-
-A single hostname routes everything — `/webhook` for Telegram's push updates and `/app` (plus all API routes) for the Mini App WebView. Update `.env`:
-
-```env
-WEBHOOK_URL=https://app.yourdomain.com/webhook
-BASE_URL=https://app.yourdomain.com
-```
-
-**Development workflow:**
-
-```sh
-# Terminal 1 — start tunnel
-cloudflared tunnel run buzz-bot
-
-# Terminal 2 — start app
-crystal run src/buzz_bot.cr
-```
-
-The app registers the webhook automatically on startup, so no manual `setWebhook` call is needed.
-
-### One-command launcher: devrun.sh
-
-`devrun.sh` starts the tunnel and the app together, handling URL capture and `.env` patching automatically. Ctrl+C stops both.
-
-```sh
-chmod +x devrun.sh
-
-./devrun.sh           # auto-detects mode: named if ~/.cloudflared/config.yml exists, quick otherwise
+./devrun.sh           # auto-detects: named tunnel if ~/.cloudflared/config.yml exists
 ./devrun.sh --quick   # force quick tunnel (temporary URL, no account needed)
 ./devrun.sh --named   # force named tunnel (requires ~/.cloudflared/config.yml)
 ```
 
-**Quick tunnel flow** — the script:
-1. Starts `cloudflared tunnel --url http://localhost:3000` in the background
-2. Waits up to 30 seconds for the `trycloudflare.com` URL to appear in cloudflared's output
-3. Patches `WEBHOOK_URL` and `BASE_URL` in `.env` with the new URL
-4. Starts `crystal run src/buzz_bot.cr`, which registers the webhook using the updated URL
+**Recommended development workflow:**
 
-**Named tunnel flow** — the script starts `cloudflared tunnel run` (reads `~/.cloudflared/config.yml` automatically), waits 3 seconds for it to connect, then starts the app. The URL in `.env` is already stable so no patching is needed.
+```sh
+# Terminal 1 — ClojureScript watch build (fast incremental)
+npx shadow-cljs watch app
+
+# Terminal 2 — tunnel + Crystal server
+./devrun.sh
+```
+
+The shadow-cljs dev server is not required — Kemal serves `public/js/main.js` directly. Changes to ClojureScript files are picked up by the watch build and a browser refresh loads them.
 
 ---
 
@@ -419,51 +296,80 @@ chmod +x devrun.sh
 
 ```
 buzz-bot/
-├── k8s/
+├── k8s/                           # Kubernetes manifests and deploy script
 │   ├── cluster.yaml               # hetzner-k3s cluster config (1× cpx11, nbg1)
+│   ├── deploy.sh                  # build image → transfer to node → kubectl rollout
 │   ├── namespace.yaml
-│   ├── secret.example.yaml        # env-var Secret template (committed)
-│   ├── secret.yaml                # real credentials (gitignored)
-│   ├── deployment.yaml            # buzz-bot Deployment
-│   ├── service.yaml               # ClusterIP :3000
-│   ├── ingress.yaml               # Traefik ingress + TLS for app.yourdomain.com
-│   ├── cert-issuer.yaml           # Let's Encrypt ClusterIssuer
-│   ├── tg-api-secret.example.yaml # Bot API server credentials template
-│   ├── tg-api-pvc.yaml            # 10 Gi PVC for bot API file cache
-│   ├── tg-api-deployment.yaml     # aiogram/telegram-bot-api (--local mode)
-│   ├── tg-api-service.yaml        # ClusterIP :8081 (internal only)
-│   └── deploy.sh                  # build → push → kubectl rollout
+│   ├── secret.example.yaml        # env-var Secret template
+│   ├── deployment.yaml / service.yaml / ingress.yaml / cert-issuer.yaml
+│   ├── tg-api-*.yaml              # optional self-hosted Bot API server
+│   └── ...
 ├── migrations/
-│   └── 001_initial.sql            # Full schema
+│   ├── 001_initial.sql
+│   ├── 002_feed_refresh.sql
+│   ├── 003_guid_per_feed.sql
+│   └── 004_subscriptions.sql
 ├── public/
-│   ├── css/app.css                # Telegram-themed styles
-│   └── js/app.js                  # WebApp SDK init, HTMX config, audio player
+│   ├── css/app.css                # Telegram-themed styles (dark/light, CSS variables)
+│   ├── js/
+│   │   ├── main.js                # Compiled ClojureScript SPA (shadow-cljs output)
+│   │   └── telegram-web-app.js    # Vendored Telegram WebApp SDK
+│   └── sw.js                      # Service Worker — offline audio cache + write queue
 ├── src/
-│   ├── buzz_bot.cr                # Entry point
+│   ├── buzz_bot.cr                # Entry point — starts Kemal + registers webhook
 │   ├── config.cr                  # ENV accessors
 │   ├── db.cr                      # DB pool singleton (AppDB)
+│   ├── feed_refresher.cr          # Background RSS refresh on feed load
 │   ├── bot/
+│   │   ├── audio_sender.cr        # Sends episode audio to user's Telegram chat
 │   │   ├── client.cr              # Tourmaline client + webhook registration
 │   │   └── handlers.cr            # /start, /help, callback handlers
+│   ├── cljs/buzz_bot/             # ClojureScript SPA
+│   │   ├── core.cljs              # App entry point — reads initData, dispatches :init
+│   │   ├── db.cljs                # re-frame initial app-db shape
+│   │   ├── events.cljs            # All re-frame event handlers
+│   │   ├── fx.cljs                # Custom effects: http-fetch, audio-cmd,
+│   │   │                          #   copy-to-clipboard, open-telegram-link,
+│   │   │                          #   scroll-to-episode
+│   │   ├── subs.cljs              # re-frame subscriptions
+│   │   ├── audio.cljs             # Singleton <audio> element outside React tree
+│   │   └── views/
+│   │       ├── layout.cljs        # App shell (tab bar, theme init, mini-player slot)
+│   │       ├── inbox.cljs         # Inbox — all unheard episodes, compact mode
+│   │       ├── feeds.cljs         # Feeds list + Apple Podcasts search
+│   │       ├── episodes.cljs      # Episode list for a single feed
+│   │       ├── bookmarks.cljs     # Bookmarked episodes with search
+│   │       ├── player.cljs        # Full-screen player — controls, share, send, recs
+│   │       └── miniplayer.cljs    # Persistent mini-player (shown on all non-player views)
 │   ├── models/
 │   │   ├── user.cr
 │   │   ├── feed.cr
 │   │   ├── episode.cr
 │   │   └── user_episode.cr
 │   ├── rss/
-│   │   └── parser.cr              # RSS and OPML parsing
-│   ├── views/                     # ECR templates (HTMX fragments)
+│   │   └── parser.cr              # RSS and OPML XML parsing
+│   ├── views/                     # ECR templates (HTML shell only — no HTMX)
+│   │   ├── layout.ecr             # <html> wrapper — injects BOT_USERNAME, theme vars
+│   │   └── app.ecr                # SPA mount point (<div id="app">)
 │   └── web/
 │       ├── auth.cr                # initData HMAC-SHA256 validation
-│       ├── server.cr              # Kemal setup
+│       ├── assets.cr              # Static file helpers
+│       ├── json_helpers.cr        # JSON serialisation structs
+│       ├── sanitizer.cr           # HTML sanitiser for episode descriptions
+│       ├── server.cr              # Kemal config, CORS, error handlers
 │       └── routes/
 │           ├── webhook.cr         # POST /webhook
-│           ├── app.cr             # GET /app (Mini App shell)
-│           ├── feeds.cr           # Feed CRUD
-│           ├── episodes.cr        # Episode list, player, progress, signals
+│           ├── app.cr             # GET /app (SPA shell)
+│           ├── feeds.cr           # Feed CRUD + subscribe
+│           ├── episodes.cr        # Episodes, player data, progress, signals, audio proxy
+│           ├── inbox.cr           # GET /inbox
+│           ├── discover.cr        # GET /bookmarks, GET /bookmarks/search
+│           ├── search.cr          # GET /search, POST /search/subscribe
 │           └── recommendations.cr
+├── shadow-cljs.edn                # ClojureScript build config
+├── package.json                   # Node deps (shadow-cljs, reagent, re-frame)
 ├── .env.example
-├── cloudflared.yml.example        # Cloudflare Tunnel config template
+├── cloudflared.yml.example        # Named tunnel config template
 ├── devrun.sh                      # One-command local dev launcher
 ├── Dockerfile
 ├── docker-compose.yml
@@ -474,115 +380,89 @@ buzz-bot/
 
 ## API Routes
 
+All Mini App routes authenticate via the `X-Init-Data` request header (Telegram `initData` HMAC-SHA256).
+
 | Method | Path | Description |
 |---|---|---|
 | `POST` | `/webhook` | Telegram update receiver |
-| `GET` | `/app` | Mini App HTML shell |
-| `GET` | `/feeds` | List subscribed feeds (HTMX) |
+| `GET` | `/app` | SPA HTML shell |
+| `GET` | `/inbox` | Unheard episodes across all subscriptions |
+| `GET` | `/feeds` | List subscribed feeds |
 | `POST` | `/feeds` | Subscribe by RSS URL |
 | `POST` | `/feeds/opml` | Bulk-import from OPML file |
+| `POST` | `/feeds/:id/subscribe` | Subscribe to a feed by id (used after search) |
 | `DELETE` | `/feeds/:id` | Unsubscribe |
-| `GET` | `/episodes?feed_id=X` | Episode list for a feed (HTMX) |
-| `GET` | `/episodes/:id/player` | Audio player fragment (HTMX) |
+| `GET` | `/episodes?feed_id=X` | Episode list for a feed (`limit`, `offset`, `order` params) |
+| `GET` | `/episodes/:id/player` | Player data — episode, feed, recs, next episode title |
 | `PUT` | `/episodes/:id/progress` | Save playback position |
-| `PUT` | `/episodes/:id/signal` | Save like / dislike |
-| `GET` | `/recommendations` | Recommended episodes (HTMX) |
-
-All Mini App routes authenticate via the `X-Init-Data` request header (Telegram `initData` string).
+| `PUT` | `/episodes/:id/signal` | Toggle bookmark |
+| `POST` | `/episodes/:id/send` | Send audio file to user's Telegram chat (premium; 402 otherwise) |
+| `GET` | `/episodes/:id/audio_proxy` | Auth-gated streaming proxy with redirect following |
+| `GET` | `/bookmarks` | Bookmarked episodes |
+| `GET` | `/bookmarks/search?q=X` | Search bookmarked episodes |
+| `GET` | `/search?q=X` | Search Apple Podcasts directory |
+| `POST` | `/search/subscribe` | Subscribe to a result from podcast search |
+| `GET` | `/recommendations` | Collaboratively filtered episode recommendations |
 
 ---
 
-## Database ERD
+## Frontend Architecture
+
+The frontend is a [re-frame](https://github.com/day8/re-frame) single-page app compiled by [shadow-cljs](https://github.com/thheller/shadow-cljs). There is no full-page navigation — all views are rendered client-side by swapping Reagent components.
 
 ```
-┌─────────────────────────┐
-│          users          │
-├─────────────────────────┤
-│ id          BIGSERIAL PK│
-│ telegram_id BIGINT  UQ  │
-│ username    VARCHAR      │
-│ first_name  VARCHAR      │
-│ last_name   VARCHAR      │
-│ created_at  TIMESTAMPTZ │
-└────────────┬────────────┘
-             │ 1
-             │
-             │ M
-┌────────────▼────────────┐         ┌─────────────────────────┐
-│       user_feeds        │         │          feeds           │
-├─────────────────────────┤         ├─────────────────────────┤
-│ user_id  BIGINT  FK(PK) │M──────1─│ id          BIGSERIAL PK│
-│ feed_id  BIGINT  FK(PK) │         │ url         TEXT    UQ  │
-│ created_at TIMESTAMPTZ  │         │ title       TEXT         │
-└─────────────────────────┘         │ description TEXT         │
-                                    │ image_url   TEXT         │
-                                    │ last_fetched_at TSTZ     │
-                                    │ created_at  TIMESTAMPTZ │
-                                    └────────────┬────────────┘
-                                                 │ 1
-                                                 │
-                                                 │ M
-                                    ┌────────────▼────────────┐
-                                    │        episodes          │
-                                    ├─────────────────────────┤
-                                    │ id          BIGSERIAL PK│
-                                    │ feed_id     BIGINT  FK  │
-                                    │ guid        TEXT    UQ  │
-                                    │ title       TEXT    NN  │
-                                    │ description TEXT         │
-                                    │ audio_url   TEXT    NN  │
-                                    │ duration_sec INT         │
-                                    │ published_at TIMESTAMPTZ│
-                                    │ created_at  TIMESTAMPTZ │
-                                    └────────────┬────────────┘
-                                                 │ 1
-             ┌───────────────────────────────────┘
-             │ M
-┌────────────▼────────────┐
-│      user_episodes      │
-├─────────────────────────┤
-│ id          BIGSERIAL PK│
-│ user_id     BIGINT  FK  │◄──── FK → users.id
-│ episode_id  BIGINT  FK  │◄──── FK → episodes.id
-│ progress_seconds INT    │      UNIQUE(user_id, episode_id)
-│ completed   BOOLEAN     │
-│ liked       BOOLEAN NULL│      NULL = no signal
-│ updated_at  TIMESTAMPTZ │      TRUE = liked
-└─────────────────────────┘      FALSE = disliked
+core.cljs          ← mounts app, reads initData from DOM, dispatches :init
+  └── layout.cljs  ← tab bar, Telegram theme colours, mini-player slot
+        └── router ← dispatches to inbox / feeds / episodes / bookmarks / player
 ```
 
-### Table summary
+**State management** follows the standard re-frame pattern:
+
+| File | Role |
+|---|---|
+| `db.cljs` | Defines the initial `app-db` shape |
+| `events.cljs` | Pure event handlers (`reg-event-db` / `reg-event-fx`) |
+| `fx.cljs` | Side-effecting handlers: `::http-fetch`, `::audio-cmd`, `::copy-to-clipboard`, `::open-telegram-link`, `::scroll-to-episode` |
+| `subs.cljs` | Derived data subscriptions |
+| `audio.cljs` | Singleton `<audio>` element outside the React tree — survives view changes |
+
+**Key behaviours:**
+
+- **Audio continuity** — the `<audio>` element is a `defonce` at the module level. Navigating between views never interrupts playback.
+- **List state restoration** — before opening the player, the episode count is snapshotted. On return the same number of episodes is fetched in one request and the playing episode is scrolled into view and highlighted.
+- **Offline write queue** — progress saves that fail offline are queued in IndexedDB by the Service Worker and replayed automatically on reconnect.
+- **Progressive audio caching** — the Service Worker downloads episode audio in the background and the player switches to the local cached copy once 5 minutes are buffered ahead.
+
+---
+
+## Database Schema
+
+```
+users ──< user_feeds >── feeds ──< episodes ──< user_episodes >── users
+```
 
 | Table | Purpose |
 |---|---|
 | `users` | One row per Telegram user; upserted on every `/start` |
 | `feeds` | Shared podcast feed registry; deduplicated by URL |
 | `user_feeds` | M:N join — which users subscribe to which feeds |
-| `episodes` | Podcast episodes; deduplicated by RSS `<guid>` |
-| `user_episodes` | Per-user playback state and like/dislike signal |
+| `episodes` | Podcast episodes; deduplicated by RSS `<guid>` per feed |
+| `user_episodes` | Per-user playback state and bookmark signal |
 
-### Indices
-
-```sql
-CREATE INDEX ON user_feeds(user_id);
-CREATE INDEX ON episodes(feed_id);
-CREATE INDEX ON user_episodes(user_id);
-CREATE INDEX ON user_episodes(episode_id);
-CREATE INDEX ON user_episodes(liked) WHERE liked IS NOT NULL;  -- partial, for CF query
-```
+Key columns: `user_episodes.liked` — `NULL` = no signal, `TRUE` = bookmarked (used for recommendations and the bookmark button).
 
 ---
 
 ## How Recommendations Work
 
-Recommendations use item-based collaborative filtering executed entirely in SQL:
+Item-based collaborative filtering executed entirely in SQL:
 
-1. Find all episodes the current user has **liked**
-2. Find other users who also **liked** at least one of those episodes (similar users)
-3. Collect all episodes those similar users have liked that the current user **has not seen**
-4. Rank by how many similar users liked each candidate episode
+1. Find all episodes the current user has **bookmarked**
+2. Find other users who bookmarked at least one of those episodes
+3. Collect episodes those users bookmarked that the current user has not seen
+4. Rank by how many similar users bookmarked each candidate
 
-No ML library required — the query runs in a single round-trip to PostgreSQL.
+No ML library required — the query runs in a single PostgreSQL round-trip.
 
 ---
 

@@ -21,8 +21,9 @@ module RSS
     property audio_url : String
     property duration_sec : Int32?
     property published_at : Time?
+    property image_url : String?
 
-    def initialize(@guid, @title, @description, @audio_url, @duration_sec, @published_at)
+    def initialize(@guid, @title, @description, @audio_url, @duration_sec, @published_at, @image_url = nil)
     end
   end
 
@@ -90,7 +91,11 @@ module RSS
     pub_date_str = text_content(node, "pubDate")
     published_at = pub_date_str ? parse_rfc822(pub_date_str) : nil
 
-    ParsedEpisode.new(guid, title, description, audio_url, duration_sec, published_at)
+    image_url = node.xpath_node("*[local-name()='image']/@href").try(&.content) ||
+                node.xpath_node("*[local-name()='thumbnail']/@url").try(&.content) ||
+                node.xpath_node("*[local-name()='content'][@medium='image']/@url").try(&.content)
+
+    ParsedEpisode.new(guid, title, description, audio_url, duration_sec, published_at, image_url)
   end
 
   private def self.text_content(node : XML::Node, name : String) : String?

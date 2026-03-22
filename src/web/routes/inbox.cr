@@ -1,4 +1,4 @@
-require "ecr"
+require "json"
 
 module Web::Routes::Inbox
   def self.register
@@ -6,19 +6,16 @@ module Web::Routes::Inbox
       user = Auth.current_user(env)
       halt env, status_code: 401, response: "Unauthorized" unless user
 
-      limit         = 100
-      offset        = env.params.query["offset"]?.try(&.to_i32) || 0
-      next_offset   = offset + limit
-      episodes      = Episode.for_inbox(user.id, limit, offset)
-      completed_ids = Episode.completed_ids_for_user(user.id)
-      feeds_map     = Feed.for_user(user.id).to_h { |f| {f.id, f.title || f.url} }
+      limit    = (env.params.query["limit"]?.try(&.to_i32) || 100).clamp(1, 500)
+      offset   = env.params.query["offset"]?.try(&.to_i32) || 0
+      episodes = Episode.for_inbox(user.id, limit + 1, offset)
+      has_more = episodes.size > limit
+      episodes = episodes.first(limit) if has_more
 
-      env.response.content_type = "text/html"
-      if offset > 0
-        ECR.render "src/views/inbox_items.ecr"
-      else
-        ECR.render "src/views/inbox.ecr"
-      end
+      items = Web.build_episode_list(episodes, user.id)
+
+      env.response.content_type = "application/json"
+      {episodes: items, has_more: has_more}.to_json
     end
   end
 end

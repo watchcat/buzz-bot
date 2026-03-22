@@ -7,8 +7,9 @@ struct Episode
   property audio_url : String
   property duration_sec : Int32?
   property published_at : Time?
+  property image_url : String?
 
-  def initialize(@id, @feed_id, @guid, @title, @description, @audio_url, @duration_sec, @published_at)
+  def initialize(@id, @feed_id, @guid, @title, @description, @audio_url, @duration_sec, @published_at, @image_url = nil)
   end
 
   private def self.from_rs(rs)
@@ -20,31 +21,33 @@ struct Episode
       rs.read(String?), # description
       rs.read(String),  # audio_url
       rs.read(Int32?),  # duration_sec
-      rs.read(Time?)    # published_at
+      rs.read(Time?),   # published_at
+      rs.read(String?)  # image_url
     )
   end
 
-  def self.upsert(feed_id : Int64, guid : String, title : String, description : String?, audio_url : String, duration_sec : Int32?, published_at : Time?) : Episode?
+  def self.upsert(feed_id : Int64, guid : String, title : String, description : String?, audio_url : String, duration_sec : Int32?, published_at : Time?, image_url : String? = nil) : Episode?
     AppDB.pool.query_one?(
       <<-SQL,
-        INSERT INTO episodes (feed_id, guid, title, description, audio_url, duration_sec, published_at)
-        VALUES ($1, $2, $3, $4, $5, $6, $7)
+        INSERT INTO episodes (feed_id, guid, title, description, audio_url, duration_sec, published_at, image_url)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
         ON CONFLICT (feed_id, guid) DO UPDATE SET
           title        = EXCLUDED.title,
           description  = EXCLUDED.description,
           audio_url    = EXCLUDED.audio_url,
           duration_sec = COALESCE(EXCLUDED.duration_sec, episodes.duration_sec),
-          published_at = COALESCE(episodes.published_at, EXCLUDED.published_at)
-        RETURNING id, feed_id, guid, title, description, audio_url, duration_sec, published_at
+          published_at = COALESCE(episodes.published_at, EXCLUDED.published_at),
+          image_url    = COALESCE(EXCLUDED.image_url, episodes.image_url)
+        RETURNING id, feed_id, guid, title, description, audio_url, duration_sec, published_at, image_url
       SQL
-      feed_id, guid, title, description, audio_url, duration_sec, published_at
+      feed_id, guid, title, description, audio_url, duration_sec, published_at, image_url
     ) { |rs| from_rs(rs) }
   end
 
   def self.find(id : Int64) : Episode?
     AppDB.pool.query_one?(
       <<-SQL,
-        SELECT id, feed_id, guid, title, description, audio_url, duration_sec, published_at
+        SELECT id, feed_id, guid, title, description, audio_url, duration_sec, published_at, image_url
         FROM episodes
         WHERE id = $1
       SQL
@@ -57,7 +60,7 @@ struct Episode
     episodes = [] of Episode
     AppDB.pool.query_each(
       <<-SQL,
-        SELECT id, feed_id, guid, title, description, audio_url, duration_sec, published_at
+        SELECT id, feed_id, guid, title, description, audio_url, duration_sec, published_at, image_url
         FROM episodes
         WHERE feed_id = $1
         ORDER BY COALESCE(published_at, created_at) #{dir}
@@ -88,7 +91,7 @@ struct Episode
     episodes = [] of Episode
     AppDB.pool.query_each(
       <<-SQL,
-        SELECT e.id, e.feed_id, e.guid, e.title, e.description, e.audio_url, e.duration_sec, e.published_at
+        SELECT e.id, e.feed_id, e.guid, e.title, e.description, e.audio_url, e.duration_sec, e.published_at, e.image_url
         FROM episodes e
         JOIN user_feeds uf ON uf.feed_id = e.feed_id
         WHERE uf.user_id = $1
@@ -113,7 +116,7 @@ struct Episode
     AppDB.pool.query_one?(
       <<-SQL,
         SELECT e.id, e.feed_id, e.guid, e.title, e.description,
-               e.audio_url, e.duration_sec, e.published_at,
+               e.audio_url, e.duration_sec, e.published_at, e.image_url,
                ue.progress_seconds
         FROM episodes e
         JOIN user_episodes ue ON e.id = ue.episode_id
@@ -135,7 +138,7 @@ struct Episode
     episodes = [] of Episode
     AppDB.pool.query_each(
       <<-SQL,
-        SELECT e.id, e.feed_id, e.guid, e.title, e.description, e.audio_url, e.duration_sec, e.published_at
+        SELECT e.id, e.feed_id, e.guid, e.title, e.description, e.audio_url, e.duration_sec, e.published_at, e.image_url
         FROM episodes e
         JOIN user_episodes ue ON e.id = ue.episode_id
         WHERE ue.user_id = $1 AND ue.liked = TRUE
@@ -152,7 +155,7 @@ struct Episode
     episodes = [] of Episode
     AppDB.pool.query_each(
       <<-SQL,
-        SELECT e.id, e.feed_id, e.guid, e.title, e.description, e.audio_url, e.duration_sec, e.published_at
+        SELECT e.id, e.feed_id, e.guid, e.title, e.description, e.audio_url, e.duration_sec, e.published_at, e.image_url
         FROM episodes e
         JOIN user_feeds uf ON uf.feed_id = e.feed_id
         WHERE uf.user_id = $1
@@ -183,7 +186,7 @@ struct Episode
           ORDER BY score DESC
           LIMIT $2
         )
-        SELECT e.id, e.feed_id, e.guid, e.title, e.description, e.audio_url, e.duration_sec, e.published_at
+        SELECT e.id, e.feed_id, e.guid, e.title, e.description, e.audio_url, e.duration_sec, e.published_at, e.image_url
         FROM episodes e
         JOIN candidates c ON e.id = c.episode_id
         ORDER BY c.score DESC

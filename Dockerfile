@@ -5,10 +5,12 @@ FROM crystallang/crystal:latest-alpine AS builder
 
 WORKDIR /app
 
-# ── JS bundle (Preact + Signals) ──────────────────────────────────────────────
-RUN apk add --no-cache nodejs npm
-COPY package.json package-lock.json ./
+# ── ClojureScript bundle ──────────────────────────────────────────────────────
+RUN apk add --no-cache nodejs npm openjdk21-jre-headless
+COPY package.json package-lock.json shadow-cljs.edn ./
 RUN npm ci
+COPY src/cljs/ ./src/cljs/
+RUN node node_modules/.bin/shadow-cljs release app
 
 # ── Crystal dependencies ──────────────────────────────────────────────────────
 COPY shard.yml shard.lock* ./
@@ -42,10 +44,9 @@ open(path, 'w').write(src)
 print('crystal-pg patched OK')
 PYEOF
 
-# Copy source + public, then build JS bundle
+# Copy Crystal source + public assets (public/js/main.js already built above)
 COPY src/ ./src/
 COPY public/ ./public/
-RUN npm run build
 
 # Build release binary
 RUN crystal build src/buzz_bot.cr \
@@ -67,7 +68,6 @@ WORKDIR /app
 
 COPY --from=builder /app/buzz-bot ./buzz-bot
 COPY --from=builder /app/public ./public
-COPY src/views/ ./src/views/
 
 EXPOSE 3000
 

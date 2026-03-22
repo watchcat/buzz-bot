@@ -7,6 +7,7 @@
   --button-color: var(--tg-theme-button-color, #2481cc);
   --button-text-color: var(--tg-theme-button-text-color, #ffffff);
   --secondary-bg: var(--tg-theme-secondary-bg-color, #f1f1f1);
+  --cache-color: var(--tg-theme-accent-text-color, var(--link-color, #4caf50));
   --radius: 12px;
   --gap: 12px;
 }
@@ -266,6 +267,23 @@ main {
 
 .btn-icon:hover { background: rgba(0,0,0,0.08); }
 
+.btn-clear-cache {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 16px;
+  padding: 4px 8px;
+  opacity: 0.7;
+  transition: opacity 0.15s;
+}
+
+.btn-clear-cache:hover {
+  opacity: 1;
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
+.btn-icon--spinning { animation: spin 0.7s linear infinite; pointer-events: none; }
+
 /* Podcast Search */
 .search-section {
   margin-bottom: 16px;
@@ -459,6 +477,11 @@ main {
   gap: 10px;
 }
 
+.feed-item.is-playing {
+  outline: 2px solid var(--button-color);
+  outline-offset: -2px;
+}
+
 .feed-item {
   display: flex;
   align-items: center;
@@ -531,6 +554,14 @@ main {
 
 .episode-item:hover { background: rgba(0,0,0,0.06); }
 
+.episode-thumb {
+  width: 48px;
+  height: 48px;
+  border-radius: 6px;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+
 .episode-info {
   flex: 1;
   min-width: 0;
@@ -587,6 +618,18 @@ main {
 .episode-item.listened .episode-play-icon {
   color: var(--hint-color);
   font-size: 16px;
+}
+
+/* Cached episodes — green bottom border */
+.episode-item.cached {
+  border-bottom: 2px solid var(--cache-color);
+}
+
+/* Currently playing episode */
+.episode-item.is-playing {
+  background: color-mix(in srgb, var(--button-color) 14%, transparent);
+  border-left: 3px solid var(--button-color);
+  padding-left: calc(var(--episode-padding-left, 12px) - 3px);
 }
 
 /* Filter toggle — toggle switch label */
@@ -654,6 +697,23 @@ main {
   background: var(--secondary-bg);
   border-radius: var(--radius);
   padding: 20px;
+  overflow: hidden;
+}
+
+.player-cover {
+  width: 100%;
+  max-height: 220px;
+  object-fit: cover;
+  display: block;
+  /* Bleed to card edges by compensating for card padding */
+  margin: -20px -20px 16px;
+  width: calc(100% + 40px);
+}
+
+.player-episode-meta {
+  font-size: 12px;
+  color: var(--hint-color);
+  margin-bottom: 12px;
 }
 
 .player-title {
@@ -743,12 +803,52 @@ main {
   cursor: pointer;
   background: linear-gradient(
     to right,
-    var(--button-color)      0%,
-    var(--button-color)      var(--pct, 0%),
-    rgba(76,175,80,0.45)     var(--pct, 0%),
-    rgba(76,175,80,0.45)     var(--cache-pct, 0%),
-    rgba(128,128,128,0.3)    var(--cache-pct, 0%),
-    rgba(128,128,128,0.3)    100%
+    var(--button-color)       0%,
+    var(--button-color)       var(--pct),
+    var(--cache-color)        var(--pct),
+    var(--cache-color)        var(--cache-pct, 0%),
+    rgba(0,0,0,0.15)          var(--cache-pct, 0%),
+    rgba(0,0,0,0.15)          100%
+  );
+}
+
+/* Episode is fully cached but playing from network stream */
+.player-seek-bar.player-seek-bar--cached {
+  background: linear-gradient(
+    to right,
+    var(--button-color)              0%,
+    var(--button-color)              var(--pct),
+    color-mix(in srgb, var(--cache-color) 40%, transparent) var(--pct),
+    color-mix(in srgb, var(--cache-color) 40%, transparent) 100%
+  );
+}
+.player-seek-bar.player-seek-bar--cached::-webkit-slider-runnable-track {
+  background: linear-gradient(
+    to right,
+    var(--button-color)              0%,
+    var(--button-color)              var(--pct),
+    color-mix(in srgb, var(--cache-color) 40%, transparent) var(--pct),
+    color-mix(in srgb, var(--cache-color) 40%, transparent) 100%
+  );
+}
+
+/* Playing from cached blob */
+.player-seek-bar.player-seek-bar--from-cache {
+  background: linear-gradient(
+    to right,
+    var(--cache-color)               0%,
+    var(--cache-color)               var(--pct),
+    color-mix(in srgb, var(--cache-color) 40%, transparent) var(--pct),
+    color-mix(in srgb, var(--cache-color) 40%, transparent) 100%
+  );
+}
+.player-seek-bar.player-seek-bar--from-cache::-webkit-slider-runnable-track {
+  background: linear-gradient(
+    to right,
+    var(--cache-color)               0%,
+    var(--cache-color)               var(--pct),
+    color-mix(in srgb, var(--cache-color) 40%, transparent) var(--pct),
+    color-mix(in srgb, var(--cache-color) 40%, transparent) 100%
   );
 }
 
@@ -1364,8 +1464,35 @@ body:has(.now-playing-bar) main {
 /* Playback speed button */
 .player-speed-row {
   display: flex;
-  justify-content: center;
+  justify-content: space-between;
+  align-items: center;
   margin-top: 14px;
+}
+
+.btn-bookmark {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: none;
+  background: transparent;
+  color: var(--hint-color);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  transition: color 0.2s;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.btn-bookmark svg {
+  width: 22px;
+  height: 22px;
+  fill: currentColor;
+}
+
+.btn-bookmark.active {
+  color: var(--button-color);
 }
 
 .btn-speed {

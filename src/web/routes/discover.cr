@@ -1,53 +1,31 @@
-require "ecr"
+require "json"
 
 module Web::Routes::Discover
   def self.register
-    # Full discover tab — liked episodes by default
-    get "/discover" do |env|
+    get "/bookmarks" do |env|
       user = Auth.current_user(env)
       halt env, status_code: 401, response: "Unauthorized" unless user
 
-      limit           = 50
-      offset          = 0
-      next_offset     = limit
-      liked_episodes  = Episode.liked_for_user(user.id, limit, offset)
-      feed_ids        = liked_episodes.map(&.feed_id).uniq
-      feeds_map       = feed_ids.each_with_object({} of Int64 => String) do |fid, h|
-        h[fid] = Feed.find(fid).try(&.title) || ""
-      end
+      limit    = (env.params.query["limit"]?.try(&.to_i32) || 50).clamp(1, 500)
+      episodes = Episode.liked_for_user(user.id, limit, 0)
+      items    = Web.build_episode_list(episodes, user.id)
 
-      env.response.content_type = "text/html"
-      ECR.render "src/views/discover.ecr"
+      env.response.content_type = "application/json"
+      {episodes: items, has_more: false}.to_json
     end
 
-    # Search results fragment (also used for liked list when q is blank)
-    get "/discover/search" do |env|
+    get "/bookmarks/search" do |env|
       user = Auth.current_user(env)
       halt env, status_code: 401, response: "Unauthorized" unless user
 
-      query = env.params.query["q"]?.try(&.strip) || ""
+      query    = env.params.query["q"]?.try(&.strip) || ""
+      episodes = query.empty? ?
+        Episode.liked_for_user(user.id, 50, 0) :
+        Episode.search_for_user(user.id, query, 30)
+      items = Web.build_episode_list(episodes, user.id)
 
-      if query.empty?
-        limit          = 50
-        offset         = env.params.query["offset"]?.try(&.to_i32) || 0
-        next_offset    = offset + limit
-        episodes       = Episode.liked_for_user(user.id, limit, offset)
-        section_title  = "❤️ Liked episodes"
-      else
-        limit          = 30
-        offset         = 0
-        next_offset    = limit
-        episodes       = Episode.search_for_user(user.id, query, limit)
-        section_title  = "Search results"
-      end
-
-      feed_ids  = episodes.map(&.feed_id).uniq
-      feeds_map = feed_ids.each_with_object({} of Int64 => String) do |fid, h|
-        h[fid] = Feed.find(fid).try(&.title) || ""
-      end
-
-      env.response.content_type = "text/html"
-      ECR.render "src/views/discover_results.ecr"
+      env.response.content_type = "application/json"
+      {episodes: items}.to_json
     end
   end
 end

@@ -4,62 +4,12 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Buzz-Bot</title>
-  <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+  <script src="/js/telegram-web-app.js"></script>
   <link rel="stylesheet" href="/css/app.css?v=<%= Assets::VERSION %>">
 </head>
 <body>
-  <div id="app">
-    <div class="app-container">
-      <nav class="tab-bar">
-        <button class="tab-btn active"
-                hx-get="/inbox"
-                hx-target="#content"
-                hx-trigger="click"
-                hx-include="[name='initData']"
-                onclick="setActiveTab(this)">
-          📥 Inbox
-        </button>
-        <button class="tab-btn"
-                hx-get="/feeds"
-                hx-target="#content"
-                hx-trigger="click"
-                hx-include="[name='initData']"
-                onclick="setActiveTab(this)">
-          📻 Feeds
-        </button>
-        <button class="tab-btn"
-                hx-get="/discover"
-                hx-target="#content"
-                hx-trigger="click"
-                hx-include="[name='initData']"
-                onclick="setActiveTab(this)">
-          🔍 Discover
-        </button>
-      </nav>
-
-      <main id="content"
-            hx-get="/inbox"
-            hx-trigger="load"
-            hx-include="[name='initData']">
-        <div class="loading">Loading...</div>
-      </main>
-    </div>
-
-    <input type="hidden" name="initData" id="initData" value="">
-  </div>
-
-  <!-- MiniPlayer (Preact) mounts here — persists across HTMX swaps -->
-  <div id="miniplayer-root"></div>
-
+  <div id="app"></div>
   <script>window.BOT_USERNAME = '<%= BotClient.username %>';</script>
-  <script src="/js/cache.js?v=<%= Assets::VERSION %>"></script>
-  <script src="/js/miniplayer.js?v=<%= Assets::VERSION %>"></script>
-  <script src="/js/app.js?v=<%= Assets::VERSION %>"></script>
-  <script>
-    if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('/sw.js');
-    }
-  </script>
+  <script src="/js/main.js?v=<%= Assets::VERSION %>"></script>
 </body>
 </html>
