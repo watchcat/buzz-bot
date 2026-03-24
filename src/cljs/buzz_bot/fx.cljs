@@ -159,60 +159,64 @@
    (js/localStorage.setItem "buzz-cache-meta" (.stringify js/JSON (clj->js meta-map)))))
 
 ;; ── ::start-cache-download ───────────────────────────────────────────────────
-;; Streams audio from audio_proxy and stores the full blob in IDB.
+;; Downloads audio from audio_proxy and stores the full blob in IDB.
+;; Uses ReadableStream for progress reporting when available; falls back to
+;; response.blob() on environments that don't support it (Android WebView).
 ;; Options: :episode-id, :url, :init-data
 ;; Dispatches:
 ;;   [:buzz-bot.events/cache-progress {:episode-id id :bytes-downloaded N :bytes-total N}]
 ;;   [:buzz-bot.events/cache-complete {:episode-id id :blob-url url}]
 ;;   [:buzz-bot.events/cache-error    {:episode-id id :error msg}]
 
+(defn- finish-cache! [episode-id blob]
+  (when (.. js/navigator -storage -persist)
+    (.. js/navigator -storage (persist)))
+  (-> (cache/put-blob! episode-id blob)
+      (.then (fn [_]
+               (rf/dispatch [:buzz-bot.events/cache-complete
+                             {:episode-id episode-id
+                              :blob-url   (js/URL.createObjectURL blob)}])))
+      (.catch (fn [e]
+                (rf/dispatch [:buzz-bot.events/cache-error
+                              {:episode-id episode-id :error (str e)}])))))
+
 (rf/reg-fx
  ::start-cache-download
  (fn [{:keys [episode-id url init-data]}]
-   (let [chunks  #js []
-         headers (js-obj "X-Init-Data" (or init-data ""))]
+   (let [headers (js-obj "X-Init-Data" (or init-data ""))]
      (-> (js/fetch url #js{:headers headers})
          (.then
            (fn [resp]
-             (let [total  (js/parseInt (.get (.-headers resp) "content-length") 10)
-                   reader (.getReader (.-body resp))]
+             (let [total (js/parseInt (.get (.-headers resp) "content-length") 10)]
                (rf/dispatch [:buzz-bot.events/cache-progress
                              {:episode-id episode-id :bytes-downloaded 0 :bytes-total (or total 0)}])
-               (letfn [(read-chunk []
-                         (-> (.read reader)
-                             (.then
-                               (fn [result]
-                                 (if (.-done result)
-                                   ;; All chunks received — write to IDB
-                                   (let [full-blob (js/Blob. chunks #js{:type "audio/mpeg"})]
-                                     (-> (cache/put-blob! episode-id full-blob)
-                                         (.then
-                                           (fn [_]
-                                             (when (.. js/navigator -storage -persist)
-                                               (.. js/navigator -storage (persist)))
-                                             (let [blob-url (js/URL.createObjectURL full-blob)]
-                                               (rf/dispatch [:buzz-bot.events/cache-complete
-                                                             {:episode-id episode-id
-                                                              :blob-url   blob-url}]))))
-                                         (.catch
-                                           (fn [e]
-                                             (rf/dispatch [:buzz-bot.events/cache-error
-                                                           {:episode-id episode-id
-                                                            :error      (str e)}])))))
-                                   ;; More data — accumulate and report progress
-                                   (do (.push chunks (.-value result))
-                                       (let [downloaded (reduce + 0 (map #(.-byteLength %) chunks))]
-                                         (rf/dispatch [:buzz-bot.events/cache-progress
-                                                       {:episode-id      episode-id
-                                                        :bytes-downloaded downloaded
-                                                        :bytes-total     (or total 0)}]))
-                                       (read-chunk)))))
-                             (.catch
-                               (fn [e]
-                                 (rf/dispatch [:buzz-bot.events/cache-error
-                                               {:episode-id episode-id
-                                                :error      (str e)}])))))]
-                 (read-chunk)))))
+               (if (and (.-body resp) (.-getReader (.-body resp)))
+                 ;; Streaming path — reports download progress as chunks arrive
+                 (let [chunks #js []
+                       reader (.getReader (.-body resp))]
+                   (letfn [(read-chunk []
+                             (-> (.read reader)
+                                 (.then
+                                   (fn [result]
+                                     (if (.-done result)
+                                       (finish-cache! episode-id (js/Blob. chunks #js{:type "audio/mpeg"}))
+                                       (do (.push chunks (.-value result))
+                                           (let [dl (reduce + 0 (map #(.-byteLength %) chunks))]
+                                             (rf/dispatch [:buzz-bot.events/cache-progress
+                                                           {:episode-id      episode-id
+                                                            :bytes-downloaded dl
+                                                            :bytes-total     (or total 0)}]))
+                                           (read-chunk)))))
+                                 (.catch (fn [e]
+                                           (rf/dispatch [:buzz-bot.events/cache-error
+                                                         {:episode-id episode-id :error (str e)}])))))]
+                     (read-chunk)))
+                 ;; Fallback path — no progress bar, works on Android WebView
+                 (-> (.blob resp)
+                     (.then #(finish-cache! episode-id %))
+                     (.catch (fn [e]
+                               (rf/dispatch [:buzz-bot.events/cache-error
+                                             {:episode-id episode-id :error (str e)}]))))))))
          (.catch
            (fn [e]
              (rf/dispatch [:buzz-bot.events/cache-error
