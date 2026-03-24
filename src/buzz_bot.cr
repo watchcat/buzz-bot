@@ -10,6 +10,11 @@ require "./models/user"
 require "./models/feed"
 require "./models/episode"
 require "./models/user_episode"
+require "./models/dubbed_episode"
+require "./dub/replicate_client"
+require "./dub/deepl_client"
+require "./dub/r2_storage"
+require "./dub/dub_job"
 require "./rss/parser"
 require "./web/auth"
 require "./bot/client"
@@ -27,6 +32,7 @@ require "./web/routes/episodes"
 require "./web/routes/inbox"
 require "./web/routes/search"
 require "./web/routes/discover"
+require "./web/routes/dub"
 
 Log.setup(:info)
 
@@ -35,6 +41,7 @@ Log.info { "Starting Buzz-Bot..." }
 # Initialize DB connection pool
 db = AppDB.pool
 Log.info { "Database connected" }
+DubbedEpisode.reset_stale_jobs
 
 # Register Telegram webhook
 BotClient.register_webhook
