@@ -259,3 +259,12 @@
    (doseq [url blob-urls]
      (when url (js/URL.revokeObjectURL url)))
    (cache/clear-all-blobs!)))
+
+;; ── ::poll-after ─────────────────────────────────────────────────────────────
+;; Dispatches an event after a delay. Used for dub status polling.
+;; Options: {:ms 5000 :dispatch [::some-event args]}
+
+(rf/reg-fx
+ ::poll-after
+ (fn [{:keys [ms dispatch]}]
+   (js/setTimeout #(rf/dispatch dispatch) ms)))

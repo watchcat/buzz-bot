@@ -18,4 +18,11 @@
    :saved-list  {:view nil :count 0}
    :cache       {:cached-ids  []   ;; most-recent first, max 5
                  :in-progress {}   ;; ep-id (string) → {:bytes-downloaded N :bytes-total N}
-                 :blob-urls   {}}}) ;; ep-id (string) → blob URL string
+                 :blob-urls   {}}  ;; ep-id (string) → blob URL string
+   :dub {:status           nil
+         :r2-url           nil
+         :error            nil
+         :dub-id           nil
+         :language         nil
+         :picker-open?     false
+         :preferred-language nil}})
