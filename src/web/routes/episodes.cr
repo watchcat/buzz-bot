@@ -157,8 +157,23 @@ module Web::Routes::Episodes
         next %({"error":"premium_required"})
       end
 
+      body   = env.request.body.try(&.gets_to_end) || "{}"
+      data   = JSON.parse(body)
+      dubbed = data["dubbed"]?.try(&.as_bool?) || false
+      lang   = data["language"]?.try(&.as_s?)
+
+      override_url = if dubbed && lang
+        dub = DubbedEpisode.find(episode_id, lang)
+        unless dub && dub.effective_status == "done"
+          env.response.content_type = "application/json"
+          env.response.status_code = 409
+          next %({"error":"dub_not_ready"})
+        end
+        dub.r2_url
+      end
+
       # Fire-and-forget — handler returns immediately; result arrives via bot message
-      spawn { AudioSender.send_to_user(user.telegram_id, episode, feed) }
+      spawn { AudioSender.send_to_user(user.telegram_id, episode, feed, override_url) }
 
       env.response.content_type = "application/json"
       %({"sent":true})

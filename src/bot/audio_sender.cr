@@ -20,14 +20,15 @@ module AudioSender
   MAX_UPLOAD_SIZE = Config.telegram_api_server ? 2000 * 1024 * 1024 : 50 * 1024 * 1024
   URL_SEND_TIMEOUT = 60.seconds
 
-  def self.send_to_user(telegram_id : Int64, episode : Episode, feed : Feed?)
-    if try_url_send(telegram_id, episode, feed)
+  def self.send_to_user(telegram_id : Int64, episode : Episode, feed : Feed?, override_url : String? = nil)
+    audio_url = override_url || episode.audio_url
+    if try_url_send(telegram_id, episode, feed, audio_url)
       Log.info { "AudioSender: sent episode #{episode.id} by URL to #{telegram_id}" }
       return
     end
 
     # URL path failed — check size before attempting download+upload
-    size = probe_content_length(episode.audio_url)
+    size = probe_content_length(audio_url)
     if size && size > MAX_UPLOAD_SIZE
       limit_mb = mb(MAX_UPLOAD_SIZE)
       BotClient.client.send_message(
@@ -38,7 +39,7 @@ module AudioSender
       return
     end
 
-    download_and_upload(telegram_id, episode, feed)
+    download_and_upload(telegram_id, episode, feed, audio_url)
   rescue ex
     Log.error { "AudioSender unhandled error for episode #{episode.id}: #{ex.message}" }
     notify_failure(telegram_id, episode.title, ex.message)
@@ -47,11 +48,11 @@ module AudioSender
   # --------------------------------------------------------------------------
   # Fast path: send by URL
   # --------------------------------------------------------------------------
-  private def self.try_url_send(telegram_id : Int64, episode : Episode, feed : Feed?) : Bool
+  private def self.try_url_send(telegram_id : Int64, episode : Episode, feed : Feed?, audio_url : String) : Bool
     body = JSON.build do |j|
       j.object do
         j.field "chat_id", telegram_id
-        j.field "audio",   episode.audio_url
+        j.field "audio",   audio_url
         j.field "title",   episode.title
         j.field "performer", feed.try(&.title) || ""
         episode.duration_sec.try { |d| j.field "duration", d }
@@ -71,12 +72,12 @@ module AudioSender
   # --------------------------------------------------------------------------
   # Slow path: stream-download then multipart-upload
   # --------------------------------------------------------------------------
-  private def self.download_and_upload(telegram_id : Int64, episode : Episode, feed : Feed?)
+  private def self.download_and_upload(telegram_id : Int64, episode : Episode, feed : Feed?, audio_url : String)
     tempfile = File.tempfile("buzz-episode", ".mp3")
     downloaded = 0_i64
 
     begin
-      url = episode.audio_url
+      url = audio_url
       redirects = 0
       done = false
       until done

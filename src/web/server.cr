@@ -36,6 +36,7 @@ module WebServer
     Web::Routes::Inbox.register
     Web::Routes::Search.register
     Web::Routes::Discover.register
+    Web::Routes::Dub.register
   end
 
   def self.run(port : Int32)
