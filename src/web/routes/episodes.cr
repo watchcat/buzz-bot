@@ -187,15 +187,16 @@ module Web::Routes::Episodes
           else
             env.response.status_code = resp.status_code
             env.response.content_type = resp.content_type || "audio/mpeg"
+            if cl = resp.headers["Content-Length"]?
+              env.response.content_length = cl.to_i64
+            end
             begin
               IO.copy(resp.body_io, env.response)
-            rescue
-              # Upstream closed early or client disconnected — stop copying.
+              env.response.flush
+            rescue IO::Error
+              # Client disconnected — nothing to do, let Kemal finalize normally.
+              Log.debug { "audio_proxy client disconnected mid-stream" }
             end
-            # Explicitly close the response so Kemal flushes the final chunked
-            # encoding terminator and signals END_STREAM over HTTP/2.
-            # Without this, Traefik sees an incomplete stream and sends RST_STREAM.
-            env.response.close rescue nil
             streamed = true
           end
         end
