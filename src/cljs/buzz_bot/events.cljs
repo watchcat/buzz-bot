@@ -587,6 +587,26 @@
       :buzz-bot.fx/open-cache-db nil})))
 
 (rf/reg-event-fx
+ ::cache-verify
+ (fn [_ _]
+   {::buzz-bot.fx/verify-cache-ids nil}))
+
+(rf/reg-event-fx
+ ::cache-prune-stale
+ (fn [{:keys [db]} [_ valid-ids]]
+   (let [cached-ids (get-in db [:cache :cached-ids])
+         new-ids    (vec (filter #(contains? valid-ids (str %)) cached-ids))
+         removed    (remove (set new-ids) cached-ids)]
+     (if (empty? removed)
+       {}
+       (let [new-meta (reduce dissoc (get-in db [:cache :episode-meta] {}) (map str removed))]
+         {:db (-> db
+                  (assoc-in [:cache :cached-ids] new-ids)
+                  (assoc-in [:cache :episode-meta] new-meta))
+          ::buzz-bot.fx/persist-cached-ids new-ids
+          ::buzz-bot.fx/persist-cache-meta new-meta})))))
+
+(rf/reg-event-fx
  ::cache-start
  (fn [{:keys [db]} [_ {:keys [episode-id]}]]
    (let [cached-ids  (get-in db [:cache :cached-ids])

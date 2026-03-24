@@ -52,6 +52,18 @@
           (set! (.-onsuccess req) (fn [_] (resolve true)))
           (set! (.-onerror req)   (fn [e] (reject (.. e -target -error)))))))))
 
+;; ── Keys ─────────────────────────────────────────────────────────────────────
+
+(defn get-all-keys! []
+  ;; Resolves with a JS array of all keys in the blobs store.
+  (js/Promise.
+    (fn [resolve _reject]
+      (if-not @db-conn
+        (resolve #js [])
+        (let [req (.getAllKeys (store "readonly"))]
+          (set! (.-onsuccess req) (fn [e] (resolve (.. e -target -result))))
+          (set! (.-onerror req)   (fn [_] (resolve #js []))))))))
+
 ;; ── Delete ────────────────────────────────────────────────────────────────────
 
 (defn delete-blob! [episode-id]

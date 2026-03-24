@@ -128,6 +128,7 @@
  ::open-cache-db
  (fn [_]
    (-> (cache/open-db!)
+       (.then (fn [_] (rf/dispatch [:buzz-bot.events/cache-verify])))
        (.catch (fn [e] (js/console.warn "IDB open failed:" e))))))
 
 ;; ── ::persist-cached-ids ─────────────────────────────────────────────────────
@@ -137,6 +138,17 @@
  ::persist-cached-ids
  (fn [ids]
    (js/localStorage.setItem "buzz-cached-ids" (.stringify js/JSON (clj->js ids)))))
+
+;; ── ::verify-cache-ids ───────────────────────────────────────────────────────
+;; Fetches all keys from IDB and dispatches :cache-prune-stale with the valid set.
+
+(rf/reg-fx
+ ::verify-cache-ids
+ (fn [_]
+   (-> (cache/get-all-keys!)
+       (.then (fn [keys]
+                (rf/dispatch [:buzz-bot.events/cache-prune-stale
+                              (set (js->clj keys))]))))))
 
 ;; ── ::persist-cache-meta ──────────────────────────────────────────────────────
 ;; Writes episode metadata map to localStorage under "buzz-cache-meta".
