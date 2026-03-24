@@ -8,12 +8,16 @@
 (defn open-db! []
   (js/Promise.
     (fn [resolve reject]
-      (let [req (.open js/indexedDB "buzz-audio" 1)]
+      ;; Version 2: recreates the store with out-of-line keys.
+      ;; Version 1 used in-line keyPath which caused DataError on put().
+      (let [req (.open js/indexedDB "buzz-audio" 2)]
         (set! (.-onupgradeneeded req)
               (fn [e]
                 (let [db (.. e -target -result)]
-                  (when-not (.contains (.-objectStoreNames db) "blobs")
-                    (.createObjectStore db "blobs")))))
+                  ;; Drop the old store if it exists (may have wrong schema)
+                  (when (.contains (.-objectStoreNames db) "blobs")
+                    (.deleteObjectStore db "blobs"))
+                  (.createObjectStore db "blobs"))))
         (set! (.-onsuccess req)
               (fn [e]
                 (reset! db-conn (.. e -target -result))
