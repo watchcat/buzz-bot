@@ -13,11 +13,11 @@ module Web::Routes::Dub
       end
 
       episode_id = env.params.url["id"].to_i64
-      episode    = Episode.find(episode_id)
+      episode = Episode.find(episode_id)
       halt env, status_code: 404, response: %({"error":"not_found"}) unless episode
 
-      body     = env.request.body.try(&.gets_to_end) || "{}"
-      data     = JSON.parse(body)
+      body = env.request.body.try(&.gets_to_end) || "{}"
+      data = JSON.parse(body)
       language = data["language"]?.try(&.as_s?) || ""
 
       unless DUB_LANGUAGES.includes?(language)
@@ -42,7 +42,11 @@ module Web::Routes::Dub
         elsif eff == "done"
           env.response.content_type = "application/json"
           next %({"id":#{existing.id},"status":"done","r2_url":#{existing.r2_url.to_json}})
+        elsif eff == "failed"
+          env.response.content_type = "application/json"
+          next %({"id":#{existing.id},"status":"failed","error":#{existing.error.to_json}})
         end
+        # expired falls through to upsert+spawn
       end
 
       dub_id = DubbedEpisode.upsert_pending(episode_id, language)
@@ -58,7 +62,7 @@ module Web::Routes::Dub
       halt env, status_code: 401, response: "Unauthorized" unless user
 
       episode_id = env.params.url["id"].to_i64
-      language   = env.params.url["language"]
+      language = env.params.url["language"]
 
       unless DUB_LANGUAGES.includes?(language)
         env.response.content_type = "application/json"
@@ -91,8 +95,8 @@ module Web::Routes::Dub
         next %({"error":"premium_required"})
       end
 
-      body     = env.request.body.try(&.gets_to_end) || "{}"
-      data     = JSON.parse(body)
+      body = env.request.body.try(&.gets_to_end) || "{}"
+      data = JSON.parse(body)
       language = data["language"]?.try(&.as_s?) || ""
 
       unless DUB_LANGUAGES.includes?(language)
