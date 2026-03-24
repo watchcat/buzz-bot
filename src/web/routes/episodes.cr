@@ -37,7 +37,7 @@ module Web::Routes::Episodes
       feed = Feed.find(feed_id)
       halt env, status_code: 404, response: %({"error":"Feed not found"}) unless feed
 
-      limit  = (env.params.query["limit"]?.try(&.to_i32) || 50).clamp(1, 500)
+      limit = (env.params.query["limit"]?.try(&.to_i32) || 50).clamp(1, 500)
       offset = env.params.query["offset"]?.try(&.to_i32) || 0
 
       order_param = env.params.query["order"]?
@@ -85,18 +85,18 @@ module Web::Routes::Episodes
       user = Auth.current_user(env)
       halt env, status_code: 401, response: "Unauthorized" unless user
 
-      episode_id   = env.params.url["id"].to_i64
-      episode      = Episode.find(episode_id)
+      episode_id = env.params.url["id"].to_i64
+      episode = Episode.find(episode_id)
       halt env, status_code: 404, response: %({"error":"Episode not found"}) unless episode
 
-      feed          = Feed.find(episode.feed_id)
-      user_episode  = UserEpisode.find(user.id, episode_id)
-      order         = env.params.query["order"]? == "asc" ? "asc" : "desc"
-      next_id       = Episode.next_in_feed(episode.feed_id, episode_id, order)
-      next_title    = next_id ? Episode.find(next_id).try(&.title) : nil
+      feed = Feed.find(episode.feed_id)
+      user_episode = UserEpisode.find(user.id, episode_id)
+      order = env.params.query["order"]? == "asc" ? "asc" : "desc"
+      next_id = Episode.next_in_feed(episode.feed_id, episode_id, order)
+      next_title = next_id ? Episode.find(next_id).try(&.title) : nil
       is_subscribed = Feed.subscribed?(user.id, episode.feed_id)
-      is_premium    = user.subscribed?
-      recs_raw      = Episode.recommended_for_episode(episode_id)
+      is_premium = user.subscribed?
+      recs_raw = Episode.recommended_for_episode(episode_id)
 
       rec_feeds_map = recs_raw.map(&.feed_id).uniq.each_with_object({} of Int64 => String) do |fid, h|
         h[fid] = Feed.find(fid).try(&.title) || ""
@@ -112,14 +112,15 @@ module Web::Routes::Episodes
 
       env.response.content_type = "application/json"
       {
-        episode:      ep_json,
-        feed:         feed,
-        user_episode: user_episode,
-        next_id:      next_id,
-        next_title:   next_title,
-        recs:         recs,
-        is_subscribed: is_subscribed,
-        is_premium:    is_premium,
+        episode:                ep_json,
+        feed:                   feed,
+        user_episode:           user_episode,
+        next_id:                next_id,
+        next_title:             next_title,
+        recs:                   recs,
+        is_subscribed:          is_subscribed,
+        is_premium:             is_premium,
+        preferred_dub_language: user.preferred_dub_language,
       }.to_json
     end
 
@@ -157,20 +158,20 @@ module Web::Routes::Episodes
         next %({"error":"premium_required"})
       end
 
-      body   = env.request.body.try(&.gets_to_end) || "{}"
-      data   = JSON.parse(body)
+      body = env.request.body.try(&.gets_to_end) || "{}"
+      data = JSON.parse(body)
       dubbed = data["dubbed"]?.try(&.as_bool?) || false
-      lang   = data["language"]?.try(&.as_s?)
+      lang = data["language"]?.try(&.as_s?)
 
       override_url = if dubbed && lang
-        dub = DubbedEpisode.find(episode_id, lang)
-        unless dub && dub.effective_status == "done"
-          env.response.content_type = "application/json"
-          env.response.status_code = 409
-          next %({"error":"dub_not_ready"})
-        end
-        dub.r2_url
-      end
+                       dub = DubbedEpisode.find(episode_id, lang)
+                       unless dub && dub.effective_status == "done"
+                         env.response.content_type = "application/json"
+                         env.response.status_code = 409
+                         next %({"error":"dub_not_ready"})
+                       end
+                       dub.r2_url
+                     end
 
       # Fire-and-forget — handler returns immediately; result arrives via bot message
       spawn { AudioSender.send_to_user(user.telegram_id, episode, feed, override_url) }
@@ -228,10 +229,10 @@ module Web::Routes::Episodes
       user = Auth.current_user(env)
       halt env, status_code: 401, response: "Unauthorized" unless user
 
-      episode_id   = env.params.url["id"].to_i64
+      episode_id = env.params.url["id"].to_i64
       UserEpisode.toggle_like(user.id, episode_id)
       user_episode = UserEpisode.find(user.id, episode_id)
-      liked        = user_episode.try(&.liked) == true
+      liked = user_episode.try(&.liked) == true
 
       env.response.content_type = "application/json"
       {liked: liked}.to_json

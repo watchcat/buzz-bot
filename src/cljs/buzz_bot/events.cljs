@@ -288,7 +288,10 @@
                    :artist    (get-in resp [:feed :title])
                    :artwork   (:feed_image_url episode)
                    :audio_url (:audio_url episode)})))
-     (let [autoplay? (get-in db [:view-params :autoplay?])]
+     (let [autoplay? (get-in db [:view-params :autoplay?])
+           db'       (cond-> db'
+                       (:preferred_dub_language resp)
+                       (assoc-in [:dub :preferred-language] (:preferred_dub_language resp)))]
        (cond
          (= cur-id new-id)                   {:db (assoc-in db' [:audio :pending?] false)}
          (and was-playing? (not= cur-id new-id))  {:db db' :dispatch [::audio-queue-pending]}

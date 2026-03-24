@@ -6,8 +6,9 @@ struct User
   property last_name : String?
   property sub_type : String?
   property sub_expires_at : Time?
+  property preferred_dub_language : String?
 
-  def initialize(@id, @telegram_id, @username, @first_name, @last_name, @sub_type, @sub_expires_at)
+  def initialize(@id, @telegram_id, @username, @first_name, @last_name, @sub_type, @sub_expires_at, @preferred_dub_language = nil)
   end
 
   private def self.from_rs(rs)
@@ -18,7 +19,8 @@ struct User
       rs.read(String?), # first_name
       rs.read(String?), # last_name
       rs.read(String?), # sub_type
-      rs.read(Time?)    # sub_expires_at
+      rs.read(Time?),   # sub_expires_at
+      rs.read(String?)  # preferred_dub_language
     )
   end
 
@@ -31,7 +33,7 @@ struct User
           username   = EXCLUDED.username,
           first_name = EXCLUDED.first_name,
           last_name  = EXCLUDED.last_name
-        RETURNING id, telegram_id, username, first_name, last_name, sub_type, sub_expires_at
+        RETURNING id, telegram_id, username, first_name, last_name, sub_type, sub_expires_at, preferred_dub_language
       SQL
       telegram_id, username, first_name, last_name
     ) { |rs| from_rs(rs) }
@@ -40,7 +42,7 @@ struct User
   def self.find_by_telegram_id(telegram_id : Int64) : User?
     AppDB.pool.query_one?(
       <<-SQL,
-        SELECT id, telegram_id, username, first_name, last_name, sub_type, sub_expires_at
+        SELECT id, telegram_id, username, first_name, last_name, sub_type, sub_expires_at, preferred_dub_language
         FROM users
         WHERE telegram_id = $1
       SQL
