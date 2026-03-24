@@ -3,7 +3,10 @@
             [reagent.core :as r]
             [buzz-bot.subs :as subs]
             [buzz-bot.events :as events]
-            [buzz-bot.fx :as fx]))
+            [buzz-bot.fx :as fx]
+            [buzz-bot.views.dub :as dub-view]
+            [buzz-bot.subs.dub :as dub-subs]
+            [buzz-bot.events.dub :as dub-events]))
 
 (defn- fmt-pub-date [published-at]
   (when published-at
@@ -216,6 +219,14 @@
                   " Send episodes to your Telegram chat with a Buzz-Bot subscription."]
                  :error
                  [:div.send-result.error "Something went wrong. Please try again."])]
+
+              ;; Dub panel — premium users only
+              (when is_premium
+                [dub-view/dub-panel ep-id])
+
+              ;; Language picker modal
+              (when @(rf/subscribe [::dub-subs/dub-picker-open?])
+                [dub-view/language-picker ep-id])
 
               (when (seq recs)
                 [:div.recs-section

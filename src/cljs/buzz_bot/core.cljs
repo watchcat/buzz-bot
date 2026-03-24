@@ -5,6 +5,8 @@
             [clojure.string :as str]
             [buzz-bot.events :as events]
             [buzz-bot.subs]
+            [buzz-bot.subs.dub]
+            [buzz-bot.events.dub]
             [buzz-bot.fx]
             [buzz-bot.audio :as audio]
             [buzz-bot.views.layout :as layout]))

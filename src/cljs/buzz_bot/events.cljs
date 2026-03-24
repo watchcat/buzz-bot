@@ -2,7 +2,8 @@
   (:require [re-frame.core :as rf]
             [clojure.string :as str]
             [buzz-bot.db :as db]
-            [buzz-bot.fx]))
+            [buzz-bot.fx]
+            [buzz-bot.events.dub :as dub-events]))
 
 (rf/reg-event-db ::initialize-db (fn [_ _] db/default-db))
 (rf/reg-event-db ::noop (fn [db _] db))
@@ -38,7 +39,9 @@
                         (assoc :saved-list saved-list)
                         (cond-> restore-id
                           (assoc-in [:episodes :restore-to-id] restore-id)))}
-         fetch-event (assoc :dispatch fetch-event))))))
+         fetch-event (assoc :dispatch-n (cond-> [fetch-event]
+                                           (= view :player)
+                                           (conj [::dub-events/reset]))))))))
 
 ;; ── Inbox ────────────────────────────────────────────────────────────────────
 
