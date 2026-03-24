@@ -65,7 +65,7 @@
          [:div.search-section
           [:input.search-input
            {:type        "search"
-            :placeholder "Search bookmarks..."
+            :placeholder "Search all episodes..."
             :on-change   (fn [e]
                            (let [v (.. e -target -value)]
                              (reset! query-atom v)
