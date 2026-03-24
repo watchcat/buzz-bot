@@ -19,6 +19,9 @@ spec:
           imagePullPolicy: Always
           ports:
             - containerPort: 3000
+          env:
+            - name: GC_RETRY_SIGNALS_ALWAYS
+              value: "1"
           envFrom:
             - secretRef:
                 name: buzz-bot-env

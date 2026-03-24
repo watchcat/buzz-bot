@@ -1,0 +1,11 @@
+apiVersion: traefik.io/v1alpha1
+kind: ServersTransport
+metadata:
+  name: long-streaming-transport
+  namespace: buzz-bot
+spec:
+  respondingTimeouts:
+    readTimeout: 300s   # 5 min — enough for the largest episode on a slow connection
+    idleTimeout: 60s
+  forwardingTimeouts:
+    responseHeaderTimeout: 30s

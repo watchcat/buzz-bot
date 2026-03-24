@@ -191,7 +191,7 @@ module Web::Routes::Episodes
               env.response.content_length = cl.to_i64
             end
             begin
-              IO.copy(resp.body_io, env.response)
+              IO.copy(resp.body_io, env.response, 128 * 1024)
               env.response.flush
             rescue IO::Error
               # Client disconnected — nothing to do, let Kemal finalize normally.
