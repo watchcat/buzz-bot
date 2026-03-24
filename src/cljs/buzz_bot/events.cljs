@@ -5,6 +5,7 @@
             [buzz-bot.fx]))
 
 (rf/reg-event-db ::initialize-db (fn [_ _] db/default-db))
+(rf/reg-event-db ::noop (fn [db _] db))
 
 ;; ── Navigation ───────────────────────────────────────────────────────────────
 
@@ -596,15 +597,42 @@
  (fn [{:keys [db]} [_ valid-ids]]
    (let [cached-ids (get-in db [:cache :cached-ids])
          new-ids    (vec (filter #(contains? valid-ids (str %)) cached-ids))
-         removed    (remove (set new-ids) cached-ids)]
-     (if (empty? removed)
-       {}
-       (let [new-meta (reduce dissoc (get-in db [:cache :episode-meta] {}) (map str removed))]
-         {:db (-> db
-                  (assoc-in [:cache :cached-ids] new-ids)
-                  (assoc-in [:cache :episode-meta] new-meta))
-          ::buzz-bot.fx/persist-cached-ids new-ids
-          ::buzz-bot.fx/persist-cache-meta new-meta})))))
+         removed    (remove (set new-ids) cached-ids)
+         meta       (get-in db [:cache :episode-meta] {})
+         new-meta   (reduce dissoc meta (map str removed))
+         missing    (vec (remove #(contains? new-meta (str %)) new-ids))
+         base       (if (seq removed)
+                      {:db (-> db
+                               (assoc-in [:cache :cached-ids] new-ids)
+                               (assoc-in [:cache :episode-meta] new-meta))
+                       ::buzz-bot.fx/persist-cached-ids new-ids
+                       ::buzz-bot.fx/persist-cache-meta new-meta}
+                      {})]
+     (cond-> base
+       (seq missing) (assoc :dispatch [::cache-fetch-missing-meta missing])))))
+
+
+(rf/reg-event-fx
+ ::cache-fetch-missing-meta
+ (fn [{:keys [db]} [_ ids]]
+   {::buzz-bot.fx/http-fetch
+    {:method :get
+     :url    (str "/episodes/meta?ids=" (str/join "," ids))
+     :on-ok  [::cache-meta-loaded]
+     :on-err [::noop]}}))
+
+(rf/reg-event-fx
+ ::cache-meta-loaded
+ (fn [{:keys [db]} [_ episodes]]
+   (let [new-meta (reduce (fn [m ep]
+                            (assoc m (str (:id ep))
+                                     {:title      (:title ep)
+                                      :feed_title (:feed_title ep)
+                                      :image_url  (:image_url ep)}))
+                          (get-in db [:cache :episode-meta] {})
+                          episodes)]
+     {:db (assoc-in db [:cache :episode-meta] new-meta)
+      ::buzz-bot.fx/persist-cache-meta new-meta})))
 
 (rf/reg-event-fx
  ::cache-start

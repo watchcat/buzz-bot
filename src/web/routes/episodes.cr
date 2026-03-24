@@ -3,6 +3,29 @@ require "json"
 
 module Web::Routes::Episodes
   def self.register
+    # Fetch minimal metadata for a set of episode IDs (used by offline cache UI).
+    # Query param: ids=1,2,3
+    get "/episodes/meta" do |env|
+      user = Auth.current_user(env)
+      halt env, status_code: 401, response: "Unauthorized" unless user
+
+      ids_str = env.params.query["ids"]?.to_s
+      ids = ids_str.split(",").compact_map(&.to_i64?)
+      halt env, status_code: 400, response: %({"error":"ids required"}) if ids.empty?
+
+      rows = AppDB.pool.query_all(
+        "SELECT e.id, e.title, e.image_url, f.title AS feed_title
+         FROM episodes e JOIN feeds f ON f.id = e.feed_id
+         WHERE e.id = ANY($1)",
+        ids, as: {Int64, String, String?, String}
+      )
+
+      env.response.content_type = "application/json"
+      rows.map { |id, title, img, ft|
+        {id: id, title: title, feed_title: ft, image_url: img}
+      }.to_json
+    end
+
     # List episodes for a feed
     get "/episodes" do |env|
       user = Auth.current_user(env)
