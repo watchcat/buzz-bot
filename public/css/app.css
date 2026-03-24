@@ -1062,6 +1062,16 @@ main {
   color: #880e4f;
 }
 
+.cache-error-msg {
+  font-size: 11px;
+  color: #c62828;
+  background: #fce4ec;
+  border-radius: 6px;
+  padding: 6px 10px;
+  margin: 8px 0;
+  word-break: break-all;
+}
+
 /* Autoplay toggle */
 .autoplay-row {
   margin: 14px 0 12px;

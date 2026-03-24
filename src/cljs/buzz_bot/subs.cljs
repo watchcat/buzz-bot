@@ -79,6 +79,9 @@
   (fn [db [_ episode-id]]
     (get-in db [:cache :in-progress episode-id])))
 
+(rf/reg-sub ::cache-last-error
+  (fn [db _] (get-in db [:cache :last-error])))
+
 (rf/reg-sub ::cached-episodes
   (fn [db _]
     (let [ids   (get-in db [:cache :cached-ids])

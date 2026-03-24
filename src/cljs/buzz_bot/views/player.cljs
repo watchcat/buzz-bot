@@ -72,6 +72,7 @@
             audio-src      @(rf/subscribe [::subs/audio-src])
             cache-progress @(rf/subscribe [::subs/cache-progress ep-id])
             cached?        @(rf/subscribe [::subs/episode-cached? ep-id])
+            cache-error    @(rf/subscribe [::subs/cache-last-error])
             from-cache?    (and this-ep? (some-> audio-src (.startsWith "blob:")))
             cache-pct      (cond
                              (or from-cache? cached?)                0
@@ -176,6 +177,9 @@
                   (if liked?
                     [:path {:d "M17 3H7c-1.1 0-2 .9-2 2v16l7-3 7 3V5c0-1.1-.9-2-2-2z"}]
                     [:path {:d "M17 3H7c-1.1 0-2 .9-2 2v16l7-3 7 3V5c0-1.1-.9-2-2-2zm0 15-5-2.18L7 18V5h10v13z"}])]]]]
+
+              (when cache-error
+                [:div.cache-error-msg (str "Cache error: " cache-error)])
 
               [:div.autoplay-row
                [:label.autoplay-label {:class (when-not next_id "autoplay-label--disabled")}

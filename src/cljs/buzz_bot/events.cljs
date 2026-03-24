@@ -691,7 +691,9 @@
  ::cache-error
  (fn [{:keys [db]} [_ {:keys [episode-id error]}]]
    (js/console.warn "Cache error for episode" episode-id error)
-   {:db (update-in db [:cache :in-progress] dissoc episode-id)}))
+   {:db (-> db
+            (update-in [:cache :in-progress] dissoc episode-id)
+            (assoc-in [:cache :last-error] error))}))
 
 (rf/reg-event-fx
  ::cache-evict
