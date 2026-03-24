@@ -5,13 +5,6 @@ FROM crystallang/crystal:latest-alpine AS builder
 
 WORKDIR /app
 
-# ── ClojureScript bundle ──────────────────────────────────────────────────────
-RUN apk add --no-cache nodejs npm openjdk21-jre-headless
-COPY package.json package-lock.json shadow-cljs.edn ./
-RUN npm ci
-COPY src/cljs/ ./src/cljs/
-RUN node node_modules/.bin/shadow-cljs release app
-
 # ── Crystal dependencies ──────────────────────────────────────────────────────
 COPY shard.yml shard.lock* ./
 RUN shards install --production
