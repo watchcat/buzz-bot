@@ -138,6 +138,14 @@
  (fn [ids]
    (js/localStorage.setItem "buzz-cached-ids" (.stringify js/JSON (clj->js ids)))))
 
+;; ── ::persist-cache-meta ──────────────────────────────────────────────────────
+;; Writes episode metadata map to localStorage under "buzz-cache-meta".
+
+(rf/reg-fx
+ ::persist-cache-meta
+ (fn [meta-map]
+   (js/localStorage.setItem "buzz-cache-meta" (.stringify js/JSON (clj->js meta-map)))))
+
 ;; ── ::start-cache-download ───────────────────────────────────────────────────
 ;; Streams audio from audio_proxy and stores the full blob in IDB.
 ;; Options: :episode-id, :url, :init-data

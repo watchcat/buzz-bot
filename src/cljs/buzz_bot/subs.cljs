@@ -78,3 +78,13 @@
 (rf/reg-sub ::cache-progress
   (fn [db [_ episode-id]]
     (get-in db [:cache :in-progress episode-id])))
+
+(rf/reg-sub ::cached-episodes
+  (fn [db _]
+    (let [ids   (get-in db [:cache :cached-ids])
+          meta  (get-in db [:cache :episode-meta] {})
+          blobs (get-in db [:cache :blob-urls])]
+      (mapv (fn [id]
+              (merge {:id id :blob-url (get blobs id)}
+                     (get meta (str id))))
+            ids))))

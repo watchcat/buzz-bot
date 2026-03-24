@@ -625,6 +625,67 @@ main {
   border-bottom: 2px solid var(--cache-color);
 }
 
+/* ── Cached section (bookmarks tab) ──────────────────────────────────────── */
+
+.cached-section {
+  margin: 0 0 8px;
+}
+
+.cached-section-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 10px 12px;
+  color: var(--text-color);
+  font-size: 14px;
+  font-weight: 600;
+  text-align: left;
+}
+
+.cached-section-icon {
+  font-size: 12px;
+  color: var(--cache-color);
+}
+
+.cached-section-hint {
+  margin-left: auto;
+  font-size: 11px;
+  font-weight: 400;
+  opacity: 0.55;
+}
+
+.cached-list {
+  border-top: 1px solid rgba(0,0,0,0.08);
+  border-bottom: 1px solid rgba(0,0,0,0.08);
+  margin-bottom: 4px;
+}
+
+.episode-item.cached-item {
+  border-left: 3px solid var(--cache-color);
+  padding-left: calc(var(--episode-padding-left, 12px) - 3px);
+}
+
+.btn-cache-delete {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 18px;
+  line-height: 1;
+  padding: 4px 6px;
+  opacity: 0.45;
+  color: var(--text-color);
+  flex-shrink: 0;
+  transition: opacity 0.15s;
+}
+
+.btn-cache-delete:hover {
+  opacity: 1;
+}
+
 /* Currently playing episode */
 .episode-item.is-playing {
   background: color-mix(in srgb, var(--button-color) 14%, transparent);

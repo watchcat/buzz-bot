@@ -577,9 +577,13 @@
 (rf/reg-event-fx
  ::cache-init
  (fn [{:keys [db]} _]
-   (let [raw    (js/localStorage.getItem "buzz-cached-ids")
-         ids    (if raw (js->clj (js/JSON.parse raw)) [])]
-     {:db (assoc-in db [:cache :cached-ids] ids)
+   (let [raw-ids  (js/localStorage.getItem "buzz-cached-ids")
+         raw-meta (js/localStorage.getItem "buzz-cache-meta")
+         ids      (if raw-ids (js->clj (js/JSON.parse raw-ids)) [])
+         meta-map (if raw-meta (js->clj (js/JSON.parse raw-meta) :keywordize-keys true) {})]
+     {:db (-> db
+              (assoc-in [:cache :cached-ids] ids)
+              (assoc-in [:cache :episode-meta] meta-map))
       :buzz-bot.fx/open-cache-db nil})))
 
 (rf/reg-event-fx
@@ -587,13 +591,20 @@
  (fn [{:keys [db]} [_ {:keys [episode-id]}]]
    (let [cached-ids  (get-in db [:cache :cached-ids])
          in-progress (get-in db [:cache :in-progress])
-         init-data   (:init-data db)]
+         init-data   (:init-data db)
+         ep          (get-in db [:player :data :episode])
+         ep-meta     {:title      (:title ep)
+                      :feed_title (or (:feed_title ep) (get-in db [:player :data :feed :title]))
+                      :image_url  (:episode_image_url ep)}
+         new-meta    (assoc (get-in db [:cache :episode-meta] {}) (str episode-id) ep-meta)]
      (cond
-       (some #{episode-id} cached-ids)  {}
-       (contains? in-progress episode-id)        {}
+       (some #{episode-id} cached-ids)        {}
+       (contains? in-progress episode-id)     {}
        :else
-       {:db (assoc-in db [:cache :in-progress episode-id]
-                      {:bytes-downloaded 0 :bytes-total 0})
+       {:db (-> db
+                (assoc-in [:cache :in-progress episode-id] {:bytes-downloaded 0 :bytes-total 0})
+                (assoc-in [:cache :episode-meta] new-meta))
+        ::buzz-bot.fx/persist-cache-meta      new-meta
         ::buzz-bot.fx/start-cache-download
         {:episode-id episode-id
          :url        (str "/episodes/" episode-id "/audio_proxy")
@@ -637,17 +648,21 @@
 (rf/reg-event-fx
  ::cache-evict
  (fn [{:keys [db]} [_ {:keys [episode-id blob-url]}]]
-   (let [new-ids (vec (remove #{episode-id} (get-in db [:cache :cached-ids])))]
+   (let [new-ids  (vec (remove #{episode-id} (get-in db [:cache :cached-ids])))
+         new-meta (dissoc (get-in db [:cache :episode-meta] {}) (str episode-id))]
      {:db       (-> db
                     (assoc-in [:cache :cached-ids] new-ids)
+                    (assoc-in [:cache :episode-meta] new-meta)
                     (update-in [:cache :blob-urls] dissoc episode-id))
       ::buzz-bot.fx/persist-cached-ids new-ids
+      ::buzz-bot.fx/persist-cache-meta new-meta
       ::buzz-bot.fx/delete-cache-blob {:episode-id episode-id :blob-url blob-url}})))
 
 (rf/reg-event-fx
  ::cache-clear-all
  (fn [{:keys [db]} _]
    (let [blob-urls (vals (get-in db [:cache :blob-urls]))]
-     {:db       (update db :cache merge {:cached-ids [] :in-progress {} :blob-urls {}})
+     {:db       (update db :cache merge {:cached-ids [] :in-progress {} :blob-urls {} :episode-meta {}})
       ::buzz-bot.fx/persist-cached-ids []
+      ::buzz-bot.fx/persist-cache-meta {}
       ::buzz-bot.fx/clear-cache-db blob-urls})))
