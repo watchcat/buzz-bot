@@ -148,18 +148,10 @@
 
 (rf/reg-fx
  ::start-cache-download
- (fn [{:keys [episode-id url direct-url init-data]}]
-   (let [chunks        #js []
-         proxy-fetch   #(js/fetch url #js{:headers #js{"X-Init-Data" (or init-data "")}})
-         ;; Try the direct audio URL first — podcast files are public and avoid
-         ;; routing a large download through our proxy, which can fail over HTTP/2.
-         ;; Falls back to the proxy on any error (CORS, network, non-2xx).
-         start-fetch   (if direct-url
-                         #(-> (js/fetch direct-url)
-                              (.then (fn [r] (if (.-ok r) r (proxy-fetch))))
-                              (.catch (fn [_] (proxy-fetch))))
-                         proxy-fetch)]
-     (-> (start-fetch)
+ (fn [{:keys [episode-id url init-data]}]
+   (let [chunks  #js []
+         headers (js-obj "X-Init-Data" (or init-data ""))]
+     (-> (js/fetch url #js{:headers headers})
          (.then
            (fn [resp]
              (let [total  (js/parseInt (.get (.-headers resp) "content-length") 10)

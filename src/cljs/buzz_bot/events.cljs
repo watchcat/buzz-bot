@@ -597,7 +597,6 @@
         ::buzz-bot.fx/start-cache-download
         {:episode-id episode-id
          :url        (str "/episodes/" episode-id "/audio_proxy")
-         :direct-url (get-in db [:player :data :episode :audio_url])
          :init-data  init-data}}))))
 
 (rf/reg-event-db
