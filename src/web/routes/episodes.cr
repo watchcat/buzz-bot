@@ -189,11 +189,13 @@ module Web::Routes::Episodes
             env.response.content_type = resp.content_type || "audio/mpeg"
             begin
               IO.copy(resp.body_io, env.response)
-            rescue IO::Error
-              # Upstream closed early or client disconnected — headers already sent,
-              # nothing we can do except stop copying. Don't let the exception
-              # propagate to Kemal's rescue block (which would cause a TCP RST).
+            rescue
+              # Upstream closed early or client disconnected — stop copying.
             end
+            # Explicitly close the response so Kemal flushes the final chunked
+            # encoding terminator and signals END_STREAM over HTTP/2.
+            # Without this, Traefik sees an incomplete stream and sends RST_STREAM.
+            env.response.close rescue nil
             streamed = true
           end
         end
