@@ -1,0 +1,16 @@
+apiVersion: helm.cattle.io/v1
+kind: HelmChartConfig
+metadata:
+  name: traefik
+  namespace: kube-system
+spec:
+  valuesContent: |-
+    image:
+      tag: v3.6.10
+    ports:
+      websecure:
+        transport:
+          respondingTimeouts:
+            readTimeout: 300
+            writeTimeout: 300
+            idleTimeout: 60
