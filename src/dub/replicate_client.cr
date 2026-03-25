@@ -12,7 +12,9 @@ module ReplicateClient
       "model" => "large-v3",
       "task"  => "transcribe",
     })
-    output["text"]?.try(&.as_s?) || raise "Whisper returned no text in output"
+    output["transcription"]?.try(&.as_s?) ||
+      output["text"]?.try(&.as_s?) ||
+      raise "Whisper returned no transcription in output: #{output}"
   end
 
   def self.synthesize(text : String, speaker_wav : String, language : String) : String
