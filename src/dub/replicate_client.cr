@@ -38,6 +38,10 @@ module ReplicateClient
     MAX_POLLS.times do
       sleep POLL_INTERVAL
       poll_resp = HTTP::Client.get("#{BASE_URL}/predictions/#{id}", headers: auth_headers)
+      unless poll_resp.success?
+        Log.warn { "Replicate poll returned #{poll_resp.status_code}, retrying..." }
+        next
+      end
       pred   = JSON.parse(poll_resp.body)
       status = pred["status"].as_s
       case status
