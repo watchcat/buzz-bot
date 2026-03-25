@@ -24,10 +24,17 @@ module ReplicateClient
     output.as_s? || raise "XTTS-v2 returned unexpected output format: #{output}"
   end
 
+  private def self.latest_version(owner : String, name : String) : String
+    resp = HTTP::Client.get("#{BASE_URL}/models/#{owner}/#{name}/versions", headers: auth_headers)
+    raise "Failed to fetch versions for #{owner}/#{name} (#{resp.status_code}): #{resp.body}" unless resp.success?
+    JSON.parse(resp.body)["results"][0]["id"].as_s
+  end
+
   private def self.run_model(owner : String, name : String, input : Hash(String, String)) : JSON::Any
-    body = {"input" => input}.to_json
+    version_id = latest_version(owner, name)
+    body = {"version" => version_id, "input" => input}.to_json
     resp = HTTP::Client.post(
-      "#{BASE_URL}/models/#{owner}/#{name}/predictions",
+      "#{BASE_URL}/predictions",
       headers: auth_headers,
       body: body
     )
