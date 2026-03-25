@@ -44,13 +44,23 @@ module DubJob
   end
 
   private def self.get_voice_clip_url(dub_id : Int64, audio_url : String) : String
-    # Download first 3 MB (≈ 30s at 128 kbps)
+    # Download first 3 MB (≈ 30s at 128 kbps), following redirects
     clip = IO::Memory.new
-    HTTP::Client.get(audio_url, headers: HTTP::Headers{"Range" => "bytes=0-3145727"}) do |resp|
-      unless resp.success? || resp.status_code == 206
-        raise "Voice clip download failed: HTTP #{resp.status_code}"
+    url = audio_url
+    redirects = 0
+    done = false
+    until done
+      HTTP::Client.get(url, headers: HTTP::Headers{"Range" => "bytes=0-3145727"}) do |resp|
+        if resp.status.redirection?
+          redirects += 1
+          raise "Too many redirects fetching voice clip" if redirects > 5
+          url = resp.headers["Location"]? || raise "Voice clip redirect missing Location header"
+        else
+          raise "Voice clip download failed: HTTP #{resp.status_code}" unless resp.success? || resp.status_code == 206
+          IO.copy(resp.body_io, clip, 3_145_728)
+          done = true
+        end
       end
-      IO.copy(resp.body_io, clip, 3_145_728)
     end
 
     r2_key = "tmp/voice/#{dub_id}.mp3"
