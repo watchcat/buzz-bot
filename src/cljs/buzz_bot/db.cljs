@@ -21,6 +21,7 @@
                  :blob-urls   {}}  ;; ep-id (string) → blob URL string
    :dub {:status           nil
          :r2-url           nil
+         :translation      nil
          :error            nil
          :dub-id           nil
          :language         nil

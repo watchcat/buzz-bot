@@ -5,9 +5,15 @@ module DubJob
     DubbedEpisode.set_processing(dub_id)
     Log.info { "DubJob[#{dub_id}]: starting pipeline for episode #{episode.id} → #{language}" }
 
-    Log.info { "DubJob[#{dub_id}]: transcribing with Whisper" }
-    transcript = ReplicateClient.transcribe(episode.audio_url)
-    Log.info { "DubJob[#{dub_id}]: transcript #{transcript.size} chars" }
+    transcript = Episode.transcript(episode.id)
+    if transcript
+      Log.info { "DubJob[#{dub_id}]: reusing cached transcript (#{transcript.size} chars)" }
+    else
+      Log.info { "DubJob[#{dub_id}]: transcribing with Whisper" }
+      transcript = ReplicateClient.transcribe(episode.audio_url)
+      Episode.save_transcript(episode.id, transcript)
+      Log.info { "DubJob[#{dub_id}]: transcript #{transcript.size} chars, saved to episode" }
+    end
 
     Log.info { "DubJob[#{dub_id}]: translating with DeepL → #{language}" }
     translated = DeepLClient.translate(transcript, language)
@@ -30,7 +36,7 @@ module DubJob
     r2_url = R2Storage.put(r2_key, mp3_data.to_slice)
     Log.info { "DubJob[#{dub_id}]: uploaded to R2: #{r2_url}" }
 
-    DubbedEpisode.set_done(dub_id, r2_url)
+    DubbedEpisode.set_done(dub_id, r2_url, translated)
 
     BotClient.client.send_message(
       telegram_id,

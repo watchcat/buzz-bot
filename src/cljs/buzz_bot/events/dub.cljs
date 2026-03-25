@@ -64,7 +64,8 @@
                       (assoc-in [:dub :status] status)
                       (assoc-in [:dub :dub-id] (:id resp))
                       (cond-> (= status :done)
-                        (assoc-in [:dub :r2-url] (:r2_url resp))))}
+                        (-> (assoc-in [:dub :r2-url] (:r2_url resp))
+                            (assoc-in [:dub :translation] (:translation resp)))))}
        (#{:pending :processing} status)
        (assoc ::fx/poll-after {:ms 5000 :dispatch [::status-tick episode-id lang]})))))
 
@@ -90,7 +91,8 @@
      (cond-> {:db (-> db
                       (assoc-in [:dub :status] status)
                       (cond-> (= status :done)
-                        (assoc-in [:dub :r2-url] (:r2_url resp)))
+                        (-> (assoc-in [:dub :r2-url] (:r2_url resp))
+                            (assoc-in [:dub :translation] (:translation resp))))
                       (cond-> (= status :failed)
                         (assoc-in [:dub :error] (:error resp))))}
        (#{:pending :processing} status)
@@ -122,6 +124,7 @@
    (-> db
        (assoc-in [:dub :status] nil)
        (assoc-in [:dub :r2-url] nil)
+       (assoc-in [:dub :translation] nil)
        (assoc-in [:dub :error] nil)
        (assoc-in [:dub :language] nil)
        (assoc-in [:dub :dub-id] nil))))

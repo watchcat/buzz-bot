@@ -10,12 +10,13 @@ struct DubbedEpisode
   property episode_id : Int64
   property language   : String
   property status     : String   # "pending" | "processing" | "done" | "failed"
-  property r2_url     : String?
-  property error      : String?
-  property expires_at : Time?
-  property created_at : Time
+  property r2_url      : String?
+  property translation : String?
+  property error       : String?
+  property expires_at  : Time?
+  property created_at  : Time
 
-  def initialize(@id, @episode_id, @language, @status, @r2_url, @error, @expires_at, @created_at)
+  def initialize(@id, @episode_id, @language, @status, @r2_url, @translation, @error, @expires_at, @created_at)
   end
 
   def expired? : Bool
@@ -28,21 +29,22 @@ struct DubbedEpisode
 
   private def self.from_rs(rs) : DubbedEpisode
     new(
-      rs.read(Int64),
-      rs.read(Int64),
-      rs.read(String),
-      rs.read(String),
-      rs.read(String?),
-      rs.read(String?),
-      rs.read(Time?),
-      rs.read(Time)
+      rs.read(Int64),   # id
+      rs.read(Int64),   # episode_id
+      rs.read(String),  # language
+      rs.read(String),  # status
+      rs.read(String?), # r2_url
+      rs.read(String?), # translation
+      rs.read(String?), # error
+      rs.read(Time?),   # expires_at
+      rs.read(Time)     # created_at
     )
   end
 
   def self.find(episode_id : Int64, language : String) : DubbedEpisode?
     AppDB.pool.query_one?(
       <<-SQL,
-        SELECT id, episode_id, language, status, r2_url, error, expires_at, created_at
+        SELECT id, episode_id, language, status, r2_url, translation, error, expires_at, created_at
         FROM dubbed_episodes
         WHERE episode_id = $1 AND language = $2
       SQL
@@ -56,11 +58,12 @@ struct DubbedEpisode
         INSERT INTO dubbed_episodes (episode_id, language, status)
         VALUES ($1, $2, 'pending')
         ON CONFLICT (episode_id, language) DO UPDATE
-          SET status     = 'pending',
-              r2_url     = NULL,
-              error      = NULL,
-              expires_at = NULL,
-              created_at = NOW()
+          SET status      = 'pending',
+              r2_url      = NULL,
+              translation = NULL,
+              error       = NULL,
+              expires_at  = NULL,
+              created_at  = NOW()
         RETURNING id
       SQL
       episode_id, language, as: Int64
@@ -74,14 +77,14 @@ struct DubbedEpisode
     )
   end
 
-  def self.set_done(id : Int64, r2_url : String)
+  def self.set_done(id : Int64, r2_url : String, translation : String)
     AppDB.pool.exec(
       <<-SQL,
         UPDATE dubbed_episodes
-        SET status = 'done', r2_url = $2, expires_at = NOW() + INTERVAL '29 days'
+        SET status = 'done', r2_url = $2, translation = $3, expires_at = NOW() + INTERVAL '29 days'
         WHERE id = $1
       SQL
-      id, r2_url
+      id, r2_url, translation
     )
   end
 

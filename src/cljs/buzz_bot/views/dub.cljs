@@ -1,6 +1,7 @@
 (ns buzz-bot.views.dub
   (:require [re-frame.core :as rf]
             [buzz-bot.subs.dub :as dub-subs]
+        [clojure.string :as str]
             [buzz-bot.events.dub :as dub-events]))
 
 (defn language-picker [episode-id]
@@ -20,9 +21,10 @@
           (when (= code preferred) [:span.dub-lang-check " ✓"])])]]]))
 
 (defn dub-panel [episode-id]
-  (let [status @(rf/subscribe [::dub-subs/dub-status])
-        err    @(rf/subscribe [::dub-subs/dub-error])
-        lang   @(rf/subscribe [::dub-subs/dub-language])]
+  (let [status      @(rf/subscribe [::dub-subs/dub-status])
+        err         @(rf/subscribe [::dub-subs/dub-error])
+        lang        @(rf/subscribe [::dub-subs/dub-language])
+        translation @(rf/subscribe [::dub-subs/dub-translation])]
     [:div.dub-panel
      (case status
        nil
@@ -43,7 +45,11 @@
          "▶ Play Dubbed"]
         [:button.btn-send-dubbed
          {:on-click #(rf/dispatch [::dub-events/send-telegram episode-id])}
-         "📨 Send Dubbed to Telegram"]]
+         "📨 Send Dubbed to Telegram"]
+        (when (and translation (not (str/blank? translation)))
+          [:details.dub-translation
+           [:summary "Translation"]
+           [:p.dub-translation-text translation]])]
 
        :failed
        [:div.dub-status-failed

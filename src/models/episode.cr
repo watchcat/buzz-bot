@@ -215,6 +215,17 @@ struct Episode
     )
   end
 
+  def self.transcript(id : Int64) : String?
+    AppDB.pool.query_one?(
+      "SELECT transcript FROM episodes WHERE id = $1",
+      id, as: String?
+    )
+  end
+
+  def self.save_transcript(id : Int64, text : String)
+    AppDB.pool.exec("UPDATE episodes SET transcript = $1 WHERE id = $2", text, id)
+  end
+
   def duration_display : String
     return "--:--" unless (sec = @duration_sec)
     hours   = sec // 3600

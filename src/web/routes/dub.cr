@@ -74,7 +74,7 @@ module Web::Routes::Dub
       eff = dub.effective_status
       case eff
       when "done"
-        %({"status":"done","r2_url":#{dub.r2_url.to_json}})
+        %({"status":"done","r2_url":#{dub.r2_url.to_json},"translation":#{dub.translation.to_json}})
       when "failed"
         %({"status":"failed","error":#{dub.error.to_json}})
       else
