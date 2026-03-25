@@ -52,7 +52,7 @@ module R2Storage
       },
       body: data
     )
-    raise "R2 upload failed (#{resp.status_code}): #{resp.body[0, 200]}" unless resp.success?
+    raise "R2 upload failed (#{resp.status_code}): #{resp.body}" unless resp.success?
 
     "#{Config.r2_public_url}/#{key}"
   end
