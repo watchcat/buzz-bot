@@ -1,3 +1,5 @@
+BEGIN;
+
 ALTER TABLE users ADD COLUMN preferred_dub_language VARCHAR(10);
 
 CREATE TABLE dubbed_episodes (
@@ -13,3 +15,5 @@ CREATE TABLE dubbed_episodes (
 );
 
 CREATE INDEX dubbed_episodes_episode_id_idx ON dubbed_episodes(episode_id);
+
+COMMIT;
