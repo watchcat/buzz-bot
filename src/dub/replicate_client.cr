@@ -19,9 +19,9 @@ module ReplicateClient
 
   def self.synthesize(text : String, speaker_wav : String, language : String) : String
     output = run_model("lucataco", "xtts-v2", {
-      "text"        => text,
-      "speaker_wav" => speaker_wav,
-      "language"    => language,
+      "text"     => text,
+      "speaker"  => speaker_wav,
+      "language" => language,
     })
     output.as_s? || raise "XTTS-v2 returned unexpected output format: #{output}"
   end
