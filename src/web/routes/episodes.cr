@@ -189,11 +189,20 @@ module Web::Routes::Episodes
       episode = Episode.find(episode_id)
       halt env, status_code: 404, response: "Episode not found" unless episode
 
+      # Flush headers immediately so the client's fetch() resolves before we
+      # open the CDN connection. Without this, the CDN round-trip (DNS + TLS
+      # + response headers, ~200 ms) exceeds the WebView's TTFB timeout and
+      # the request is cancelled with "TypeError: network error".
+      env.response.status_code = 200
+      env.response.content_type = "audio/mpeg"
+      env.response.headers["X-Accel-Buffering"] = "no"
+      env.response.headers["Cache-Control"] = "no-store"
+      env.response.flush
+
       url = episode.audio_url.sub(/^http:\/\//i, "https://")
-      streamed = false
       redirects_left = 5
 
-      while redirects_left > 0 && !streamed
+      while redirects_left > 0
         redirects_left -= 1
         uri = URI.parse(url)
         HTTP::Client.get(url) do |resp|
@@ -201,21 +210,13 @@ module Web::Routes::Episodes
             loc = resp.headers["Location"]? || break
             url = loc.starts_with?("http") ? loc : "#{uri.scheme}://#{uri.host}#{loc}"
           else
-            env.response.status_code = resp.status_code
-            env.response.content_type = resp.content_type || "audio/mpeg"
-            env.response.headers["X-Accel-Buffering"] = "no"
-            env.response.headers["Cache-Control"] = "no-store"
-            if cl = resp.headers["Content-Length"]?
-              env.response.content_length = cl.to_i64
-            end
             begin
               IO.copy(resp.body_io, env.response, 128 * 1024)
               env.response.flush
             rescue IO::Error
-              # Client disconnected — nothing to do, let Kemal finalize normally.
               Log.debug { "audio_proxy client disconnected mid-stream" }
             end
-            streamed = true
+            break
           end
         end
       end
