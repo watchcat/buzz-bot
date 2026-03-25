@@ -15,7 +15,7 @@ module R2Storage
     datetime = Time.utc.to_s("%Y%m%dT%H%M%SZ")
     date     = datetime[0, 8]
 
-    payload_hash = Digest::SHA256.hexdigest(String.new(data))
+    payload_hash = Digest::SHA256.hexdigest(data)
 
     canon_headers  = "content-type:#{content_type}\nhost:#{host}\n" \
                      "x-amz-content-sha256:#{payload_hash}\nx-amz-date:#{datetime}\n"
@@ -50,7 +50,7 @@ module R2Storage
         "x-amz-content-sha256" => payload_hash,
         "Authorization"        => auth_header,
       },
-      body: String.new(data)
+      body: data
     )
     raise "R2 upload failed (#{resp.status_code}): #{resp.body[0, 200]}" unless resp.success?
 
