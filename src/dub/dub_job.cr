@@ -14,7 +14,7 @@ module DubJob
     Log.info { "DubJob[#{dub_id}]: translation #{translated.size} chars" }
 
     Log.info { "DubJob[#{dub_id}]: extracting voice clip" }
-    speaker_wav = get_voice_clip_url(episode.audio_url)
+    speaker_wav = get_voice_clip_url(dub_id, episode.audio_url)
     Log.info { "DubJob[#{dub_id}]: synthesizing with XTTS-v2" }
     mp3_url = ReplicateClient.synthesize(translated, speaker_wav, language)
     Log.info { "DubJob[#{dub_id}]: synthesis done, downloading MP3" }
@@ -43,35 +43,14 @@ module DubJob
     DubbedEpisode.set_failed(dub_id, ex.message || "Unknown error")
   end
 
-  private def self.get_voice_clip_url(audio_url : String) : String
+  private def self.get_voice_clip_url(dub_id : Int64, audio_url : String) : String
     # Download first 3 MB (≈ 30s at 128 kbps)
     clip = IO::Memory.new
     HTTP::Client.get(audio_url, headers: HTTP::Headers{"Range" => "bytes=0-3145727"}) do |resp|
       IO.copy(resp.body_io, clip, 3_145_728)
     end
-    clip.rewind
 
-    # Upload to Replicate Files API to get a hosted URL
-    boundary = "BuzzVoice#{Random::Secure.hex(8)}"
-    form_body = IO::Memory.new
-    builder = HTTP::FormData::Builder.new(form_body, boundary)
-    builder.file(
-      "content", clip,
-      HTTP::FormData::FileMetadata.new(filename: "voice_ref.mp3"),
-      HTTP::Headers{"Content-Type" => "audio/mpeg"}
-    )
-    builder.finish
-
-    resp = HTTP::Client.post(
-      "https://api.replicate.com/v1/files",
-      headers: HTTP::Headers{
-        "Authorization" => "Token #{Config.replicate_api_token}",
-        "Content-Type"  => "multipart/form-data; boundary=#{boundary}",
-      },
-      body: form_body.to_s
-    )
-    raise "Replicate Files upload failed (#{resp.status_code}): #{resp.body[0, 200]}" unless resp.success?
-
-    JSON.parse(resp.body)["urls"]["get"].as_s
+    r2_key = "tmp/voice/#{dub_id}.mp3"
+    R2Storage.put(r2_key, clip.to_slice)
   end
 end
