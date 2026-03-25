@@ -7,8 +7,9 @@ module ReplicateClient
   MAX_POLLS     = 240  # 20 minutes
 
   def self.transcribe(audio_url : String) : String
-    output = run_model("openai", "whisper-large-v3", {
+    output = run_model("openai", "whisper", {
       "audio" => audio_url,
+      "model" => "large-v3",
       "task"  => "transcribe",
     })
     output["text"]?.try(&.as_s?) || raise "Whisper returned no text in output"
