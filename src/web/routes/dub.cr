@@ -42,11 +42,8 @@ module Web::Routes::Dub
         elsif eff == "done"
           env.response.content_type = "application/json"
           next %({"id":#{existing.id},"status":"done","r2_url":#{existing.r2_url.to_json}})
-        elsif eff == "failed"
-          env.response.content_type = "application/json"
-          next %({"id":#{existing.id},"status":"failed","error":#{existing.error.to_json}})
         end
-        # expired falls through to upsert+spawn
+        # failed and expired fall through to upsert+spawn (retry)
       end
 
       dub_id = DubbedEpisode.upsert_pending(episode_id, language)

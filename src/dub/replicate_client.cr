@@ -39,6 +39,7 @@ module ReplicateClient
       sleep POLL_INTERVAL
       poll_resp = HTTP::Client.get("#{BASE_URL}/predictions/#{id}", headers: auth_headers)
       unless poll_resp.success?
+        raise "Replicate poll failed (#{poll_resp.status_code}): #{poll_resp.body}" if poll_resp.status_code < 500
         Log.warn { "Replicate poll returned #{poll_resp.status_code}, retrying..." }
         next
       end
