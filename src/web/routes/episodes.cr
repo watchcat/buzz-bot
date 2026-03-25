@@ -203,6 +203,8 @@ module Web::Routes::Episodes
           else
             env.response.status_code = resp.status_code
             env.response.content_type = resp.content_type || "audio/mpeg"
+            env.response.headers["X-Accel-Buffering"] = "no"
+            env.response.headers["Cache-Control"] = "no-store"
             if cl = resp.headers["Content-Length"]?
               env.response.content_length = cl.to_i64
             end
