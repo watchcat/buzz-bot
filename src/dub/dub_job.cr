@@ -9,8 +9,10 @@ module DubJob
     if transcript
       Log.info { "DubJob[#{dub_id}]: reusing cached transcript (#{transcript.size} chars)" }
     else
+      Log.info { "DubJob[#{dub_id}]: downloading full audio for transcription" }
+      audio_r2_url = get_full_audio_url(dub_id, episode.audio_url)
       Log.info { "DubJob[#{dub_id}]: transcribing with Whisper" }
-      transcript = ReplicateClient.transcribe(episode.audio_url)
+      transcript = ReplicateClient.transcribe(audio_r2_url)
       Episode.save_transcript(episode.id, transcript)
       Log.info { "DubJob[#{dub_id}]: transcript #{transcript.size} chars, saved to episode" }
     end
@@ -47,6 +49,28 @@ module DubJob
   rescue ex
     Log.error { "DubJob[#{dub_id}]: failed — #{ex.message}" }
     DubbedEpisode.set_failed(dub_id, ex.message || "Unknown error")
+  end
+
+  private def self.get_full_audio_url(dub_id : Int64, audio_url : String) : String
+    buf = IO::Memory.new
+    url = audio_url
+    redirects = 0
+    done = false
+    until done
+      HTTP::Client.get(url) do |resp|
+        if resp.status.redirection?
+          redirects += 1
+          raise "Too many redirects fetching full audio" if redirects > 5
+          url = resp.headers["Location"]? || raise "Full audio redirect missing Location header"
+        else
+          raise "Full audio download failed: HTTP #{resp.status_code}" unless resp.success?
+          IO.copy(resp.body_io, buf)
+          done = true
+        end
+      end
+    end
+    r2_key = "tmp/audio/#{dub_id}.mp3"
+    R2Storage.put(r2_key, buf.to_slice)
   end
 
   private def self.get_voice_clip_url(dub_id : Int64, audio_url : String) : String

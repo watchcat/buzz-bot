@@ -1,6 +1,6 @@
 # Buzz-Bot
 
-A Telegram bot and Mini App for podcast listening. Subscribe to RSS feeds, track your listening progress, and discover new episodes through collaborative filtering recommendations.
+A Telegram bot and Mini App for podcast listening. Subscribe to RSS feeds, track your listening progress, discover new episodes through collaborative filtering recommendations, and dub any episode into another language with AI voice cloning.
 
 ## Features
 
@@ -14,6 +14,7 @@ A Telegram bot and Mini App for podcast listening. Subscribe to RSS feeds, track
 - **Offline caching** — episode audio is progressively downloaded and cached; the player switches to the local copy after 5 minutes of buffering ahead, enabling interrupted listening
 - **Collaborative filtering recommendations** — surface episodes liked by users with similar taste
 - **Share & send** — share any episode via Telegram's share sheet, or send the audio file directly to your own Telegram chat (premium)
+- **Episode dubbing** — AI-powered dubbing into 15 languages: transcribe with Whisper, translate with DeepL, synthesize with XTTS-v2 voice cloning (premium)
 - **Telegram-native UI** — adapts to the user's Telegram theme (dark/light, accent colours); persistent mini-player stays visible while browsing
 
 ## Tech Stack
@@ -28,7 +29,92 @@ A Telegram bot and Mini App for podcast listening. Subscribe to RSS feeds, track
 | Frontend | ClojureScript · [re-frame](https://github.com/day8/re-frame) · [Reagent](https://reagent-project.github.io/) |
 | Frontend build | [shadow-cljs](https://github.com/thheller/shadow-cljs) |
 | Service Worker | Custom SW for offline audio caching and offline write queue |
+| Speech-to-text | [OpenAI Whisper large-v3](https://replicate.com/openai/whisper) via [Replicate](https://replicate.com) |
+| Translation | [DeepL API](https://www.deepl.com/pro-api) |
+| Text-to-speech | [lucataco/xtts-v2](https://replicate.com/lucataco/xtts-v2) via Replicate (voice cloning) |
+| Dubbed audio storage | [Cloudflare R2](https://developers.cloudflare.com/r2/) |
 | Deployment | Docker · k3s on Hetzner (via [hetzner-k3s](https://github.com/vitobotta/hetzner-k3s)) |
+
+---
+
+## Episode Dubbing
+
+Dubbing converts any podcast episode into another language, preserving the original speaker's voice.
+
+### Supported Languages
+
+English · Spanish · French · German · Italian · Portuguese · Polish · Turkish · Russian · Dutch · Czech · Chinese · Japanese · Hungarian · Korean
+
+### How It Works
+
+```
+User taps "🎙 Dub Episode"
+         │
+         ▼
+   Language picker (remembers preference)
+         │
+         ▼
+POST /episodes/:id/dub  ─────────────────────────────────────┐
+         │                                                    │
+         │  (async, server-side fiber)                        │
+         ▼                                                    │
+  1. Download full episode audio → upload to R2 temp         │
+         │                                                    │
+         ▼                                                    │
+  2. Whisper large-v3 (Replicate)                            │
+     speech-to-text → transcript                             │
+     (cached on episodes.transcript — reused across langs)   │
+         │                                                    │
+         ▼                                                    │
+  3. DeepL API                                               │
+     translate transcript → target language                  │
+         │                                                    │
+         ▼                                                    │
+  4. Download first 3 MB of episode → upload to R2 temp      │
+     (voice sample for speaker cloning)                      │
+         │                                                    │
+         ▼                                                    │
+  5. XTTS-v2 (Replicate)                                     │
+     TTS with voice cloning → WAV → MP3 URL                  │
+         │                                                    │
+         ▼                                                    │
+  6. Download MP3 → upload to R2  dubbed/:id/:lang.mp3       │
+         │                                                    │
+         └──────────────────────────────────────────────────►│
+                                                             │
+         ◄────────────────────────────────────────────────── │
+         │  status: done / pending / failed                  │
+         ▼
+  Client polls GET /episodes/:id/dub/:lang every 5 s
+         │
+         ▼
+  "▶ Play Dubbed" + "📨 Send Dubbed to Telegram"
+  + collapsible translation text
+```
+
+### Data Model
+
+| What | Where | Why |
+|---|---|---|
+| Transcript (Whisper output) | `episodes.transcript` | Language-independent — reused when the same episode is dubbed into multiple languages |
+| Translation (DeepL output) | `dubbed_episodes.translation` | Language-specific |
+| Dubbed MP3 | Cloudflare R2 `dubbed/:episode_id/:lang.mp3` | Expires after 29 days |
+| Voice sample | Cloudflare R2 `tmp/voice/:dub_id.mp3` | Temp — 7-day lifecycle rule |
+| Full audio temp | Cloudflare R2 `tmp/audio/:dub_id.mp3` | Temp — 7-day lifecycle rule |
+
+### Retry Behaviour
+
+A failed dub is retried from scratch on the next tap. `dubbed_episodes` resets to `pending` and a new fiber is spawned. The transcript cache means only the Whisper step is skipped on retry for the same episode.
+
+### Dub Status Flow
+
+```
+pending → processing → done
+                    ↘ failed → (retry) → pending → ...
+                    ↘ expired
+```
+
+`expired` means the R2 file has been deleted by the lifecycle rule (29 days after creation). The UI shows "🎙 Dub Episode (expired)" which triggers a fresh dub.
 
 ---
 
@@ -76,19 +162,23 @@ BASE_URL=https://yourdomain.com
 | `PORT` | Port Kemal listens on (default: `3000`) |
 | `BASE_URL` | Public base URL — used for the Mini App button in `/start` |
 | `TELEGRAM_API_SERVER` | *(optional)* Self-hosted Bot API server URL (e.g. `http://telegram-bot-api:8081/`). Omit to use `api.telegram.org`. Required for >50 MB file transfers. |
+| `REPLICATE_API_TOKEN` | [Replicate](https://replicate.com) API token — required for dubbing |
+| `DEEPL_API_KEY` | [DeepL](https://www.deepl.com/pro-api) API key — required for dubbing |
+| `R2_ACCOUNT_ID` | Cloudflare account ID — required for dubbing |
+| `R2_ACCESS_KEY_ID` | R2 API token key ID — required for dubbing |
+| `R2_SECRET_ACCESS_KEY` | R2 API token secret — required for dubbing |
+| `R2_BUCKET` | R2 bucket name — required for dubbing |
+| `R2_PUBLIC_URL` | Public URL of the R2 bucket (e.g. `https://pub-xxx.r2.dev`) — required for dubbing |
 
 ### 3. Run the database migrations
 
 If you have `psql` available:
 
 ```sh
-psql "$DATABASE_URL" -f migrations/001_initial.sql
-psql "$DATABASE_URL" -f migrations/002_feed_refresh.sql
-psql "$DATABASE_URL" -f migrations/003_guid_per_feed.sql
-psql "$DATABASE_URL" -f migrations/004_subscriptions.sql
+for f in migrations/*.sql; do psql "$DATABASE_URL" -f "$f"; done
 ```
 
-Or use the included Crystal migration runner (no `psql` required — uses the same DB driver as the app):
+Or use the included Crystal migration runner (no `psql` required):
 
 ```sh
 crystal run migrate.cr
@@ -168,7 +258,8 @@ kubectl wait --for=condition=ready pod -l app.kubernetes.io/instance=cert-manage
 
 ```sh
 cp k8s/secret.example.yaml k8s/secret.yaml
-# Edit k8s/secret.yaml — fill in BOT_TOKEN, DATABASE_URL, BASE_URL, etc.
+# Edit k8s/secret.yaml — fill in BOT_TOKEN, DATABASE_URL, BASE_URL,
+# REPLICATE_API_TOKEN, DEEPL_API_KEY, R2_* vars, etc.
 
 cp k8s/cert-issuer.yaml k8s/cert-issuer.yaml
 # Replace <YOUR_EMAIL> with your Let's Encrypt registration email
@@ -308,7 +399,11 @@ buzz-bot/
 │   ├── 001_initial.sql
 │   ├── 002_feed_refresh.sql
 │   ├── 003_guid_per_feed.sql
-│   └── 004_subscriptions.sql
+│   ├── 004_subscriptions.sql
+│   ├── 005_user_feed_order.sql
+│   ├── 006_episode_image_url.sql
+│   ├── 007_dubbed_episodes.sql    # dubbed_episodes table
+│   └── 008_dub_text_fields.sql    # episodes.transcript, dubbed_episodes.translation
 ├── public/
 │   ├── css/app.css                # Telegram-themed styles (dark/light, CSS variables)
 │   ├── js/
@@ -327,11 +422,14 @@ buzz-bot/
 │   ├── cljs/buzz_bot/             # ClojureScript SPA
 │   │   ├── core.cljs              # App entry point — reads initData, dispatches :init
 │   │   ├── db.cljs                # re-frame initial app-db shape
-│   │   ├── events.cljs            # All re-frame event handlers
+│   │   ├── events.cljs            # re-frame event handlers (player, nav, feeds, inbox)
+│   │   ├── events/
+│   │   │   └── dub.cljs           # Dub events: request, poll, send, language picker
 │   │   ├── fx.cljs                # Custom effects: http-fetch, audio-cmd,
-│   │   │                          #   copy-to-clipboard, open-telegram-link,
-│   │   │                          #   scroll-to-episode
+│   │   │                          #   copy-to-clipboard, open-telegram-link, poll-after
 │   │   ├── subs.cljs              # re-frame subscriptions
+│   │   ├── subs/
+│   │   │   └── dub.cljs           # Dub subscriptions: status, r2-url, translation, etc.
 │   │   ├── audio.cljs             # Singleton <audio> element outside React tree
 │   │   └── views/
 │   │       ├── layout.cljs        # App shell (tab bar, theme init, mini-player slot)
@@ -339,16 +437,23 @@ buzz-bot/
 │   │       ├── feeds.cljs         # Feeds list + Apple Podcasts search
 │   │       ├── episodes.cljs      # Episode list for a single feed
 │   │       ├── bookmarks.cljs     # Bookmarked episodes with search
-│   │       ├── player.cljs        # Full-screen player — controls, share, send, recs
-│   │       └── miniplayer.cljs    # Persistent mini-player (shown on all non-player views)
+│   │       ├── player.cljs        # Full-screen player — controls, share, send, dub panel
+│   │       ├── miniplayer.cljs    # Persistent mini-player (shown on all non-player views)
+│   │       └── dub.cljs           # Dub panel + language picker component
+│   ├── dub/
+│   │   ├── dub_job.cr             # Async pipeline: download → Whisper → DeepL → XTTS-v2 → R2
+│   │   ├── replicate_client.cr    # Replicate API: submit prediction, poll, return output
+│   │   ├── deepl_client.cr        # DeepL translation API
+│   │   └── r2_storage.cr          # Cloudflare R2 PUT via AWS Signature v4
 │   ├── models/
 │   │   ├── user.cr
 │   │   ├── feed.cr
-│   │   ├── episode.cr
-│   │   └── user_episode.cr
+│   │   ├── episode.cr             # includes transcript() / save_transcript()
+│   │   ├── user_episode.cr
+│   │   └── dubbed_episode.cr      # status machine + r2_url + translation
 │   ├── rss/
 │   │   └── parser.cr              # RSS and OPML XML parsing
-│   ├── views/                     # ECR templates (HTML shell only — no HTMX)
+│   ├── views/                     # ECR templates (HTML shell only)
 │   │   ├── layout.ecr             # <html> wrapper — injects BOT_USERNAME, theme vars
 │   │   └── app.ecr                # SPA mount point (<div id="app">)
 │   └── web/
@@ -363,6 +468,7 @@ buzz-bot/
 │           ├── feeds.cr           # Feed CRUD + subscribe
 │           ├── episodes.cr        # Episodes, player data, progress, signals, audio proxy
 │           ├── inbox.cr           # GET /inbox
+│           ├── dub.cr             # POST /episodes/:id/dub, GET /episodes/:id/dub/:lang
 │           ├── discover.cr        # GET /bookmarks, GET /bookmarks/search
 │           ├── search.cr          # GET /search, POST /search/subscribe
 │           └── recommendations.cr
@@ -393,11 +499,14 @@ All Mini App routes authenticate via the `X-Init-Data` request header (Telegram 
 | `POST` | `/feeds/:id/subscribe` | Subscribe to a feed by id (used after search) |
 | `DELETE` | `/feeds/:id` | Unsubscribe |
 | `GET` | `/episodes?feed_id=X` | Episode list for a feed (`limit`, `offset`, `order` params) |
-| `GET` | `/episodes/:id/player` | Player data — episode, feed, recs, next episode title |
+| `GET` | `/episodes/:id/player` | Player data — episode, feed, recs, next episode, preferred dub language |
 | `PUT` | `/episodes/:id/progress` | Save playback position |
 | `PUT` | `/episodes/:id/signal` | Toggle bookmark |
-| `POST` | `/episodes/:id/send` | Send audio file to user's Telegram chat (premium; 402 otherwise) |
-| `GET` | `/episodes/:id/audio_proxy` | Auth-gated streaming proxy with redirect following |
+| `POST` | `/episodes/:id/send` | Send audio file to user's Telegram chat (premium; `dubbed=true&language=es` for dubbed) |
+| `GET` | `/episodes/:id/audio_proxy` | Auth-gated streaming proxy — follows redirects, flushes headers before CDN connection |
+| `POST` | `/episodes/:id/dub` | Start or retry a dub job `{language: "es"}` — returns status immediately, job runs async |
+| `GET` | `/episodes/:id/dub/:lang` | Poll dub status — returns `{status, r2_url?, translation?}` |
+| `PUT` | `/user/dub_language` | Save the user's preferred dub language |
 | `GET` | `/bookmarks` | Bookmarked episodes |
 | `GET` | `/bookmarks/search?q=X` | Search bookmarked episodes |
 | `GET` | `/search?q=X` | Search Apple Podcasts directory |
@@ -422,16 +531,18 @@ core.cljs          ← mounts app, reads initData from DOM, dispatches :init
 |---|---|
 | `db.cljs` | Defines the initial `app-db` shape |
 | `events.cljs` | Pure event handlers (`reg-event-db` / `reg-event-fx`) |
-| `fx.cljs` | Side-effecting handlers: `::http-fetch`, `::audio-cmd`, `::copy-to-clipboard`, `::open-telegram-link`, `::scroll-to-episode` |
+| `events/dub.cljs` | Dub-specific events: language picker, request, poll, send to Telegram |
+| `fx.cljs` | Side-effecting handlers: `::http-fetch`, `::audio-cmd`, `::copy-to-clipboard`, `::open-telegram-link`, `::poll-after` |
 | `subs.cljs` | Derived data subscriptions |
+| `subs/dub.cljs` | Dub state subscriptions: status, r2-url, translation, error, language |
 | `audio.cljs` | Singleton `<audio>` element outside the React tree — survives view changes |
 
 **Key behaviours:**
 
 - **Audio continuity** — the `<audio>` element is a `defonce` at the module level. Navigating between views never interrupts playback.
-- **List state restoration** — before opening the player, the episode count is snapshotted. On return the same number of episodes is fetched in one request and the playing episode is scrolled into view and highlighted.
 - **Offline write queue** — progress saves that fail offline are queued in IndexedDB by the Service Worker and replayed automatically on reconnect.
 - **Progressive audio caching** — the Service Worker downloads episode audio in the background and the player switches to the local cached copy once 5 minutes are buffered ahead.
+- **Dub polling** — after requesting a dub, the client polls `GET /episodes/:id/dub/:lang` every 5 seconds via the `::poll-after` effect until status is `done` or `failed`.
 
 ---
 
@@ -439,6 +550,8 @@ core.cljs          ← mounts app, reads initData from DOM, dispatches :init
 
 ```
 users ──< user_feeds >── feeds ──< episodes ──< user_episodes >── users
+                                       │
+                                       └──< dubbed_episodes
 ```
 
 | Table | Purpose |
@@ -446,10 +559,15 @@ users ──< user_feeds >── feeds ──< episodes ──< user_episodes >�
 | `users` | One row per Telegram user; upserted on every `/start` |
 | `feeds` | Shared podcast feed registry; deduplicated by URL |
 | `user_feeds` | M:N join — which users subscribe to which feeds |
-| `episodes` | Podcast episodes; deduplicated by RSS `<guid>` per feed |
+| `episodes` | Podcast episodes; deduplicated by RSS `<guid>` per feed; `transcript` column caches Whisper output |
 | `user_episodes` | Per-user playback state and bookmark signal |
+| `dubbed_episodes` | One row per (episode, language) — status machine, R2 URL, translation text, expiry |
 
-Key columns: `user_episodes.liked` — `NULL` = no signal, `TRUE` = bookmarked (used for recommendations and the bookmark button).
+Key columns:
+- `user_episodes.liked` — `NULL` = no signal, `TRUE` = bookmarked (used for recommendations and the bookmark button)
+- `episodes.transcript` — Whisper output, shared across all dub languages for the same episode
+- `dubbed_episodes.translation` — DeepL output for this specific language
+- `dubbed_episodes.expires_at` — set to `NOW() + 29 days` when status becomes `done`; the UI shows "Dub Episode (expired)" once the R2 file is gone
 
 ---
 

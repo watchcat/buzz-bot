@@ -223,7 +223,6 @@ module Web::Routes::Episodes
       nil
     rescue ex
       Log.error { "audio_proxy error: #{ex.message}" }
-      env.response.status_code = 502 unless streamed
       "Proxy error"
     end
 
