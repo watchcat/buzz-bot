@@ -47,6 +47,9 @@ module DubJob
     # Download first 3 MB (≈ 30s at 128 kbps)
     clip = IO::Memory.new
     HTTP::Client.get(audio_url, headers: HTTP::Headers{"Range" => "bytes=0-3145727"}) do |resp|
+      unless resp.success? || resp.status_code == 206
+        raise "Voice clip download failed: HTTP #{resp.status_code}"
+      end
       IO.copy(resp.body_io, clip, 3_145_728)
     end
 
