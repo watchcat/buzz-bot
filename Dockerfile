@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1.4
 
 # Build stage
-FROM crystallang/crystal:latest-alpine AS builder
+FROM crystallang/crystal:1.19-alpine AS builder
 
 WORKDIR /app
 
