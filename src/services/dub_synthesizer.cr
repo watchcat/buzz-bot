@@ -52,9 +52,16 @@ def process(dub_id : Int64, episode_id : Int64, language : String,
 
   if requester_tg_id
     begin
+      app_url = "#{Config.base_url}/app?episode=#{episode_id}"
       BotClient.client.send_message(
         requester_tg_id,
-        "🎙 Your dubbed episode is ready — open the player to listen in #{language.upcase}."
+        "🎙 Your dubbed episode is ready in #{language.upcase}.",
+        reply_markup: Tourmaline::InlineKeyboardMarkup.new([[
+          Tourmaline::InlineKeyboardButton.new(
+            text: "▶️ Open Episode",
+            web_app: Tourmaline::WebAppInfo.new(url: app_url)
+          )
+        ]])
       )
     rescue ex
       Log.warn { "DubSynthesizer[#{dub_id}]: Telegram notification failed — #{ex.message}" }
