@@ -48,6 +48,11 @@ RUN crystal build src/buzz_bot.cr \
     --no-debug \
     -o /app/buzz-bot
 
+# Build service binaries
+RUN crystal build --release --static src/services/dub_transcriber.cr -o dub-transcriber
+RUN crystal build --release --static src/services/dub_translator.cr -o dub-translator
+RUN crystal build --release --static src/services/dub_synthesizer.cr -o dub-synthesizer
+
 # Runtime stage
 FROM alpine:3.19
 
@@ -60,6 +65,9 @@ RUN apk add --no-cache \
 WORKDIR /app
 
 COPY --from=builder /app/buzz-bot ./buzz-bot
+COPY --from=builder /app/dub-transcriber ./dub-transcriber
+COPY --from=builder /app/dub-translator ./dub-translator
+COPY --from=builder /app/dub-synthesizer ./dub-synthesizer
 COPY --from=builder /app/public ./public
 
 EXPOSE 3000
