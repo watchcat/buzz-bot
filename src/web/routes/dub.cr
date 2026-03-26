@@ -26,6 +26,12 @@ module Web::Routes::Dub
         next %({"error":"unsupported_language"})
       end
 
+      if Episode.original_language(episode_id) == language
+        env.response.content_type = "application/json"
+        env.response.status_code = 400
+        next %({"error":"already_original_language"})
+      end
+
       if (dur = episode.duration_sec) && dur > 3600
         env.response.content_type = "application/json"
         env.response.status_code = 400
@@ -46,8 +52,7 @@ module Web::Routes::Dub
         # failed and expired fall through to upsert+spawn (retry)
       end
 
-      dub_id = DubbedEpisode.upsert_pending(episode_id, language)
-      spawn { DubJob.process(dub_id, episode, user.telegram_id, language) }
+      dub_id = DubbedEpisode.upsert_pending(episode_id, language, user.telegram_id)
 
       env.response.content_type = "application/json"
       env.response.status_code = 202
