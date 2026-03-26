@@ -27,9 +27,9 @@
    (assoc-in db [:dub :statuses]
              (reduce-kv
                (fn [m lang v]
-                 (assoc m lang {:status      (keyword (:status v))
-                                :r2-url      (:r2_url v)
-                                :translation (:translation v)}))
+                 (assoc m (name lang) {:status      (keyword (:status v))
+                                       :r2-url      (:r2_url v)
+                                       :translation (:translation v)}))
                {}
                statuses-map))))
 
