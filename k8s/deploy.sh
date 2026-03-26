@@ -41,11 +41,21 @@ ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no "$NODE" "
 "
 
 echo "==> Deploying dub services"
-kubectl apply -f k8s/dub-transcriber-deployment.yaml \
-              -f k8s/dub-translator-deployment.yaml \
-              -f k8s/dub-synthesizer-deployment.yaml \
-  --kubeconfig k8s/kubeconfig
-kubectl rollout restart deployment/dub-transcriber deployment/dub-translator deployment/dub-synthesizer \
-  -n buzz-bot --kubeconfig k8s/kubeconfig
+scp -i "$SSH_KEY" -o StrictHostKeyChecking=no \
+  k8s/dub-transcriber-deployment.yaml \
+  k8s/dub-translator-deployment.yaml \
+  k8s/dub-synthesizer-deployment.yaml \
+  "${NODE}:/tmp/"
+ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no "$NODE" "
+  k3s kubectl apply -f /tmp/dub-transcriber-deployment.yaml \
+                    -f /tmp/dub-translator-deployment.yaml \
+                    -f /tmp/dub-synthesizer-deployment.yaml \
+                    -n buzz-bot
+  k3s kubectl rollout restart deployment/dub-transcriber deployment/dub-translator deployment/dub-synthesizer -n buzz-bot
+  k3s kubectl rollout status deployment/dub-transcriber -n buzz-bot
+  k3s kubectl rollout status deployment/dub-translator -n buzz-bot
+  k3s kubectl rollout status deployment/dub-synthesizer -n buzz-bot
+  rm /tmp/dub-*-deployment.yaml
+"
 
 echo "==> Done"
