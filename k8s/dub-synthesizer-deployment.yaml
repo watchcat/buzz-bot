@@ -1,0 +1,30 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dub-synthesizer
+  namespace: buzz-bot
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: dub-synthesizer
+  template:
+    metadata:
+      labels:
+        app: dub-synthesizer
+    spec:
+      containers:
+        - name: dub-synthesizer
+          image: ghcr.io/watchcat/buzz-bot:latest
+          imagePullPolicy: IfNotPresent
+          command: ["/app/dub-synthesizer"]
+          envFrom:
+            - secretRef:
+                name: buzz-bot-env
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 500m
+              memory: 128Mi

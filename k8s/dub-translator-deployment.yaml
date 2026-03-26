@@ -1,0 +1,30 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dub-translator
+  namespace: buzz-bot
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: dub-translator
+  template:
+    metadata:
+      labels:
+        app: dub-translator
+    spec:
+      containers:
+        - name: dub-translator
+          image: ghcr.io/watchcat/buzz-bot:latest
+          imagePullPolicy: IfNotPresent
+          command: ["/app/dub-translator"]
+          envFrom:
+            - secretRef:
+                name: buzz-bot-env
+          resources:
+            requests:
+              cpu: 50m
+              memory: 32Mi
+            limits:
+              cpu: 200m
+              memory: 64Mi

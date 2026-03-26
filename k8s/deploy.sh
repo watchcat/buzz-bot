@@ -40,4 +40,12 @@ ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no "$NODE" "
   k3s kubectl rollout status deployment/buzz-bot -n buzz-bot
 "
 
+echo "==> Deploying dub services"
+kubectl apply -f k8s/dub-transcriber-deployment.yaml \
+              -f k8s/dub-translator-deployment.yaml \
+              -f k8s/dub-synthesizer-deployment.yaml \
+  --kubeconfig k8s/kubeconfig
+kubectl rollout restart deployment/dub-transcriber deployment/dub-translator deployment/dub-synthesizer \
+  -n buzz-bot --kubeconfig k8s/kubeconfig
+
 echo "==> Done"
