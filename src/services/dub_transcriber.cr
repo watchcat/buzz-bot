@@ -22,7 +22,7 @@ loop do
 end
 
 def process(dub_id : Int64, episode_id : Int64, _language : String)
-  Log.info { "DubTranscriber[#{dub_id}]: claimed (episode #{episode_id} → #{language})" }
+  Log.info { "DubTranscriber[#{dub_id}]: claimed (episode #{episode_id} → #{_language})" }
 
   transcript = Episode.transcript(episode_id)
   if transcript
