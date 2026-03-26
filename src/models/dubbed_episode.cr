@@ -109,10 +109,9 @@ struct DubbedEpisode
     count = AppDB.pool.exec(
       <<-SQL
         UPDATE dubbed_episodes
-        SET status = 'failed', error = 'Server restarted',
-            step   = 'transcription'
+        SET status = 'failed', error = 'Server restarted'
         WHERE status IN ('pending', 'processing')
-          AND step NOT IN ('complete')
+          AND step = 'transcription'
       SQL
     ).rows_affected
     Log.info { "DubbedEpisode: reset #{count} stale jobs to failed" } if count > 0
@@ -145,7 +144,7 @@ struct DubbedEpisode
         SET step = 'translating'
         WHERE id = (
           SELECT id FROM dubbed_episodes
-          WHERE step = 'translation'
+          WHERE step = 'translation' AND status = 'processing'
           ORDER BY created_at
           LIMIT 1
           FOR UPDATE SKIP LOCKED
@@ -164,7 +163,7 @@ struct DubbedEpisode
         SET step = 'synthesizing'
         WHERE id = (
           SELECT id FROM dubbed_episodes
-          WHERE step = 'synthesis'
+          WHERE step = 'synthesis' AND status = 'processing'
           ORDER BY created_at
           LIMIT 1
           FOR UPDATE SKIP LOCKED
