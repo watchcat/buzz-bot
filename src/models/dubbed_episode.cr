@@ -61,18 +61,22 @@ struct DubbedEpisode
   def self.upsert_pending(episode_id : Int64, language : String, requester_telegram_id : Int64) : Int64
     AppDB.pool.query_one(
       <<-SQL,
-        INSERT INTO dubbed_episodes (episode_id, language, status, step, requester_telegram_id)
-        VALUES ($1, $2, 'pending', 'transcription', $3)
-        ON CONFLICT (episode_id, language) DO UPDATE
-          SET status                = 'pending',
-              step                  = 'transcription',
-              r2_url                = NULL,
-              translation           = NULL,
-              error                 = NULL,
-              expires_at            = NULL,
-              requester_telegram_id = $3,
-              created_at            = NOW()
-        RETURNING id
+        WITH row AS (
+          INSERT INTO dubbed_episodes (episode_id, language, status, step, requester_telegram_id)
+          VALUES ($1, $2, 'pending', 'transcription', $3)
+          ON CONFLICT (episode_id, language) DO UPDATE
+            SET status                = 'pending',
+                step                  = 'transcription',
+                r2_url                = NULL,
+                translation           = NULL,
+                error                 = NULL,
+                expires_at            = NULL,
+                requester_telegram_id = $3,
+                created_at            = NOW()
+          RETURNING id
+        ),
+        _notify AS (SELECT pg_notify('dub_transcription', id::text) FROM row)
+        SELECT id FROM row
       SQL
       episode_id, language, requester_telegram_id, as: Int64
     )
@@ -176,14 +180,21 @@ struct DubbedEpisode
 
   def self.advance_to_translation(id : Int64)
     AppDB.pool.exec(
-      "UPDATE dubbed_episodes SET step = 'translation' WHERE id = $1", id
+      <<-SQL, id
+        WITH upd AS (UPDATE dubbed_episodes SET step = 'translation' WHERE id = $1 RETURNING id)
+        SELECT pg_notify('dub_translation', id::text) FROM upd
+      SQL
     )
   end
 
   def self.advance_to_synthesis(id : Int64, translation : String)
     AppDB.pool.exec(
-      "UPDATE dubbed_episodes SET step = 'synthesis', translation = $2 WHERE id = $1",
-      id, translation
+      <<-SQL, id, translation
+        WITH upd AS (
+          UPDATE dubbed_episodes SET step = 'synthesis', translation = $2 WHERE id = $1 RETURNING id
+        )
+        SELECT pg_notify('dub_synthesis', id::text) FROM upd
+      SQL
     )
   end
 
