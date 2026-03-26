@@ -1,4 +1,5 @@
 require "http/client"
+require "pg"
 require "../config"
 require "../db"
 require "../models/episode"
@@ -12,13 +13,22 @@ Log.setup_from_env
 Log.info { "DubSynthesizer: starting" }
 DubbedEpisode.reset_in_flight("synthesizing", "synthesis")
 
+notify_conn = PQ::Connection.new(PQ::ConnInfo.from_uri(URI.parse(Config.database_url_direct)))
+notify_conn.connect
+notify_conn.exec_all("LISTEN dub_synthesis")
+Log.info { "DubSynthesizer: listening on dub_synthesis" }
+
+# Drain any jobs queued while we were down
+while (job = DubbedEpisode.claim_for_synthesis)
+  dub_id, episode_id, language, translation, requester_tg_id = job
+  process(dub_id, episode_id, language, translation, requester_tg_id)
+end
+
 loop do
-  if (job = DubbedEpisode.claim_for_synthesis)
+  notify_conn.wait_for_notify(30.seconds)
+  while (job = DubbedEpisode.claim_for_synthesis)
     dub_id, episode_id, language, translation, requester_tg_id = job
     process(dub_id, episode_id, language, translation, requester_tg_id)
-    sleep 100.milliseconds
-  else
-    sleep 5.seconds
   end
 end
 
