@@ -1,4 +1,3 @@
-require "pg"
 require "../config"
 require "../db"
 require "../models/episode"
@@ -10,9 +9,15 @@ Log.setup_from_env
 Log.info { "DubTranslator: starting" }
 DubbedEpisode.reset_in_flight("translating", "translation")
 
-notify_conn = PQ::Connection.new(PQ::ConnInfo.from_uri(URI.parse(Config.database_url_direct)))
-notify_conn.connect
-notify_conn.exec_all("LISTEN dub_translation")
+wakeup = Channel(Nil).new(1)
+
+PG.connect_listen(Config.database_url_direct, "dub_translation") do |_notif|
+  select
+  when wakeup.send(nil)
+  else
+    # already a pending wakeup
+  end
+end
 Log.info { "DubTranslator: listening on dub_translation" }
 
 # Drain any jobs queued while we were down
@@ -22,7 +27,12 @@ while (job = DubbedEpisode.claim_for_translation)
 end
 
 loop do
-  notify_conn.wait_for_notify(30.seconds)
+  select
+  when wakeup.receive
+    nil
+  when timeout(30.seconds)
+    nil
+  end
   while (job = DubbedEpisode.claim_for_translation)
     dub_id, episode_id, language = job
     process(dub_id, episode_id, language)

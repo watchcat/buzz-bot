@@ -11,13 +11,33 @@ Log.setup_from_env
 Log.info { "DubTranscriber: starting" }
 DubbedEpisode.reset_in_flight("transcribing", "transcription")
 
+wakeup = Channel(Nil).new(1)
+
+PG.connect_listen(Config.database_url_direct, "dub_transcription") do |_notif|
+  select
+  when wakeup.send(nil)
+  else
+    # already a pending wakeup
+  end
+end
+Log.info { "DubTranscriber: listening on dub_transcription" }
+
+# Drain any jobs queued while we were down
+while (job = DubbedEpisode.claim_for_transcription)
+  dub_id, episode_id, _language = job
+  process(dub_id, episode_id, _language)
+end
+
 loop do
-  if (job = DubbedEpisode.claim_for_transcription)
+  select
+  when wakeup.receive
+    nil
+  when timeout(30.seconds)
+    nil
+  end
+  while (job = DubbedEpisode.claim_for_transcription)
     dub_id, episode_id, _language = job
     process(dub_id, episode_id, _language)
-    sleep 100.milliseconds
-  else
-    sleep 5.seconds
   end
 end
 
