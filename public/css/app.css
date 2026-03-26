@@ -1674,35 +1674,48 @@ body:has(.now-playing-bar) main {
 
 /* ── Dub feature ── */
 .dub-panel            { margin-top: 12px; }
-.btn-dub              { width: 100%; padding: 10px; border-radius: 8px;
-                        background: var(--button-color); color: var(--button-text-color);
-                        border: none; font-size: 15px; cursor: pointer; }
-.btn-retry            { background: #c0392b; }
-.dub-status-pending   { text-align: center; padding: 10px; color: var(--hint-color); }
-.dub-spinner          { display: inline-block; }
-.dub-done             { display: flex; flex-direction: column; gap: 8px; }
-.btn-play-dubbed      { width: 100%; padding: 10px; border-radius: 8px;
-                        background: color-mix(in srgb, var(--button-color) 20%, transparent);
-                        color: var(--text-color); border: 1px solid var(--button-color);
-                        font-size: 15px; cursor: pointer; }
-.btn-send-dubbed      { width: 100%; padding: 10px; border-radius: 8px;
+.dub-langs            { display: flex; flex-wrap: wrap; gap: 6px; }
+.dub-lang-chip        { padding: 4px 8px; border-radius: 6px; border: 1px solid var(--hint-color);
                         background: transparent; color: var(--hint-color);
-                        border: 1px solid var(--hint-color); font-size: 14px; cursor: pointer; }
-.dub-status-failed    { display: flex; flex-direction: column; gap: 4px; }
-.dub-error-detail     { font-size: 11px; color: #c0392b; padding: 4px 0; }
-.dub-translation      { margin-top: 4px; }
+                        font-size: 11px; font-weight: 600; letter-spacing: 0.04em;
+                        cursor: pointer; line-height: 1.4; transition: opacity .15s; }
+.dub-lang-chip:active { opacity: .6; }
+/* A dub exists and is ready to play */
+.dub-lang-chip--done  { border-color: var(--button-color);
+                        color: var(--button-color);
+                        background: color-mix(in srgb, var(--button-color) 12%, transparent); }
+/* Currently playing this language */
+.dub-lang-chip--active { border-color: var(--button-color);
+                         background: var(--button-color);
+                         color: var(--button-text-color); }
+/* Dubbing in progress */
+.dub-lang-chip--pending { border-color: var(--hint-color);
+                          color: var(--hint-color);
+                          animation: dub-chip-pulse 1.4s ease-in-out infinite; }
+@keyframes dub-chip-pulse { 0%,100% { opacity: 1 } 50% { opacity: .4 } }
+/* Previous attempt failed */
+.dub-lang-chip--failed { border-color: #c0392b; color: #c0392b; }
+
+.dub-active-controls  { margin-top: 10px; display: flex; flex-direction: column; gap: 8px; }
+.btn-send-dubbed      { padding: 9px 14px; border-radius: 8px;
+                        background: transparent; color: var(--hint-color);
+                        border: 1px solid var(--hint-color); font-size: 14px; cursor: pointer;
+                        text-align: left; }
+.dub-error-detail     { font-size: 11px; color: #c0392b; padding: 2px 0; }
+.dub-translation      { margin-top: 2px; }
 .dub-translation summary { font-size: 13px; color: var(--hint-color); cursor: pointer; }
 .dub-translation-text { font-size: 13px; color: var(--text-color); line-height: 1.5;
                         margin: 6px 0 0; white-space: pre-wrap; }
-.dub-picker-overlay   { position: fixed; inset: 0; background: rgba(0,0,0,.5);
-                        display: flex; align-items: flex-end; z-index: 999; }
-.dub-picker-modal     { width: 100%; background: var(--bg-color);
-                        border-radius: 16px 16px 0 0; padding: 16px 0 32px;
-                        max-height: 70vh; overflow-y: auto; }
-.dub-picker-title     { font-weight: 600; font-size: 16px;
-                        padding: 0 16px 12px; border-bottom: 1px solid var(--secondary-bg); }
-.dub-language-list    { list-style: none; margin: 0; padding: 0; }
-.dub-language-item    { padding: 14px 16px; cursor: pointer; display: flex;
-                        justify-content: space-between; }
-.dub-language-item:active { background: var(--secondary-bg); }
-.dub-language-item.selected { color: var(--button-color); font-weight: 500; }
+.dub-add-btn          { margin-top: 8px; padding: 4px 10px; border-radius: 6px;
+                        border: 1px dashed var(--hint-color); background: none;
+                        color: var(--hint-color); font-size: 11px; cursor: pointer; }
+.dub-add-btn:active   { opacity: .6; }
+.dub-picker           { margin-top: 6px; display: flex; flex-direction: column;
+                        background: var(--secondary-bg-color, var(--bg-color));
+                        border-radius: 8px; overflow: hidden;
+                        border: 1px solid var(--hint-color); }
+.dub-picker-item      { padding: 10px 14px; text-align: left; background: none;
+                        border: none; border-bottom: 1px solid var(--hint-color);
+                        color: var(--text-color); font-size: 13px; cursor: pointer; }
+.dub-picker-item:last-child { border-bottom: none; }
+.dub-picker-item:active { opacity: .6; }

@@ -19,62 +19,90 @@
    {:code "hu" :name "Hungarian"}
    {:code "ko" :name "Korean"}])
 
+;; Load existing dub statuses from the player endpoint response.
 (rf/reg-event-db
- ::open-picker
- (fn [db _]
-   (assoc-in db [:dub :picker-open?] true)))
+ ::init-statuses
+ (fn [db [_ statuses-map]]
+   ;; statuses-map: {"es" {:status "done" :r2_url "..." :translation "..."}, ...}
+   (assoc-in db [:dub :statuses]
+             (reduce-kv
+               (fn [m lang v]
+                 (assoc m lang {:status      (keyword (:status v))
+                                :r2-url      (:r2_url v)
+                                :translation (:translation v)}))
+               {}
+               statuses-map))))
 
-(rf/reg-event-db
- ::close-picker
- (fn [db _]
-   (assoc-in db [:dub :picker-open?] false)))
-
+;; Main entry point: tap a language chip.
 (rf/reg-event-fx
- ::language-selected
+ ::language-tapped
  (fn [{:keys [db]} [_ episode-id lang]]
-   {:db (-> db
-            (assoc-in [:dub :picker-open?] false)
-            (assoc-in [:dub :preferred-language] lang))
-    ::fx/http-fetch {:method :put
-                     :url    "/user/dub_language"
-                     :body   {:language lang}
-                     :on-ok  [::noop]
-                     :on-err [::noop]}
-    :dispatch [::request episode-id lang]}))
+   (let [lang-state   (get-in db [:dub :statuses lang])
+         status       (:status lang-state)
+         active       (get-in db [:dub :active-lang])
+         episode      (get-in db [:player :data :episode])
+         start        (max 0 (- (get-in db [:audio :current-time] 0) 5))]
+     (cond
+       ;; Tapping the active dubbed language → switch back to original
+       (and (= status :done) (= active lang))
+       {:db (assoc-in db [:dub :active-lang] nil)
+        ::fx/audio-cmd {:op        :load
+                        :src       (:audio_url episode)
+                        :start     start
+                        :autoplay? true
+                        :title     (:title episode)
+                        :artist    (:feed_title episode)
+                        :artwork   (:feed_image_url episode)}}
+
+       ;; Done and not active → switch to dubbed audio
+       (= status :done)
+       {:db (assoc-in db [:dub :active-lang] lang)
+        ::fx/audio-cmd {:op        :load
+                        :src       (:r2-url lang-state)
+                        :start     start
+                        :autoplay? true
+                        :title     (str (:title episode) " [" (clojure.string/upper-case lang) "]")
+                        :artist    (:feed_title episode)
+                        :artwork   (:feed_image_url episode)}}
+
+       ;; Already in flight → ensure polling continues
+       (#{:pending :processing} status)
+       {::fx/poll-after {:ms 5000 :dispatch [::status-tick episode-id lang]}}
+
+       ;; Nothing yet, failed, or expired → start a new dub job
+       :else
+       {:dispatch [::request episode-id lang]}))))
 
 (rf/reg-event-fx
  ::request
  (fn [{:keys [db]} [_ episode-id lang]]
    {:db (-> db
-            (assoc-in [:dub :status] :pending)
-            (assoc-in [:dub :language] lang)
-            (assoc-in [:dub :r2-url] nil)
-            (assoc-in [:dub :error] nil))
+            (assoc-in [:dub :statuses lang :status] :pending)
+            (assoc-in [:dub :statuses lang :error]  nil))
     ::fx/http-fetch {:method :post
                      :url    (str "/episodes/" episode-id "/dub")
                      :body   {:language lang}
                      :on-ok  [::request-ok episode-id lang]
-                     :on-err [::request-err]}}))
+                     :on-err [::request-err lang]}}))
 
 (rf/reg-event-fx
  ::request-ok
  (fn [{:keys [db]} [_ episode-id lang resp]]
    (let [status (keyword (:status resp))]
      (cond-> {:db (-> db
-                      (assoc-in [:dub :status] status)
-                      (assoc-in [:dub :dub-id] (:id resp))
+                      (assoc-in [:dub :statuses lang :status] status)
                       (cond-> (= status :done)
-                        (-> (assoc-in [:dub :r2-url] (:r2_url resp))
-                            (assoc-in [:dub :translation] (:translation resp)))))}
+                        (-> (assoc-in [:dub :statuses lang :r2-url]      (:r2_url resp))
+                            (assoc-in [:dub :statuses lang :translation] (:translation resp)))))}
        (#{:pending :processing} status)
        (assoc ::fx/poll-after {:ms 5000 :dispatch [::status-tick episode-id lang]})))))
 
 (rf/reg-event-db
  ::request-err
- (fn [db [_ err]]
+ (fn [db [_ lang err]]
    (-> db
-       (assoc-in [:dub :status] :failed)
-       (assoc-in [:dub :error] (str "Request failed: " err)))))
+       (assoc-in [:dub :statuses lang :status] :failed)
+       (assoc-in [:dub :statuses lang :error]  (str "Request failed: " err)))))
 
 (rf/reg-event-fx
  ::status-tick
@@ -89,24 +117,19 @@
  (fn [{:keys [db]} [_ episode-id lang resp]]
    (let [status (keyword (:status resp))]
      (cond-> {:db (-> db
-                      (assoc-in [:dub :status] status)
+                      (assoc-in [:dub :statuses lang :status] status)
                       (cond-> (= status :done)
-                        (-> (assoc-in [:dub :r2-url] (:r2_url resp))
-                            (assoc-in [:dub :translation] (:translation resp))))
+                        (-> (assoc-in [:dub :statuses lang :r2-url]      (:r2_url resp))
+                            (assoc-in [:dub :statuses lang :translation] (:translation resp))))
                       (cond-> (= status :failed)
-                        (assoc-in [:dub :error] (:error resp))))}
+                        (assoc-in [:dub :statuses lang :error] (:error resp))))}
        (#{:pending :processing} status)
        (assoc ::fx/poll-after {:ms 5000 :dispatch [::status-tick episode-id lang]})))))
 
 (rf/reg-event-fx
- ::audio-play-url
- (fn [_ [_ url]]
-   {::fx/audio-cmd {:op :load :src url :start 0 :autoplay? true}}))
-
-(rf/reg-event-fx
  ::send-telegram
  (fn [{:keys [db]} [_ episode-id]]
-   (let [lang (get-in db [:dub :language])]
+   (let [lang (get-in db [:dub :active-lang])]
      {::fx/http-fetch {:method :post
                        :url    (str "/episodes/" episode-id "/send")
                        :body   {:dubbed true :language lang}
@@ -116,17 +139,16 @@
 (rf/reg-event-db
  ::send-err
  (fn [db [_ err]]
-   (assoc-in db [:dub :error] (str "Send failed: " err))))
+   (assoc-in db [:dub :send-error] (str "Send failed: " err))))
+
+(rf/reg-event-db
+ ::toggle-picker
+ (fn [db _]
+   (update-in db [:dub :picker-open?] not)))
 
 (rf/reg-event-db
  ::reset
  (fn [db _]
-   (-> db
-       (assoc-in [:dub :status] nil)
-       (assoc-in [:dub :r2-url] nil)
-       (assoc-in [:dub :translation] nil)
-       (assoc-in [:dub :error] nil)
-       (assoc-in [:dub :language] nil)
-       (assoc-in [:dub :dub-id] nil))))
+   (assoc db :dub {:statuses {} :active-lang nil :picker-open? false})))
 
 (rf/reg-event-db ::noop (fn [db _] db))
