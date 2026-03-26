@@ -116,28 +116,39 @@ module AudioSender
 
   private def self.upload_multipart(telegram_id : Int64, episode : Episode, feed : Feed?, file : File)
     boundary = "BuzzBot#{Random::Secure.hex(10)}"
-    buf = IO::Memory.new
+    # Write multipart to a temp file so we can stream it to Telegram
+    # without holding the entire audio in memory.
+    tmp = File.tempfile("buzz-multipart", ".bin")
+    begin
+      builder = HTTP::FormData::Builder.new(tmp, boundary)
+      builder.field("chat_id",   telegram_id.to_s)
+      builder.field("title",     episode.title)
+      builder.field("performer", feed.try(&.title) || "")
+      episode.duration_sec.try { |d| builder.field("duration", d.to_s) }
+      builder.file(
+        "audio", file,
+        HTTP::FormData::FileMetadata.new(filename: "episode.mp3"),
+        HTTP::Headers{"Content-Type" => "audio/mpeg"}
+      )
+      builder.finish
 
-    builder = HTTP::FormData::Builder.new(buf, boundary)
-    builder.field("chat_id",   telegram_id.to_s)
-    builder.field("title",     episode.title)
-    builder.field("performer", feed.try(&.title) || "")
-    episode.duration_sec.try { |d| builder.field("duration", d.to_s) }
-    builder.file(
-      "audio", file,
-      HTTP::FormData::FileMetadata.new(filename: "episode.mp3"),
-      HTTP::Headers{"Content-Type" => "audio/mpeg"}
-    )
-    builder.finish
+      content_length = tmp.pos
+      tmp.rewind
 
-    resp = HTTP::Client.post(
-      "#{TELEGRAM_API}/sendAudio",
-      headers: HTTP::Headers{"Content-Type" => "multipart/form-data; boundary=#{boundary}"},
-      body: buf.to_s
-    )
-    result = JSON.parse(resp.body)
-    unless result["ok"]?.try(&.as_bool?)
-      raise result["description"]?.try(&.as_s?) || "Telegram returned ok=false"
+      resp = HTTP::Client.post(
+        "#{TELEGRAM_API}/sendAudio",
+        headers: HTTP::Headers{
+          "Content-Type"   => "multipart/form-data; boundary=#{boundary}",
+          "Content-Length" => content_length.to_s,
+        },
+        body: tmp
+      )
+      result = JSON.parse(resp.body)
+      unless result["ok"]?.try(&.as_bool?)
+        raise result["description"]?.try(&.as_s?) || "Telegram returned ok=false"
+      end
+    ensure
+      tmp.delete
     end
   end
 
