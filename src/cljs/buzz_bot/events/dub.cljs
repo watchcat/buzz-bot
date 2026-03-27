@@ -91,6 +91,7 @@
    (let [status (keyword (:status resp))]
      (cond-> {:db (-> db
                       (assoc-in [:dub :statuses lang :status] status)
+                      (assoc-in [:dub :statuses lang :step]   (:step resp))
                       (cond-> (= status :done)
                         (-> (assoc-in [:dub :statuses lang :r2-url]      (:r2_url resp))
                             (assoc-in [:dub :statuses lang :translation] (:translation resp)))))}
@@ -120,6 +121,7 @@
    (let [status (keyword (:status resp))]
      (cond-> {:db (-> db
                       (assoc-in [:dub :statuses lang :status] status)
+                      (assoc-in [:dub :statuses lang :step]   (:step resp))
                       (cond-> (= status :done)
                         (-> (assoc-in [:dub :statuses lang :r2-url]      (:r2_url resp))
                             (assoc-in [:dub :statuses lang :translation] (:translation resp))))

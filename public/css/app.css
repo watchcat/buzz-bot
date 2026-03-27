@@ -1716,6 +1716,21 @@ body:has(.now-playing-bar) main {
                         color: var(--hint-color); font-size: 11px; cursor: pointer; }
 .dub-add-btn:active   { opacity: .6; }
 
+.dub-progress         { margin-top: 8px; }
+.dub-progress-track   { height: 4px; border-radius: 2px;
+                        background: color-mix(in srgb, var(--hint-color) 20%, transparent);
+                        overflow: hidden; }
+.dub-progress-fill    { height: 100%; border-radius: 2px;
+                        background: var(--button-color);
+                        transition: width 1s ease;
+                        animation: dub-progress-shimmer 1.8s ease-in-out infinite; }
+@keyframes dub-progress-shimmer {
+  0%, 100% { opacity: 1 }
+  50%       { opacity: .55 }
+}
+.dub-progress-label   { display: block; margin-top: 4px;
+                        font-size: 11px; color: var(--hint-color); }
+
 .dub-active-controls  { margin-top: 8px; display: flex; flex-direction: column; gap: 8px; }
 .btn-send-dubbed      { padding: 9px 14px; border-radius: 8px;
                         background: transparent; color: var(--hint-color);

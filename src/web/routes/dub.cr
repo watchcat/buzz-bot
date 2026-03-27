@@ -83,7 +83,7 @@ module Web::Routes::Dub
       when "failed"
         %({"status":"failed","error":#{dub.error.to_json}})
       else
-        %({"status":"#{eff}"})
+        %({"status":"#{eff}","step":#{dub.step.to_json}})
       end
     end
 

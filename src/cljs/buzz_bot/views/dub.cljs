@@ -4,8 +4,22 @@
             [buzz-bot.subs.dub :as dub-subs]
             [buzz-bot.events.dub :as dub-events]))
 
+;; Pipeline step → progress percentage and human label.
+(defn- step->pct [step]
+  (case step
+    ("transcription" "transcribing") "30%"
+    ("translation"   "translating")  "60%"
+    ("synthesis"     "synthesizing")  "85%"
+    "15%"))   ; pending / unknown → show minimal fill
+
+(defn- step->label [step]
+  (case step
+    ("transcription" "transcribing") "Transcribing audio…"
+    ("translation"   "translating")  "Translating…"
+    ("synthesis"     "synthesizing") "Synthesizing dubbed voice…"
+    "Starting…"))
+
 ;; Unified dub section: sits below the meta row.
-;; Shows existing dub chips, "Dub in…" button, and inline add-chips when picker is open.
 (defn dub-section [episode-id]
   (let [picker-open? @(rf/subscribe [::dub-subs/picker-open?])
         active       @(rf/subscribe [::dub-subs/active-lang])
@@ -19,7 +33,10 @@
         available    (filter (fn [{:keys [code]}]
                                (and (not= code orig-lang)
                                     (not (contains? statuses code))))
-                             dub-events/dub-languages)]
+                             dub-events/dub-languages)
+        in-flight    (filter (fn [{:keys [code]}]
+                               (#{:pending :processing} (:status (get statuses code))))
+                             existing)]
     (when (or (seq existing) (seq available))
       [:div.dub-section
        ;; Chips row: existing + available (when picker open) + "Dub in…" toggle
@@ -56,6 +73,16 @@
           [:button.dub-add-btn
            {:on-click #(rf/dispatch [::dub-events/toggle-picker])}
            (if picker-open? "✕" "🎙 Dub in…")])]
+
+       ;; Progress bar — shown for each in-flight dub
+       (for [{:keys [code name]} in-flight]
+         (let [step (:step (get statuses code))]
+           [:div.dub-progress
+            {:key code}
+            [:div.dub-progress-track
+             [:div.dub-progress-fill {:style {:width (step->pct step)}}]]
+            [:span.dub-progress-label
+             (str (str/upper-case code) " — " (step->label step))]]))
 
        ;; Active-dub controls shown below the chips row
        (when active
