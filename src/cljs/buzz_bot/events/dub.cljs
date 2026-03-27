@@ -106,11 +106,13 @@
 
 (rf/reg-event-fx
  ::status-tick
- (fn [_ [_ episode-id lang]]
-   {::fx/http-fetch {:method :get
-                     :url    (str "/episodes/" episode-id "/dub/" lang)
-                     :on-ok  [::status-loaded episode-id lang]
-                     :on-err [::noop]}}))
+ (fn [{:keys [db]} [_ episode-id lang]]
+   ;; Cancel the poll loop if we've navigated away from this episode.
+   (when (= (str episode-id) (str (get-in db [:player :data :episode :id])))
+     {::fx/http-fetch {:method :get
+                       :url    (str "/episodes/" episode-id "/dub/" lang)
+                       :on-ok  [::status-loaded episode-id lang]
+                       :on-err [::noop]}})))
 
 (rf/reg-event-fx
  ::status-loaded
