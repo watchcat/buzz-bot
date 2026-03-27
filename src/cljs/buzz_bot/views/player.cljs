@@ -134,15 +134,16 @@
                  [:polyline {:points "16 6 12 2 8 6"}]
                  [:line {:x1 "12" :y1 "2" :x2 "12" :y2 "15"}]]]]
 
-              ;; Meta row: date/duration on left, Dub In on right
+              ;; Meta row: date/duration
               (let [date-str (fmt-pub-date (get-in data [:episode :published_at]))
                     dur-str  (fmt-duration (get-in data [:episode :duration_seconds]))
                     meta-str (cond (and date-str dur-str) (str date-str " · " dur-str)
                                    date-str date-str
                                    dur-str  dur-str)]
-                [:div.player-meta-row
-                 (when meta-str [:span.player-episode-meta meta-str])
-                 (when is_premium [dub-view/dub-add-button ep-id])])
+                (when meta-str [:div.player-meta-row [:span.player-episode-meta meta-str]]))
+
+              ;; Dub section: chips + add-chips + active controls — premium users only
+              (when is_premium [dub-view/dub-section ep-id])
 
               ;; Cover image floats left at 30%; description fills alongside + 2 lines below
               (when-let [img (get-in data [:episode :episode_image_url])]
@@ -236,10 +237,6 @@
                   " Send episodes to your Telegram chat with a Buzz-Bot subscription."]
                  :error
                  [:div.send-result.error "Something went wrong. Please try again."])]
-
-              ;; Dub chips + active controls — premium users only
-              (when is_premium
-                [dub-view/dub-panel ep-id])
 
               (when (seq recs)
                 [:div.recs-section
