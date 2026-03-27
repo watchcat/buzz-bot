@@ -4,16 +4,35 @@
             [buzz-bot.subs.dub :as dub-subs]
             [buzz-bot.events.dub :as dub-events]))
 
-(defn dub-panel [episode-id]
-  (let [active       @(rf/subscribe [::dub-subs/active-lang])
+;; Standalone "Dub in…" button + picker — sits inline with Send to Chat.
+(defn dub-add-button [episode-id]
+  (let [picker-open? @(rf/subscribe [::dub-subs/picker-open?])
         statuses     @(rf/subscribe [::dub-subs/statuses])
-        send-error   @(rf/subscribe [::dub-subs/send-error])
         orig-lang    @(rf/subscribe [::dub-subs/original-language])
-        picker-open? @(rf/subscribe [::dub-subs/picker-open?])
         available    (filter (fn [{:keys [code]}]
                                (and (not= code orig-lang)
                                     (not (contains? statuses code))))
                              dub-events/dub-languages)]
+    (when (seq available)
+      [:<>
+       [:button.dub-add-btn
+        {:on-click #(rf/dispatch [::dub-events/toggle-picker])}
+        "🎙 Dub in…"]
+       (when picker-open?
+         [:div.dub-picker
+          (for [{:keys [code name]} available]
+            [:button.dub-picker-item
+             {:key      code
+              :on-click #(do (rf/dispatch [::dub-events/toggle-picker])
+                             (rf/dispatch [::dub-events/language-tapped episode-id code]))}
+             (str name " (" (str/upper-case code) ")")])])])))
+
+;; Chips for existing dubs + active-language controls.
+(defn dub-panel [episode-id]
+  (let [active     @(rf/subscribe [::dub-subs/active-lang])
+        statuses   @(rf/subscribe [::dub-subs/statuses])
+        send-error @(rf/subscribe [::dub-subs/send-error])
+        orig-lang  @(rf/subscribe [::dub-subs/original-language])]
     [:div.dub-panel
      [:div.dub-langs
       (for [{:keys [code name]} dub-events/dub-languages
@@ -35,22 +54,6 @@
             :on-click #(rf/dispatch [::dub-events/language-tapped episode-id code])}
            (str/upper-case code)]))]
 
-     ;; "Dub in…" button + language picker
-     (when (seq available)
-       [:<>
-        [:button.dub-add-btn
-         {:on-click #(rf/dispatch [::dub-events/toggle-picker])}
-         "🎙 Dub in…"]
-        (when picker-open?
-          [:div.dub-picker
-           (for [{:keys [code name]} available]
-             [:button.dub-picker-item
-              {:key      code
-               :on-click #(do (rf/dispatch [::dub-events/toggle-picker])
-                              (rf/dispatch [::dub-events/language-tapped episode-id code]))}
-              (str name " (" (str/upper-case code) ")")])])])
-
-     ;; Active language controls
      (when active
        (let [lang-state  (get statuses active)
              translation (:translation lang-state)]

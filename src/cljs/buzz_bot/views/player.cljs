@@ -211,26 +211,29 @@
                   {:on-click #(rf/dispatch [::events/subscribe-from-player (:feed_id episode)])}
                   (str "➕ Subscribe to " (or (:title feed) "this podcast"))]])
 
-              [:div.send-row
-               (case send-status
-                 nil
-                 [:button.btn-send
-                  {:on-click #(if is_premium
-                                (rf/dispatch [::events/send-episode (:id episode)])
-                                (rf/dispatch [::events/send-episode-error "HTTP 402"]))}
-                  "📤 Send to Chat"]
-                 :loading
-                 [:button.btn-send {:disabled true} "Sending…"]
-                 :sent
-                 [:div.send-result.info "📤 Sending to your chat… it will arrive in a moment."]
-                 :upsell
-                 [:div.send-result.upsell
-                  "⭐ " [:strong "Premium feature."]
-                  " Send episodes to your Telegram chat with a Buzz-Bot subscription."]
-                 :error
-                 [:div.send-result.error "Something went wrong. Please try again."])]
+              [:div.send-dub-row
+               [:div.send-row
+                (case send-status
+                  nil
+                  [:button.btn-send
+                   {:on-click #(if is_premium
+                                 (rf/dispatch [::events/send-episode (:id episode)])
+                                 (rf/dispatch [::events/send-episode-error "HTTP 402"]))}
+                   "📤 Send to Chat"]
+                  :loading
+                  [:button.btn-send {:disabled true} "Sending…"]
+                  :sent
+                  [:div.send-result.info "📤 Sending to your chat… it will arrive in a moment."]
+                  :upsell
+                  [:div.send-result.upsell
+                   "⭐ " [:strong "Premium feature."]
+                   " Send episodes to your Telegram chat with a Buzz-Bot subscription."]
+                  :error
+                  [:div.send-result.error "Something went wrong. Please try again."])]
+               (when is_premium
+                 [dub-view/dub-add-button ep-id])]
 
-              ;; Dub panel — premium users only
+              ;; Dub chips + active controls — premium users only
               (when is_premium
                 [dub-view/dub-panel ep-id])
 

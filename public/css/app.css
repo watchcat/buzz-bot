@@ -784,29 +784,29 @@ main {
 }
 
 .player-description {
-  font-size: 13px;
+  font-size: 12px;
   color: var(--text-color);
-  margin-bottom: 16px;
-  line-height: 1.7;
+  margin-bottom: 12px;
+  line-height: 1.5;
   word-wrap: break-word;
 }
 
 .player-description--collapsed {
-  max-height: 120px;
+  max-height: 54px;
   overflow: hidden;
-  margin-bottom: 4px;
-  -webkit-mask-image: linear-gradient(to bottom, black 50%, transparent 100%);
-  mask-image: linear-gradient(to bottom, black 50%, transparent 100%);
+  margin-bottom: 2px;
+  -webkit-mask-image: linear-gradient(to bottom, black 40%, transparent 100%);
+  mask-image: linear-gradient(to bottom, black 40%, transparent 100%);
 }
 
 .player-desc-toggle {
   display: block;
-  margin-bottom: 16px;
+  margin-bottom: 12px;
   padding: 0;
   background: none;
   border: none;
   color: var(--link-color);
-  font-size: 13px;
+  font-size: 12px;
   cursor: pointer;
 }
 
@@ -851,7 +851,7 @@ main {
   display: flex;
   align-items: center;
   gap: 10px;
-  margin-bottom: 24px;
+  margin-bottom: 16px;
 }
 
 .player-seek-bar {
@@ -966,7 +966,7 @@ main {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 32px;
+  gap: 24px;
 }
 
 .btn-play-pause-large {
@@ -974,13 +974,13 @@ main {
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  width: 72px;
-  height: 72px;
+  width: 60px;
+  height: 60px;
   border-radius: 50%;
   background: var(--button-color);
   color: var(--button-text-color);
   border: none;
-  font-size: 28px;
+  font-size: 22px;
   line-height: 1;
   cursor: pointer;
   box-shadow: 0 4px 16px rgba(0,0,0,0.25);
@@ -998,8 +998,8 @@ main {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  width: 56px;
-  height: 56px;
+  width: 46px;
+  height: 46px;
   border-radius: 50%;
   background: rgba(128,128,128,0.15);
   border: none;
@@ -1016,7 +1016,7 @@ main {
 }
 
 .btn-seek-icon {
-  font-size: 20px;
+  font-size: 17px;
   line-height: 1;
 }
 
@@ -1195,6 +1195,19 @@ main {
   color: var(--hint-color);
   font-size: 14px;
   flex-shrink: 0;
+}
+
+/* Send to Chat + Dub In row */
+.send-dub-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.send-dub-row .send-row {
+  flex: 1;
+  margin-top: 0;
 }
 
 /* Send to Chat */
@@ -1706,7 +1719,7 @@ body:has(.now-playing-bar) main {
 .dub-translation summary { font-size: 13px; color: var(--hint-color); cursor: pointer; }
 .dub-translation-text { font-size: 13px; color: var(--text-color); line-height: 1.5;
                         margin: 6px 0 0; white-space: pre-wrap; }
-.dub-add-btn          { margin-top: 8px; padding: 4px 10px; border-radius: 6px;
+.dub-add-btn          { padding: 4px 10px; border-radius: 6px;
                         border: 1px dashed var(--hint-color); background: none;
                         color: var(--hint-color); font-size: 11px; cursor: pointer; }
 .dub-add-btn:active   { opacity: .6; }
