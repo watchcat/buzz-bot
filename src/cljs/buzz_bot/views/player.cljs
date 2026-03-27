@@ -134,7 +134,17 @@
                  [:polyline {:points "16 6 12 2 8 6"}]
                  [:line {:x1 "12" :y1 "2" :x2 "12" :y2 "15"}]]]]
 
-              ;; Cover image floats left at 30%; description flows alongside and below
+              ;; Meta row: date/duration on left, Dub In on right
+              (let [date-str (fmt-pub-date (get-in data [:episode :published_at]))
+                    dur-str  (fmt-duration (get-in data [:episode :duration_seconds]))
+                    meta-str (cond (and date-str dur-str) (str date-str " · " dur-str)
+                                   date-str date-str
+                                   dur-str  dur-str)]
+                [:div.player-meta-row
+                 (when meta-str [:span.player-episode-meta meta-str])
+                 (when is_premium [dub-view/dub-add-button ep-id])])
+
+              ;; Cover image floats left at 30%; description fills alongside + 2 lines below
               (when-let [img (get-in data [:episode :episode_image_url])]
                 [:img.player-cover {:src img :alt ""}])
 
@@ -149,13 +159,6 @@
                   (if @desc-expanded? "Show less" "Read more")]])
 
               [:div.player-cover-clearfix]
-
-              (let [date-str (fmt-pub-date (get-in data [:episode :published_at]))
-                    dur-str  (fmt-duration (get-in data [:episode :duration_seconds]))
-                    meta-str (cond (and date-str dur-str) (str date-str " · " dur-str)
-                                   date-str date-str
-                                   dur-str  dur-str)]
-                (when meta-str [:div.player-episode-meta meta-str]))
 
               (when @share-open?
                 [:div.share-panel
@@ -215,27 +218,24 @@
                   {:on-click #(rf/dispatch [::events/subscribe-from-player (:feed_id episode)])}
                   (str "➕ Subscribe to " (or (:title feed) "this podcast"))]])
 
-              [:div.send-dub-row
-               [:div.send-row
-                (case send-status
-                  nil
-                  [:button.btn-send
-                   {:on-click #(if is_premium
-                                 (rf/dispatch [::events/send-episode (:id episode)])
-                                 (rf/dispatch [::events/send-episode-error "HTTP 402"]))}
-                   "📤 Send to Chat"]
-                  :loading
-                  [:button.btn-send {:disabled true} "Sending…"]
-                  :sent
-                  [:div.send-result.info "📤 Sending to your chat… it will arrive in a moment."]
-                  :upsell
-                  [:div.send-result.upsell
-                   "⭐ " [:strong "Premium feature."]
-                   " Send episodes to your Telegram chat with a Buzz-Bot subscription."]
-                  :error
-                  [:div.send-result.error "Something went wrong. Please try again."])]
-               (when is_premium
-                 [dub-view/dub-add-button ep-id])]
+              [:div.send-row
+               (case send-status
+                 nil
+                 [:button.btn-send
+                  {:on-click #(if is_premium
+                                (rf/dispatch [::events/send-episode (:id episode)])
+                                (rf/dispatch [::events/send-episode-error "HTTP 402"]))}
+                  "📤 Send to Chat"]
+                 :loading
+                 [:button.btn-send {:disabled true} "Sending…"]
+                 :sent
+                 [:div.send-result.info "📤 Sending to your chat… it will arrive in a moment."]
+                 :upsell
+                 [:div.send-result.upsell
+                  "⭐ " [:strong "Premium feature."]
+                  " Send episodes to your Telegram chat with a Buzz-Bot subscription."]
+                 :error
+                 [:div.send-result.error "Something went wrong. Please try again."])]
 
               ;; Dub chips + active controls — premium users only
               (when is_premium

@@ -775,10 +775,21 @@ main {
   clear: both;
 }
 
+.player-meta-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.player-meta-row .dub-add-btn {
+  flex-shrink: 0;
+}
+
 .player-episode-meta {
   font-size: 12px;
   color: var(--hint-color);
-  margin-bottom: 12px;
 }
 
 .player-title {
@@ -796,11 +807,12 @@ main {
 }
 
 .player-description--collapsed {
-  max-height: 54px;
+  /* ~image height (30% of card inner width) + 2 lines (36px) */
+  max-height: calc(30vw + 36px);
   overflow: hidden;
   margin-bottom: 2px;
-  -webkit-mask-image: linear-gradient(to bottom, black 40%, transparent 100%);
-  mask-image: linear-gradient(to bottom, black 40%, transparent 100%);
+  -webkit-mask-image: linear-gradient(to bottom, black 70%, transparent 100%);
+  mask-image: linear-gradient(to bottom, black 70%, transparent 100%);
 }
 
 .player-desc-toggle {
@@ -1199,19 +1211,6 @@ main {
   color: var(--hint-color);
   font-size: 14px;
   flex-shrink: 0;
-}
-
-/* Send to Chat + Dub In row */
-.send-dub-row {
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  margin-top: 12px;
-}
-
-.send-dub-row .send-row {
-  flex: 1;
-  margin-top: 0;
 }
 
 /* Send to Chat */
