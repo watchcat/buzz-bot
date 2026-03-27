@@ -1,12 +1,11 @@
 (ns buzz-bot.views.player
   (:require [re-frame.core :as rf]
             [reagent.core :as r]
+            [clojure.string :as str]
             [buzz-bot.subs :as subs]
             [buzz-bot.events :as events]
             [buzz-bot.fx :as fx]
-            [buzz-bot.views.dub :as dub-view]
-            [buzz-bot.subs.dub :as dub-subs]
-            [buzz-bot.events.dub :as dub-events]))
+            [buzz-bot.views.dub :as dub-view]))
 
 (defn- fmt-pub-date [published-at]
   (when published-at
@@ -53,8 +52,9 @@
          "&text=" (js/encodeURIComponent (.trim message)))))
 
 (defn view []
-  (let [share-open? (r/atom false)
-        share-msg   (r/atom "")]
+  (let [share-open?    (r/atom false)
+        share-msg      (r/atom "")
+        desc-expanded? (r/atom false)]
     (fn []
       (let [data           @(rf/subscribe [::subs/player-data])
             loading?       @(rf/subscribe [::subs/player-loading?])
@@ -143,6 +143,16 @@
                                    dur-str  dur-str)]
                 (when meta-str [:div.player-episode-meta meta-str]))
 
+              (when-let [desc (and episode (not (str/blank? (:description episode)))
+                                   (:description episode))]
+                [:<>
+                 [:div.player-description
+                  {:class                   (when-not @desc-expanded? "player-description--collapsed")
+                   :dangerouslySetInnerHTML {:__html desc}}]
+                 [:button.player-desc-toggle
+                  {:on-click #(swap! desc-expanded? not)}
+                  (if @desc-expanded? "Show less" "Read more")]])
+
               (when @share-open?
                 [:div.share-panel
                  [:textarea.share-message-input
@@ -223,10 +233,6 @@
               ;; Dub panel — premium users only
               (when is_premium
                 [dub-view/dub-panel ep-id])
-
-              ;; Language picker modal
-              (when @(rf/subscribe [::dub-subs/dub-picker-open?])
-                [dub-view/language-picker ep-id])
 
               (when (seq recs)
                 [:div.recs-section
