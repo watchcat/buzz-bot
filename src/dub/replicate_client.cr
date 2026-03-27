@@ -6,15 +6,41 @@ module ReplicateClient
   POLL_INTERVAL = 5.seconds
   MAX_POLLS     = 240  # 20 minutes
 
-  def self.transcribe(audio_url : String) : String
+  WHISPER_LANG_CODES = {
+    "afrikaans" => "af", "arabic" => "ar", "armenian" => "hy",
+    "azerbaijani" => "az", "belarusian" => "be", "bosnian" => "bs",
+    "bulgarian" => "bg", "catalan" => "ca", "chinese" => "zh",
+    "croatian" => "hr", "czech" => "cs", "danish" => "da",
+    "dutch" => "nl", "english" => "en", "estonian" => "et",
+    "finnish" => "fi", "french" => "fr", "galician" => "gl",
+    "german" => "de", "greek" => "el", "hebrew" => "he",
+    "hindi" => "hi", "hungarian" => "hu", "icelandic" => "is",
+    "indonesian" => "id", "italian" => "it", "japanese" => "ja",
+    "kannada" => "kn", "kazakh" => "kk", "korean" => "ko",
+    "latvian" => "lv", "lithuanian" => "lt", "macedonian" => "mk",
+    "malay" => "ms", "marathi" => "mr", "maori" => "mi",
+    "nepali" => "ne", "norwegian" => "no", "persian" => "fa",
+    "polish" => "pl", "portuguese" => "pt", "romanian" => "ro",
+    "russian" => "ru", "serbian" => "sr", "slovak" => "sk",
+    "slovenian" => "sl", "spanish" => "es", "swahili" => "sw",
+    "swedish" => "sv", "tagalog" => "tl", "tamil" => "ta",
+    "thai" => "th", "turkish" => "tr", "ukrainian" => "uk",
+    "urdu" => "ur", "vietnamese" => "vi", "welsh" => "cy",
+  }
+
+  # Returns {text, language_code?}
+  def self.transcribe(audio_url : String) : {String, String?}
     output = run_model("openai", "whisper", {
       "audio" => audio_url,
       "model" => "large-v3",
       "task"  => "transcribe",
     })
-    output["transcription"]?.try(&.as_s?) ||
-      output["text"]?.try(&.as_s?) ||
-      raise "Whisper returned no transcription in output: #{output}"
+    text = output["transcription"]?.try(&.as_s?) ||
+           output["text"]?.try(&.as_s?) ||
+           raise "Whisper returned no transcription in output: #{output}"
+    lang_name = output["detected_language"]?.try(&.as_s?)
+    lang_code = lang_name ? WHISPER_LANG_CODES[lang_name.downcase]? : nil
+    {text, lang_code}
   end
 
   def self.synthesize(text : String, speaker_wav : String, language : String) : String

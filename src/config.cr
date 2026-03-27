@@ -11,6 +11,12 @@ module Config
     ENV["DATABASE_URL"]? || raise "DATABASE_URL not set"
   end
 
+  # Direct (non-pooler) URL for LISTEN/NOTIFY connections.
+  # pgbouncer doesn't support LISTEN; strip "-pooler" from the host.
+  def self.database_url_direct : String
+    database_url.sub("-pooler.", ".")
+  end
+
   def self.port : Int32
     (ENV["PORT"]? || "3000").to_i
   end

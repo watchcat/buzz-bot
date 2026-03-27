@@ -19,11 +19,5 @@
    :cache       {:cached-ids  []   ;; most-recent first, max 5
                  :in-progress {}   ;; ep-id (string) → {:bytes-downloaded N :bytes-total N}
                  :blob-urls   {}}  ;; ep-id (string) → blob URL string
-   :dub {:status           nil
-         :r2-url           nil
-         :translation      nil
-         :error            nil
-         :dub-id           nil
-         :language         nil
-         :picker-open?     false
-         :preferred-language nil}})
+   :dub {:statuses   {}    ;; lang-code → {:status :done/:pending/:processing/:failed/:expired :r2-url nil :translation nil :error nil}
+         :active-lang nil}}) ;; currently playing dubbed language (nil = original)

@@ -4,7 +4,7 @@
             [buzz-bot.subs.dub :as dub-subs]
             [buzz-bot.events.dub :as dub-events]))
 
-;; Standalone "Dub in…" button + picker — sits inline with Send to Chat.
+;; Standalone "Dub in…" button + picker — overlays content, doesn't push it down.
 (defn dub-add-button [episode-id]
   (let [picker-open? @(rf/subscribe [::dub-subs/picker-open?])
         statuses     @(rf/subscribe [::dub-subs/statuses])
@@ -14,7 +14,7 @@
                                     (not (contains? statuses code))))
                              dub-events/dub-languages)]
     (when (seq available)
-      [:<>
+      [:div.dub-add-wrap
        [:button.dub-add-btn
         {:on-click #(rf/dispatch [::dub-events/toggle-picker])}
         "🎙 Dub in…"]

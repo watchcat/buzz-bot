@@ -288,14 +288,19 @@
                    :artist    (get-in resp [:feed :title])
                    :artwork   (:feed_image_url episode)
                    :audio_url (:audio_url episode)})))
-     (let [autoplay? (get-in db [:view-params :autoplay?])
-           db'       (cond-> db'
-                       (:preferred_dub_language resp)
-                       (assoc-in [:dub :preferred-language] (:preferred_dub_language resp)))]
+     (let [autoplay?    (get-in db [:view-params :autoplay?])
+           dub-statuses (:dub_statuses resp)
+           init-dub     (when dub-statuses [[::dub-events/init-statuses dub-statuses]])]
        (cond
-         (= cur-id new-id)                   {:db (assoc-in db' [:audio :pending?] false)}
-         (and was-playing? (not= cur-id new-id))  {:db db' :dispatch [::audio-queue-pending]}
-         :else {:db db' :dispatch [::audio-load {:autoplay? (boolean autoplay?)}]})))))
+         (= cur-id new-id)
+         {:db         (assoc-in db' [:audio :pending?] false)
+          :dispatch-n (vec init-dub)}
+         (and was-playing? (not= cur-id new-id))
+         {:db         db'
+          :dispatch-n (into [[::audio-queue-pending]] init-dub)}
+         :else
+         {:db         db'
+          :dispatch-n (into [[::audio-load {:autoplay? (boolean autoplay?)}]] init-dub)})))))
 
 ;; ── Bookmarks ────────────────────────────────────────────────────────────────
 

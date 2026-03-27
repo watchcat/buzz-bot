@@ -226,6 +226,14 @@ struct Episode
     AppDB.pool.exec("UPDATE episodes SET transcript = $1 WHERE id = $2", text, id)
   end
 
+  def self.original_language(id : Int64) : String?
+    AppDB.pool.query_one?("SELECT original_language FROM episodes WHERE id = $1", id, as: String?)
+  end
+
+  def self.save_original_language(id : Int64, lang_code : String)
+    AppDB.pool.exec("UPDATE episodes SET original_language = $1 WHERE id = $2", lang_code, id)
+  end
+
   def duration_display : String
     return "--:--" unless (sec = @duration_sec)
     hours   = sec // 3600

@@ -110,17 +110,21 @@ module Web::Routes::Episodes
         user_episode
       )
 
+      dub_statuses      = DubbedEpisode.statuses_for_episode(episode_id)
+      original_language = Episode.original_language(episode_id)
+
       env.response.content_type = "application/json"
       {
-        episode:                ep_json,
-        feed:                   feed,
-        user_episode:           user_episode,
-        next_id:                next_id,
-        next_title:             next_title,
-        recs:                   recs,
-        is_subscribed:          is_subscribed,
-        is_premium:             is_premium,
-        preferred_dub_language: user.preferred_dub_language,
+        episode:           ep_json,
+        feed:              feed,
+        user_episode:      user_episode,
+        next_id:           next_id,
+        next_title:        next_title,
+        recs:              recs,
+        is_subscribed:     is_subscribed,
+        is_premium:        is_premium,
+        dub_statuses:      dub_statuses,
+        original_language: original_language,
       }.to_json
     end
 
@@ -130,8 +134,8 @@ module Web::Routes::Episodes
       halt env, status_code: 401, response: "Unauthorized" unless user
 
       episode_id = env.params.url["id"].to_i64
-      body = env.request.body.try(&.gets_to_end) || "{}"
-      data = JSON.parse(body)
+      raw = env.request.body.try(&.gets_to_end) || ""
+      data = raw.empty? ? JSON.parse("{}") : JSON.parse(raw)
 
       seconds = data["seconds"]?.try(&.as_i) || 0
       completed = data["completed"]?.try(&.as_bool) || false
@@ -158,8 +162,8 @@ module Web::Routes::Episodes
         next %({"error":"premium_required"})
       end
 
-      body = env.request.body.try(&.gets_to_end) || "{}"
-      data = JSON.parse(body)
+      raw = env.request.body.try(&.gets_to_end) || ""
+      data = raw.empty? ? JSON.parse("{}") : JSON.parse(raw)
       dubbed = data["dubbed"]?.try(&.as_bool?) || false
       lang = data["language"]?.try(&.as_s?)
 

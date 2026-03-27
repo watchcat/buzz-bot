@@ -1,0 +1,1 @@
+ALTER TABLE episodes ADD COLUMN IF NOT EXISTS original_language VARCHAR(10);
