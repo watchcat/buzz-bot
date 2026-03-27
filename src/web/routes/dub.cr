@@ -87,6 +87,86 @@ module Web::Routes::Dub
       end
     end
 
+    # SSE stream: pushes step/status updates as JSON events until done or failed.
+    get "/episodes/:id/dub/:language/events" do |env|
+      user = Auth.current_user(env)
+      halt env, status_code: 401, response: "Unauthorized" unless user
+
+      episode_id = env.params.url["id"].to_i64
+      lang       = env.params.url["language"]
+
+      unless DUB_LANGUAGES.includes?(lang)
+        halt env, status_code: 400, response: %({"error":"unsupported_language"})
+      end
+
+      env.response.content_type = "text/event-stream; charset=utf-8"
+      env.response.headers["Cache-Control"]      = "no-cache"
+      env.response.headers["X-Accel-Buffering"]  = "no"
+      env.response.headers["Connection"]         = "keep-alive"
+
+      dub = DubbedEpisode.find(episode_id, lang)
+      unless dub
+        env.response.print "data: {\"status\":\"not_found\"}\n\n"
+        env.response.flush
+        next nil
+      end
+
+      eff = dub.effective_status
+
+      # Already terminal — send final state and close immediately.
+      case eff
+      when "done"
+        env.response.print "data: {\"status\":\"done\",\"r2_url\":#{dub.r2_url.to_json},\"translation\":#{dub.translation.to_json}}\n\n"
+        env.response.flush
+        next nil
+      when "failed"
+        env.response.print "data: {\"status\":\"failed\",\"error\":#{dub.error.to_json}}\n\n"
+        env.response.flush
+        next nil
+      end
+
+      # In-flight — stream progress until terminal state.
+      env.response.print "data: {\"status\":#{eff.to_json},\"step\":#{dub.step.to_json}}\n\n"
+      env.response.flush
+
+      key = "#{episode_id}:#{lang}"
+      ch  = DubHub.instance.subscribe(key)
+
+      done = false
+      until done
+        select
+        when payload = ch.receive
+          parts  = payload.split(":", 4)
+          step   = parts[2]? || ""
+          status = parts[3]? || ""
+          case status
+          when "done"
+            row = DubbedEpisode.find(episode_id, lang)
+            if row && row.status == "done"
+              env.response.print "data: {\"status\":\"done\",\"r2_url\":#{row.r2_url.to_json},\"translation\":#{row.translation.to_json}}\n\n"
+            else
+              env.response.print "data: {\"status\":\"done\"}\n\n"
+            end
+            done = true
+          when "failed"
+            row = DubbedEpisode.find(episode_id, lang)
+            err = row.try(&.error) || "Unknown error"
+            env.response.print "data: {\"status\":\"failed\",\"error\":#{err.to_json}}\n\n"
+            done = true
+          else
+            env.response.print "data: {\"status\":#{status.to_json},\"step\":#{step.to_json}}\n\n"
+          end
+          env.response.flush
+        when timeout(25.seconds)
+          env.response.print ": keepalive\n\n"
+          env.response.flush
+        end
+      end
+
+      DubHub.instance.unsubscribe(key, ch)
+      nil
+    end
+
     put "/user/dub_language" do |env|
       user = Auth.current_user(env)
       halt env, status_code: 401, response: "Unauthorized" unless user

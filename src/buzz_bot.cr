@@ -11,6 +11,7 @@ require "./models/feed"
 require "./models/episode"
 require "./models/user_episode"
 require "./models/dubbed_episode"
+require "./dub/hub"
 require "./dub/replicate_client"
 require "./dub/deepl_client"
 require "./dub/r2_storage"
@@ -41,6 +42,7 @@ Log.info { "Starting Buzz-Bot..." }
 db = AppDB.pool
 Log.info { "Database connected" }
 DubbedEpisode.reset_stale_jobs
+DubHub.instance.start
 
 # Register Telegram webhook
 BotClient.register_webhook

@@ -23,7 +23,6 @@
 (rf/reg-event-db
  ::init-statuses
  (fn [db [_ statuses-map]]
-   ;; statuses-map: {"es" {:status "done" :r2_url "..." :translation "..."}, ...}
    (assoc-in db [:dub :statuses]
              (reduce-kv
                (fn [m lang v]
@@ -65,9 +64,9 @@
                         :artist    (:feed_title episode)
                         :artwork   (:feed_image_url episode)}}
 
-       ;; Already in flight → ensure polling continues
+       ;; In-flight — open SSE if not already open (re-tapping idempotent)
        (#{:pending :processing} status)
-       {::fx/poll-after {:ms 5000 :dispatch [::status-tick episode-id lang]}}
+       {::fx/open-dub-sse {:episode-id episode-id :lang lang}}
 
        ;; Nothing yet, failed, or expired → start a new dub job
        :else
@@ -96,7 +95,7 @@
                         (-> (assoc-in [:dub :statuses lang :r2-url]      (:r2_url resp))
                             (assoc-in [:dub :statuses lang :translation] (:translation resp)))))}
        (#{:pending :processing} status)
-       (assoc ::fx/poll-after {:ms 5000 :dispatch [::status-tick episode-id lang]})))))
+       (assoc ::fx/open-dub-sse {:episode-id episode-id :lang lang})))))
 
 (rf/reg-event-db
  ::request-err
@@ -105,30 +104,23 @@
        (assoc-in [:dub :statuses lang :status] :failed)
        (assoc-in [:dub :statuses lang :error]  (str "Request failed: " err)))))
 
+;; Receives SSE events from the server.
 (rf/reg-event-fx
- ::status-tick
- (fn [{:keys [db]} [_ episode-id lang]]
-   ;; Cancel the poll loop if we've navigated away from this episode.
+ ::sse-event
+ (fn [{:keys [db]} [_ episode-id lang data]]
+   ;; Ignore if we've navigated away from this episode.
    (when (= (str episode-id) (str (get-in db [:player :data :episode :id])))
-     {::fx/http-fetch {:method :get
-                       :url    (str "/episodes/" episode-id "/dub/" lang)
-                       :on-ok  [::status-loaded episode-id lang]
-                       :on-err [::noop]}})))
-
-(rf/reg-event-fx
- ::status-loaded
- (fn [{:keys [db]} [_ episode-id lang resp]]
-   (let [status (keyword (:status resp))]
-     (cond-> {:db (-> db
-                      (assoc-in [:dub :statuses lang :status] status)
-                      (assoc-in [:dub :statuses lang :step]   (:step resp))
-                      (cond-> (= status :done)
-                        (-> (assoc-in [:dub :statuses lang :r2-url]      (:r2_url resp))
-                            (assoc-in [:dub :statuses lang :translation] (:translation resp))))
-                      (cond-> (= status :failed)
-                        (assoc-in [:dub :statuses lang :error] (:error resp))))}
-       (#{:pending :processing} status)
-       (assoc ::fx/poll-after {:ms 5000 :dispatch [::status-tick episode-id lang]})))))
+     (let [status (keyword (:status data))]
+       (cond-> {:db (-> db
+                        (assoc-in [:dub :statuses lang :status] status)
+                        (assoc-in [:dub :statuses lang :step]   (:step data))
+                        (cond-> (= status :done)
+                          (-> (assoc-in [:dub :statuses lang :r2-url]      (:r2_url data))
+                              (assoc-in [:dub :statuses lang :translation] (:translation data))))
+                        (cond-> (= status :failed)
+                          (assoc-in [:dub :statuses lang :error] (:error data))))}
+         ;; SSE stream closes itself when done/failed; nothing to do on our end.
+         )))))
 
 (rf/reg-event-fx
  ::send-telegram
@@ -150,9 +142,10 @@
  (fn [db _]
    (update-in db [:dub :picker-open?] not)))
 
-(rf/reg-event-db
+(rf/reg-event-fx
  ::reset
  (fn [db _]
-   (assoc db :dub {:statuses {} :active-lang nil :picker-open? false})))
+   {:db          (assoc (:db db) :dub {:statuses {} :active-lang nil :picker-open? false})
+    ::fx/close-dub-sse nil}))
 
 (rf/reg-event-db ::noop (fn [db _] db))

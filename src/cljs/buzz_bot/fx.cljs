@@ -260,11 +260,40 @@
      (when url (js/URL.revokeObjectURL url)))
    (cache/clear-all-blobs!)))
 
-;; ── ::poll-after ─────────────────────────────────────────────────────────────
-;; Dispatches an event after a delay. Used for dub status polling.
-;; Options: {:ms 5000 :dispatch [::some-event args]}
+;; ── ::open-dub-sse ───────────────────────────────────────────────────────────
+;; Opens an SSE connection for dub progress updates.
+;; Dispatches ::dub-events/sse-event with each parsed JSON message.
+;; Stores the EventSource in a js-side atom so ::close-dub-sse can close it.
+;; Options: {:episode-id id :lang lang :init-data str}
+
+(def ^:private active-sse (atom nil))
 
 (rf/reg-fx
- ::poll-after
- (fn [{:keys [ms dispatch]}]
-   (js/setTimeout #(rf/dispatch dispatch) ms)))
+ ::open-dub-sse
+ (fn [{:keys [episode-id lang]}]
+   ;; Close any existing SSE connection first
+   (when-let [es @active-sse]
+     (.close es)
+     (reset! active-sse nil))
+   (let [init-data (get @re-frame.db/app-db :init-data "")
+         url       (str "/episodes/" episode-id "/dub/" lang "/events?initData=" (js/encodeURIComponent init-data))
+         es        (js/EventSource. url)]
+     (reset! active-sse es)
+     (set! (.-onmessage es)
+           (fn [e]
+             (when-let [data (try (js->clj (.parse js/JSON (.-data e)) :keywordize-keys true)
+                                  (catch :default _ nil))]
+               (rf/dispatch [:buzz-bot.events.dub/sse-event episode-id lang data]))))
+     (set! (.-onerror es)
+           (fn [_]
+             (.close es)
+             (reset! active-sse nil))))))
+
+;; ── ::close-dub-sse ──────────────────────────────────────────────────────────
+
+(rf/reg-fx
+ ::close-dub-sse
+ (fn [_]
+   (when-let [es @active-sse]
+     (.close es)
+     (reset! active-sse nil))))
