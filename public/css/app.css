@@ -762,13 +762,17 @@ main {
 }
 
 .player-cover {
-  width: 100%;
-  max-height: 220px;
+  float: left;
+  width: 30%;
+  aspect-ratio: 1 / 1;
   object-fit: cover;
-  display: block;
-  /* Bleed to card edges by compensating for card padding */
-  margin: -20px -20px 16px;
-  width: calc(100% + 40px);
+  border-radius: 8px;
+  margin: 0 12px 8px 0;
+  flex-shrink: 0;
+}
+
+.player-cover-clearfix {
+  clear: both;
 }
 
 .player-episode-meta {
@@ -778,9 +782,9 @@ main {
 }
 
 .player-title {
-  font-size: 18px;
+  font-size: 16px;
   font-weight: 600;
-  margin-bottom: 10px;
+  margin-bottom: 8px;
 }
 
 .player-description {

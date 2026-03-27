@@ -112,8 +112,6 @@
                                              :feed-url (:url feed)}])}
                   (str (or (:title feed) "Feed") " →")])]]
              [:div.player-card
-              (when-let [img (get-in data [:episode :episode_image_url])]
-                [:img.player-cover {:src img :alt ""}])
               [:div.player-title-row
                [:h2.player-title (:title episode)]
                (when-let [rss-url (:url feed)]
@@ -136,12 +134,9 @@
                  [:polyline {:points "16 6 12 2 8 6"}]
                  [:line {:x1 "12" :y1 "2" :x2 "12" :y2 "15"}]]]]
 
-              (let [date-str (fmt-pub-date (get-in data [:episode :published_at]))
-                    dur-str  (fmt-duration (get-in data [:episode :duration_seconds]))
-                    meta-str (cond (and date-str dur-str) (str date-str " · " dur-str)
-                                   date-str date-str
-                                   dur-str  dur-str)]
-                (when meta-str [:div.player-episode-meta meta-str]))
+              ;; Cover image floats left at 30%; description flows alongside and below
+              (when-let [img (get-in data [:episode :episode_image_url])]
+                [:img.player-cover {:src img :alt ""}])
 
               (when-let [desc (and episode (not (str/blank? (:description episode)))
                                    (:description episode))]
@@ -152,6 +147,15 @@
                  [:button.player-desc-toggle
                   {:on-click #(swap! desc-expanded? not)}
                   (if @desc-expanded? "Show less" "Read more")]])
+
+              [:div.player-cover-clearfix]
+
+              (let [date-str (fmt-pub-date (get-in data [:episode :published_at]))
+                    dur-str  (fmt-duration (get-in data [:episode :duration_seconds]))
+                    meta-str (cond (and date-str dur-str) (str date-str " · " dur-str)
+                                   date-str date-str
+                                   dur-str  dur-str)]
+                (when meta-str [:div.player-episode-meta meta-str]))
 
               (when @share-open?
                 [:div.share-panel
