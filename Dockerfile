@@ -1,11 +1,10 @@
 # syntax=docker/dockerfile:1.4
 
-# Build stage
-FROM crystallang/crystal:1.19-alpine AS builder
+# ── Shared deps stage ─────────────────────────────────────────────────────
+FROM crystallang/crystal:1.19-alpine AS deps
 
 WORKDIR /app
 
-# ── Crystal dependencies ──────────────────────────────────────────────────────
 COPY shard.yml shard.lock* ./
 RUN shards install --production
 
@@ -37,23 +36,30 @@ open(path, 'w').write(src)
 print('crystal-pg patched OK')
 PYEOF
 
-# Copy Crystal source + public assets (public/js/main.js already built above)
 COPY src/ ./src/
 COPY public/ ./public/
 
-# Build release binary
+# ── Parallel build stages (BuildKit runs these concurrently) ──────────────
+FROM deps AS build-main
 RUN crystal build src/buzz_bot.cr \
     --release \
     --static \
     --no-debug \
     -o /app/buzz-bot
 
-# Build service binaries
-RUN crystal build --release --static src/services/dub_transcriber.cr -o dub-transcriber
-RUN crystal build --release --static src/services/dub_translator.cr -o dub-translator
-RUN crystal build --release --static src/services/dub_synthesizer.cr -o dub-synthesizer
+FROM deps AS build-transcriber
+RUN crystal build --release --static --no-debug \
+    src/services/dub_transcriber.cr -o /app/dub-transcriber
 
-# Runtime stage
+FROM deps AS build-translator
+RUN crystal build --release --static --no-debug \
+    src/services/dub_translator.cr -o /app/dub-translator
+
+FROM deps AS build-synthesizer
+RUN crystal build --release --static --no-debug \
+    src/services/dub_synthesizer.cr -o /app/dub-synthesizer
+
+# ── Runtime stage ─────────────────────────────────────────────────────────
 FROM alpine:3.19
 
 RUN apk add --no-cache \
@@ -64,11 +70,11 @@ RUN apk add --no-cache \
 
 WORKDIR /app
 
-COPY --from=builder /app/buzz-bot ./buzz-bot
-COPY --from=builder /app/dub-transcriber ./dub-transcriber
-COPY --from=builder /app/dub-translator ./dub-translator
-COPY --from=builder /app/dub-synthesizer ./dub-synthesizer
-COPY --from=builder /app/public ./public
+COPY --from=build-main        /app/buzz-bot        ./buzz-bot
+COPY --from=build-transcriber /app/dub-transcriber ./dub-transcriber
+COPY --from=build-translator  /app/dub-translator  ./dub-translator
+COPY --from=build-synthesizer /app/dub-synthesizer ./dub-synthesizer
+COPY --from=build-main        /app/public          ./public
 
 EXPOSE 3000
 
