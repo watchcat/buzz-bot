@@ -260,6 +260,22 @@
      (when url (js/URL.revokeObjectURL url)))
    (cache/clear-all-blobs!)))
 
+;; ── ::preload-blob-urls ──────────────────────────────────────────────────────
+;; Reads blobs for a list of episode IDs from IDB and dispatches
+;; :blob-url-loaded for each, populating [:cache :blob-urls] at startup.
+;; This ensures ::audio-load can use cached blobs even after a fresh page load.
+
+(rf/reg-fx
+ ::preload-blob-urls
+ (fn [episode-ids]
+   (doseq [ep-id episode-ids]
+     (-> (cache/get-blob! ep-id)
+         (.then (fn [record]
+                  (when record
+                    (rf/dispatch [:buzz-bot.events/blob-url-loaded
+                                  ep-id (js/URL.createObjectURL (.-blob record))]))))
+         (.catch (fn [_]))))))
+
 ;; ── ::open-dub-sse ───────────────────────────────────────────────────────────
 ;; Opens an SSE connection for dub progress updates.
 ;; Dispatches ::dub-events/sse-event with each parsed JSON message.

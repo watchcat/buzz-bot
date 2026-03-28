@@ -162,5 +162,19 @@
   (set! (.-playbackRate audio-el) rate)
   (update-position-state!))
 
+;; Switch src without interrupting perceived playback — used when a cache
+;; download completes while the episode is already playing from a network URL.
+(defmethod execute-cmd! :switch-src [{:keys [src]}]
+  (let [t            (.-currentTime audio-el)
+        was-playing? (not (.-paused audio-el))]
+    (set! (.-src audio-el) src)
+    (.load audio-el)
+    (.addEventListener audio-el "loadedmetadata"
+      (fn []
+        (set! (.-currentTime audio-el) t)
+        (when was-playing?
+          (-> (.play audio-el) (.catch (fn [])))))
+      #js{:once true})))
+
 (defmethod execute-cmd! :default [cmd]
   (js/console.warn "Unknown audio-cmd:" (clj->js cmd)))
