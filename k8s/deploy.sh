@@ -15,8 +15,7 @@ TMPFILE="/tmp/buzz-bot.tar.gz"
 
 echo "==> Compiling ClojureScript"
 cd "$REPO_DIR"
-npm ci --prefer-offline
-node node_modules/.bin/shadow-cljs release app
+nix-shell -p nodejs -p openjdk --run "npm ci --prefer-offline && node node_modules/.bin/shadow-cljs release app"
 
 echo "==> Building $IMAGE"
 docker build -t buzz-bot:latest .
