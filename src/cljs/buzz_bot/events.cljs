@@ -692,20 +692,15 @@
          new-db     (-> db
                         (assoc-in [:cache :cached-ids] new-ids)
                         (assoc-in [:cache :blob-urls episode-id] blob-url)
-                        (update-in [:cache :in-progress] dissoc episode-id))
-         ;; If this episode is currently playing from a network URL, switch to blob now
-         ;; so that going offline won't interrupt playback.
-         playing-id (get-in db [:audio :episode-id])
-         switch?    (= (str episode-id) (str playing-id))]
+                        (update-in [:cache :in-progress] dissoc episode-id))]
      (when (and old-url (not= old-url blob-url))
        (js/URL.revokeObjectURL old-url))
-     (cond-> {:db new-db
-              ::buzz-bot.fx/persist-cached-ids new-ids
-              :dispatch-n (mapv (fn [id]
-                                  [::cache-evict {:episode-id id
-                                                  :blob-url   (get blob-urls id)}])
-                                evicted)}
-       switch? (assoc ::buzz-bot.fx/audio-cmd {:op :switch-src :src blob-url})))))
+     {:db new-db
+      ::buzz-bot.fx/persist-cached-ids new-ids
+      :dispatch-n (mapv (fn [id]
+                          [::cache-evict {:episode-id id
+                                          :blob-url   (get blob-urls id)}])
+                        evicted)})))
 
 (rf/reg-event-fx
  ::cache-error

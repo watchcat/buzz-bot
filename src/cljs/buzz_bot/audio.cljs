@@ -73,7 +73,23 @@
   (.addEventListener audio-el "ended"
     (fn []
       (set-playback-state! "none")
-      (rf/dispatch [:buzz-bot.events/audio-ended]))))
+      (rf/dispatch [:buzz-bot.events/audio-ended])))
+  ;; When network streaming fails, silently switch to the cached blob URL
+  ;; if one is available. Does NOT auto-play — the user presses play and
+  ;; it resumes from the blob without requiring a network connection.
+  (.addEventListener audio-el "error"
+    (fn []
+      (let [ep-id    (get-in @re-frame.db/app-db [:audio :episode-id])
+            blob-url (get-in @re-frame.db/app-db [:cache :blob-urls ep-id])
+            cur-src  (.-src audio-el)]
+        ;; Only switch if we have a blob and aren't already on it
+        (when (and blob-url (not= cur-src blob-url))
+          (let [t (.-currentTime audio-el)]
+            (set! (.-src audio-el) blob-url)
+            (.load audio-el)
+            (.addEventListener audio-el "loadedmetadata"
+              (fn [] (set! (.-currentTime audio-el) t))
+              #js{:once true})))))))
 
 ;; ── Media Session action handlers ────────────────────────────────────────────
 
@@ -161,20 +177,6 @@
 (defmethod execute-cmd! :set-rate [{:keys [rate]}]
   (set! (.-playbackRate audio-el) rate)
   (update-position-state!))
-
-;; Switch src without interrupting perceived playback — used when a cache
-;; download completes while the episode is already playing from a network URL.
-(defmethod execute-cmd! :switch-src [{:keys [src]}]
-  (let [t            (.-currentTime audio-el)
-        was-playing? (not (.-paused audio-el))]
-    (set! (.-src audio-el) src)
-    (.load audio-el)
-    (.addEventListener audio-el "loadedmetadata"
-      (fn []
-        (set! (.-currentTime audio-el) t)
-        (when was-playing?
-          (-> (.play audio-el) (.catch (fn [])))))
-      #js{:once true})))
 
 (defmethod execute-cmd! :default [cmd]
   (js/console.warn "Unknown audio-cmd:" (clj->js cmd)))
