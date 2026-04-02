@@ -2,7 +2,8 @@
   (:require [re-frame.core :as rf]
             [reagent.core :as r]
             [buzz-bot.subs :as subs]
-            [buzz-bot.events :as events]))
+            [buzz-bot.events :as events]
+            [buzz-bot.views.utils :refer [img-proxy]]))
 
 (defn- feed-card [feed playing-feed-id]
   [:li.feed-item
@@ -11,7 +12,7 @@
     {:style    {:cursor "pointer"}
      :on-click #(rf/dispatch [::events/navigate :episodes {:feed-id (:id feed) :feed-url (:url feed)}])}
     (if (:image_url feed)
-      [:div.feed-image {:style {:background-image    (str "url('" (:image_url feed) "')")
+      [:div.feed-image {:style {:background-image    (str "url('" (img-proxy (:image_url feed)) "')")
                                 :background-size     "cover"
                                 :background-position "center"}}]
       [:div.feed-image-placeholder "🎙"])
@@ -27,7 +28,7 @@
         subscribed? (contains? subscribed-urls feed-url)]
     [:li.search-result-item
      (when (:artwork_url result)
-       [:img.search-result-image {:src (:artwork_url result) :alt (:name result)}])
+       [:img.search-result-image {:src (img-proxy (:artwork_url result)) :alt (:name result)}])
      [:div.search-result-meta
       [:span.search-result-name (:name result)]
       [:span.search-result-author (:author result)]

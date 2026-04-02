@@ -77,28 +77,44 @@
                     "\n\nComponent stack:\n" stack]
                    (first (r/children this))))})))
 
+(defn- cleanup-legacy-caches! []
+  ;; Remove any old cache buckets not used by the current SW strategy.
+  ;; Do NOT call .unregister — we need the SW running.
+  (when (.-caches js/window)
+    (let [keep #{"buzz-shell-v1" "buzz-api-v1" "buzz-audio-v1"}]
+      (-> (.keys js/caches)
+          (.then (fn [ks]
+                   (js/Promise.all
+                     (.map (.filter ks #(not (contains? keep %)))
+                           #(.delete js/caches %)))))))))
+
+(defn- register-sw! []
+  (when (.-serviceWorker js/navigator)
+    (-> (.register (.-serviceWorker js/navigator) "/sw.js" #js{:scope "/"})
+        (.catch (fn [e] (js/console.warn "SW registration failed:" e))))))
+
+(defn- wire-network! []
+  (.addEventListener js/window "online"
+    #(rf/dispatch [::events/network-status-changed true]))
+  (.addEventListener js/window "offline"
+    #(rf/dispatch [::events/network-status-changed false])))
+
 (defn- mount! []
   (.ready (tg))
   (.expand (tg))
   (apply-theme!)
   (rf/dispatch-sync [::events/initialize-db])
   (rf/dispatch-sync [::events/set-init-data (.. (tg) -initData)])
+  (rf/dispatch-sync [::events/offline-init])
+  (wire-network!)
+  (register-sw!)
   (restore-audio-state!)
-  (rf/dispatch-sync [::events/cache-init])
   (audio/init!)
   (check-deep-link)
   (rdom/render [error-boundary [layout/root]] (js/document.getElementById "app")))
 
-(defn- cleanup-legacy! []
-  (when (.-serviceWorker js/navigator)
-    (-> (.getRegistrations (.-serviceWorker js/navigator))
-        (.then (fn [regs] (doseq [r regs] (.unregister r))))))
-  (when (.-caches js/window)
-    (-> (.keys js/caches)
-        (.then (fn [ks] (js/Promise.all (.map ks (fn [k] (.delete js/caches k)))))))))
-
 (defn ^:export init! []
-  (cleanup-legacy!)
+  (cleanup-legacy-caches!)
   (if-let [locks (.. js/navigator -locks)]
     (.request locks "buzz-bot-instance"
       #js{:ifAvailable true}

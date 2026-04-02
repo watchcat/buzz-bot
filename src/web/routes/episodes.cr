@@ -22,7 +22,8 @@ module Web::Routes::Episodes
 
       env.response.content_type = "application/json"
       rows.map { |id, title, img, ft|
-        {id: id, title: title, feed_title: ft, image_url: img}
+        https_img = img.try { |u| u.starts_with?("http://") ? "https://" + u[7..] : u }
+        {id: id, title: title, feed_title: ft, image_url: https_img}
       }.to_json
     end
 

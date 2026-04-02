@@ -2,11 +2,11 @@
   (:require [re-frame.core :as rf]
             [re-frame.db]))
 
-(defonce audio-el (js/Audio.))
+(defonce ^:private audio-atom
+  (volatile! (doto (js/Audio.)
+               (aset "preload" "metadata"))))
 
-(set! (.-preload audio-el) "metadata")
-;; Keep the element in the DOM so the OS treats the page as a media source
-(.appendChild js/document.body audio-el)
+(defn- el [] @audio-atom)
 
 ;; ── Media Session helpers ─────────────────────────────────────────────────────
 
@@ -24,27 +24,23 @@
                                  [])})))))
 
 (defn- set-playback-state! [state]
-  ;; "playing" | "paused" | "none"
-  ;; This is the signal that makes iOS/Android keep audio alive in background.
   (when (ms)
     (set! (.. js/navigator -mediaSession -playbackState) state)))
 
 (defn- update-position-state! []
   (when (and (ms) (.-setPositionState (ms)))
-    (let [dur (.-duration audio-el)
-          pos (.-currentTime audio-el)
-          rate (.-playbackRate audio-el)]
+    (let [dur  (.-duration (el))
+          pos  (.-currentTime (el))
+          rate (.-playbackRate (el))]
       (when (and (js/isFinite dur) (pos? dur))
         (try
           (.setPositionState (ms)
-            (clj->js {:duration dur
-                      :playbackRate rate
-                      :position (min pos dur)}))
+            (clj->js {:duration dur :playbackRate rate :position (min pos dur)}))
           (catch :default _))))))
 
 ;; ── rAF throttle for timeupdate ──────────────────────────────────────────────
 
-(defonce raf-pending? (atom false))
+(defonce ^:private raf-pending? (atom false))
 
 (defn- on-timeupdate []
   (when-not @raf-pending?
@@ -53,74 +49,114 @@
      (fn []
        (reset! raf-pending? false)
        (update-position-state!)
-       (rf/dispatch-sync [:buzz-bot.events/audio-tick (.-currentTime audio-el)])))))
+       (rf/dispatch-sync [:buzz-bot.events/audio-tick (.-currentTime (el))])))))
 
-;; ── Audio element event listeners ────────────────────────────────────────────
+;; ── Stall / network-error recovery ──────────────────────────────────────────
+;; On mobile WebViews, network loss typically causes `waiting` (buffer empty)
+;; rather than `error`. We wait 5 s for the network to recover; if the element
+;; is still stalled, we reload from the cached blob (if available).
+
+(defonce ^:private stall-timer (atom nil))
+(defonce ^:private recovering? (atom false))
+
+(defn- cancel-stall-timer! []
+  (when-let [id @stall-timer]
+    (js/clearTimeout id)
+    (reset! stall-timer nil)))
+
+(defn- recover-from-stall! []
+  (let [ep-id      (get-in @re-frame.db/app-db [:audio :episode-id])
+        cached-ids (get-in @re-frame.db/app-db [:offline :cached-ids])
+        cached?    (some #{ep-id} cached-ids)
+        stream-url (get-in @re-frame.db/app-db [:audio :src])
+        t          (.-currentTime (el))
+        target     (cond
+                     cached?    (str "/episodes/" ep-id "/audio")
+                     stream-url stream-url
+                     :else      nil)]
+    ;; Guard: if we already tried this URL and it errored, don't loop.
+    ;; (.-src el) returns an absolute URL; target is relative — resolve before comparing.
+    (when (and target (not= (.-src (el)) (.-href (js/URL. target js/location.href))))
+      (reset! recovering? true)
+      (set! (.-src (el)) target)
+      (.load (el))
+      (.addEventListener (el) "canplay"
+        (fn []
+          (reset! recovering? false)
+          (set! (.-currentTime (el)) t)
+          (-> (.play (el)) (.catch (fn []))))
+        #js{:once true}))))
+
+;; ── Listener wiring ──────────────────────────────────────────────────────────
 
 (defn- wire-listeners! []
-  (.addEventListener audio-el "timeupdate" on-timeupdate)
-  (.addEventListener audio-el "durationchange"
-    (fn [] (rf/dispatch [:buzz-bot.events/audio-duration (.-duration audio-el)])))
-  (.addEventListener audio-el "play"
-    (fn []
-      (set-playback-state! "playing")
-      (update-position-state!)
-      (rf/dispatch [:buzz-bot.events/audio-playing])))
-  (.addEventListener audio-el "pause"
-    (fn []
-      (set-playback-state! "paused")
-      (rf/dispatch [:buzz-bot.events/audio-paused])))
-  (.addEventListener audio-el "ended"
-    (fn []
-      (set-playback-state! "none")
-      (rf/dispatch [:buzz-bot.events/audio-ended])))
-  ;; When network streaming fails, silently switch to the cached blob URL
-  ;; if one is available. Does NOT auto-play — the user presses play and
-  ;; it resumes from the blob without requiring a network connection.
-  (.addEventListener audio-el "error"
-    (fn []
-      (let [ep-id    (get-in @re-frame.db/app-db [:audio :episode-id])
-            blob-url (get-in @re-frame.db/app-db [:cache :blob-urls ep-id])
-            cur-src  (.-src audio-el)]
-        ;; Only switch if we have a blob and aren't already on it
-        (when (and blob-url (not= cur-src blob-url))
-          (let [t (.-currentTime audio-el)]
-            (set! (.-src audio-el) blob-url)
-            (.load audio-el)
-            (.addEventListener audio-el "loadedmetadata"
-              (fn [] (set! (.-currentTime audio-el) t))
-              #js{:once true})))))))
+  (let [audio (el)]
+    (.addEventListener audio "timeupdate" on-timeupdate)
+    (.addEventListener audio "durationchange"
+      (fn [] (rf/dispatch [:buzz-bot.events/audio-duration (.-duration (el))])))
+    (.addEventListener audio "play"
+      (fn []
+        (cancel-stall-timer!)
+        (set-playback-state! "playing")
+        (update-position-state!)
+        (rf/dispatch [:buzz-bot.events/audio-playing])))
+    ;; `playing` fires when playback actually resumes after buffering —
+    ;; cancel any stall timer so we don't reload a healthy stream.
+    (.addEventListener audio "playing"
+      (fn [] (cancel-stall-timer!)))
+    (.addEventListener audio "pause"
+      (fn []
+        (cancel-stall-timer!)
+        (set-playback-state! "paused")
+        (rf/dispatch [:buzz-bot.events/audio-paused])))
+    (.addEventListener audio "ended"
+      (fn []
+        (cancel-stall-timer!)
+        (set-playback-state! "none")
+        (rf/dispatch [:buzz-bot.events/audio-ended])))
+    ;; `waiting` fires when the buffer runs dry. Start a 5-second countdown
+    ;; only if one isn't already running (don't reset on repeated `waiting`).
+    ;; Recovery reloads from cached blob if available, or retries the stream URL.
+    (.addEventListener audio "waiting"
+      (fn []
+        (when-not (or @stall-timer @recovering?)
+          (reset! stall-timer
+                  (js/setTimeout
+                    (fn []
+                      (reset! stall-timer nil)
+                      (recover-from-stall!))
+                    5000)))))
+    ;; `error` handles hard failures (bad URL, decode error, etc.).
+    (.addEventListener audio "error"
+      (fn []
+        (reset! recovering? false)
+        (cancel-stall-timer!)
+        (recover-from-stall!)))))
 
 ;; ── Media Session action handlers ────────────────────────────────────────────
 
 (defn- wire-media-session! []
   (when (ms)
     (doto (ms)
-      (.setActionHandler "play"
-        (fn []
-          (-> (.play audio-el) (.catch (fn [])))))
-      (.setActionHandler "pause"
-        (fn []
-          (.pause audio-el)))
+      (.setActionHandler "play"    #(-> (.play (el)) (.catch (fn []))))
+      (.setActionHandler "pause"   #(.pause (el)))
       (.setActionHandler "seekbackward"
-        (fn [^js details]
-          (let [delta (or (.-seekOffset details) 15)]
-            (set! (.-currentTime audio-el)
-                  (max 0 (- (.-currentTime audio-el) delta))))))
+        (fn [^js d]
+          (set! (.-currentTime (el))
+                (max 0 (- (.-currentTime (el)) (or (.-seekOffset d) 15))))))
       (.setActionHandler "seekforward"
-        (fn [^js details]
-          (let [delta (or (.-seekOffset details) 30)]
-            (set! (.-currentTime audio-el)
-                  (+ (.-currentTime audio-el) delta)))))
+        (fn [^js d]
+          (set! (.-currentTime (el))
+                (+ (.-currentTime (el)) (or (.-seekOffset d) 30)))))
       (.setActionHandler "seekto"
-        (fn [^js details]
-          (when-let [t (.-seekTime details)]
-            (set! (.-currentTime audio-el)
-                  (max 0 (min (or (.-duration audio-el) 0) t))))))
+        (fn [^js d]
+          (when-let [t (.-seekTime d)]
+            (set! (.-currentTime (el))
+                  (max 0 (min (or (.-duration (el)) 0) t))))))
       (.setActionHandler "stop"
         (fn []
-          (.pause audio-el)
-          (set! (.-currentTime audio-el) 0)
+          (.pause (el))
+          (set! (.-currentTime (el)) 0)
           (set-playback-state! "none"))))))
 
 ;; ── Progress save interval ────────────────────────────────────────────────────
@@ -128,11 +164,10 @@
 (defn- start-progress-interval! []
   (js/setInterval
    (fn []
-     (when-not (.-paused audio-el)
-       (let [ep-id (get-in @re-frame.db/app-db [:audio :episode-id])]
-         (when ep-id
-           (rf/dispatch [:buzz-bot.events/save-progress ep-id
-                         (js/Math.floor (.-currentTime audio-el))])))))
+     (when-not (.-paused (el))
+       (when-let [ep-id (get-in @re-frame.db/app-db [:audio :episode-id])]
+         (rf/dispatch [:buzz-bot.events/save-progress ep-id
+                       (js/Math.floor (.-currentTime (el)))]))))
    5000))
 
 ;; ── Init ─────────────────────────────────────────────────────────────────────
@@ -147,36 +182,58 @@
 (defmulti execute-cmd! :op)
 
 (defmethod execute-cmd! :load [{:keys [src start autoplay? title artist artwork]}]
-  (set! (.-src audio-el) src)
-  (.load audio-el)
+  (set! (.-src (el)) src)
+  (.load (el))
   (set-metadata! {:title title :artist artist :artwork artwork})
-  (.addEventListener audio-el "loadedmetadata"
+  (.addEventListener (el) "loadedmetadata"
     (fn []
       (when (pos? start)
-        (set! (.-currentTime audio-el) start))
-      (set! (.-playbackRate audio-el) (or (.-playbackRate audio-el) 1))
+        (set! (.-currentTime (el)) start))
+      (set! (.-playbackRate (el)) (or (.-playbackRate (el)) 1))
       (update-position-state!)
       (when autoplay?
-        (-> (.play audio-el) (.catch (fn [])))))
+        (-> (.play (el)) (.catch (fn [])))))
     #js{:once true}))
 
 (defmethod execute-cmd! :play [_]
-  (-> (.play audio-el) (.catch (fn []))))
+  (-> (.play (el)) (.catch (fn []))))
 
 (defmethod execute-cmd! :pause [_]
-  (.pause audio-el))
+  (.pause (el)))
 
 (defmethod execute-cmd! :seek [{:keys [time]}]
-  (set! (.-currentTime audio-el) (max 0 (min (or (.-duration audio-el) 0) time))))
+  (set! (.-currentTime (el)) (max 0 (min (or (.-duration (el)) 0) time))))
 
 (defmethod execute-cmd! :seek-relative [{:keys [delta]}]
-  (set! (.-currentTime audio-el)
-        (max 0 (min (or (.-duration audio-el) 0)
-                    (+ (.-currentTime audio-el) delta)))))
+  (set! (.-currentTime (el))
+        (max 0 (min (or (.-duration (el)) 0)
+                    (+ (.-currentTime (el)) delta)))))
 
 (defmethod execute-cmd! :set-rate [{:keys [rate]}]
-  (set! (.-playbackRate audio-el) rate)
+  (set! (.-playbackRate (el)) rate)
   (update-position-state!))
+
+(defmethod execute-cmd! :switch-src [{:keys [src]}]
+  ;; Guard: only switch if playback has actually started (pos? t).
+  ;; Switching from position 0 would be indistinguishable from a fresh load.
+  (let [t            (.-currentTime (el))
+        was-playing? (not (.-paused (el)))]
+    (when (pos? t)
+      (reset! recovering? true)
+      (set! (.-src (el)) src)
+      (.load (el))
+      (.addEventListener (el) "canplay"
+        (fn []
+          ;; Keep recovering? = true through the seek so waiting during
+          ;; seeking does not start the stall timer prematurely.
+          (set! (.-currentTime (el)) t)
+          (.addEventListener (el) "seeked"
+            (fn []
+              (reset! recovering? false)
+              (when was-playing?
+                (-> (.play (el)) (.catch (fn [])))))
+            #js{:once true}))
+        #js{:once true}))))
 
 (defmethod execute-cmd! :default [cmd]
   (js/console.warn "Unknown audio-cmd:" (clj->js cmd)))

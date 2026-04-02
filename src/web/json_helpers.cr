@@ -23,17 +23,25 @@ module Web
                    ue : UserEpisode?)
       @id               = ep.id
       @title            = ep.title
-      @audio_url        = ep.audio_url
+      @audio_url        = https(ep.audio_url)
       @description      = ep.description
       @published_at     = ep.published_at
       @duration_seconds = ep.duration_sec
       @feed_id           = ep.feed_id
       @feed_title        = feed_title
-      @feed_image_url    = feed_image_url
-      @episode_image_url = ep.image_url
+      @feed_image_url    = https(feed_image_url)
+      @episode_image_url = https(ep.image_url)
       @listened          = ue.try(&.completed) || false
       @progress_seconds = ue.try(&.progress_seconds) || 0
       @liked            = ue.try(&.liked) == true
+    end
+
+    private def https(url : String) : String
+      url.starts_with?("http://") ? "https://" + url[7..] : url
+    end
+
+    private def https(url : String?) : String?
+      url.try { |u| https(u) }
     end
   end
 

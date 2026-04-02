@@ -5,7 +5,8 @@
             [buzz-bot.subs :as subs]
             [buzz-bot.events :as events]
             [buzz-bot.fx :as fx]
-            [buzz-bot.views.dub :as dub-view]))
+            [buzz-bot.views.dub :as dub-view]
+            [buzz-bot.views.utils :refer [img-proxy]]))
 
 (defn- fmt-pub-date [published-at]
   (when published-at
@@ -30,20 +31,25 @@
         (str h ":" (.padStart (str m) 2 "0") ":" (.padStart (str s) 2 "0"))
         (str m ":" (.padStart (str s) 2 "0"))))))
 
-(defn- seek-bar [current duration pending? cache-pct from-cache? cached?]
-  (let [pct       (if (pos? duration) (* 100 (/ current duration)) 0)
-        cpct      (or cache-pct 0)]
-    [:input#player-seek.player-seek-bar
-     {:type      "range" :min 0 :max 100 :step 0.1
-      :value     pct
-      :disabled  pending?
-      :class     (cond from-cache? "player-seek-bar--from-cache"
-                       cached?     "player-seek-bar--cached")
-      :style     {"--pct"       (str (.toFixed pct 2) "%")
-                  "--cache-pct" (str (.toFixed cpct 2) "%")}
-      :on-change #(when (pos? duration)
-                    (rf/dispatch [::events/audio-seek
-                                  (* (/ (.. % -target -value) 100) duration)]))}]))
+(defn- seek-bar [_current _duration _pending?]
+  (let [dragging? (r/atom false)
+        drag-pct  (r/atom 0)]
+    (fn [current duration pending?]
+      (let [pct (if (pos? duration) (* 100 (/ current duration)) 0)]
+        (when-not @dragging?
+          (reset! drag-pct pct))
+        [:input#player-seek.player-seek-bar
+         {:type          "range" :min 0 :max 100 :step 0.1
+          :value         (str @drag-pct)
+          :disabled      pending?
+          :style         {"--pct" (str (.toFixed @drag-pct 2) "%")}
+          :on-change     #(when (pos? duration)
+                            (reset! dragging? true)
+                            (reset! drag-pct (js/parseFloat (.. % -target -value))))
+          :on-pointer-up #(when (pos? duration)
+                            (reset! dragging? false)
+                            (rf/dispatch [::events/audio-seek
+                                          (* (/ (js/parseFloat (.. % -target -value)) 100) duration)]))}]))))
 
 (defn- share-url [episode-id message]
   (let [bot-username (.. js/window -BOT_USERNAME)
@@ -67,22 +73,12 @@
             send-status    @(rf/subscribe [::subs/player-send-status])
             params         @(rf/subscribe [:buzz-bot.subs/view-params])
             ep-id          (str (get-in data [:episode :id] ""))
+            cache-progress @(rf/subscribe [::subs/cache-progress ep-id])
             this-ep?       (= ep-id (str audio-ep-id))
             cur-time       (if this-ep? audio-time
                                (get-in data [:user_episode :progress_seconds] 0))
             duration       (if this-ep? audio-duration
-                               (or (get-in data [:episode :duration]) 0))
-            audio-src      @(rf/subscribe [::subs/audio-src])
-            cache-progress @(rf/subscribe [::subs/cache-progress ep-id])
-            cached?        @(rf/subscribe [::subs/episode-cached? ep-id])
-            cache-error    @(rf/subscribe [::subs/cache-last-error])
-            from-cache?    (and this-ep? (some-> audio-src (.startsWith "blob:")))
-            cache-pct      (cond
-                             (or from-cache? cached?)                0
-                             (pos? (:bytes-total cache-progress 0))  (* 100.0
-                                                                        (/ (:bytes-downloaded cache-progress)
-                                                                           (:bytes-total cache-progress)))
-                             :else                                    0)]
+                               (or (get-in data [:episode :duration]) 0))]
         (cond
           loading?    [:div.loading "Loading episode..."]
           (nil? data) [:div.error-msg "Episode not found."]
@@ -147,7 +143,7 @@
 
               ;; Cover image floats left at 30%; description fills alongside + 2 lines below
               (when-let [img (get-in data [:episode :episode_image_url])]
-                [:img.player-cover {:src img :alt ""}])
+                [:img.player-cover {:src (img-proxy img) :alt ""}])
 
               (when-let [desc (and episode (not (str/blank? (:description episode)))
                                    (:description episode))]
@@ -175,8 +171,15 @@
               [:div.player-controls
                [:div.player-progress-row
                 [:span#player-current-time.player-time (fmt-time cur-time)]
-                [seek-bar cur-time duration pending? cache-pct from-cache? cached?]
+                [seek-bar cur-time duration pending?]
                 [:span#player-duration.player-time (fmt-time duration)]]
+               (when-let [prog cache-progress]
+                 (let [pct (if (pos? (:bytes-total prog 0))
+                             (int (* 100 (/ (:bytes-downloaded prog 0)
+                                            (:bytes-total prog 0))))
+                             0)]
+                   [:div.player-download-bar
+                    {:style {"--dl-pct" (str pct "%")}}]))
                [:div.player-buttons-row
                 [:button.btn-seek {:on-click #(rf/dispatch [::events/audio-seek-relative -15])}
                  [:span.btn-seek-icon "↺"] [:span.btn-seek-label "15s"]]
@@ -199,10 +202,7 @@
                     [:path {:d "M17 3H7c-1.1 0-2 .9-2 2v16l7-3 7 3V5c0-1.1-.9-2-2-2z"}]
                     [:path {:d "M17 3H7c-1.1 0-2 .9-2 2v16l7-3 7 3V5c0-1.1-.9-2-2-2zm0 15-5-2.18L7 18V5h10v13z"}])]]]]
 
-              (when cache-error
-                [:div.cache-error-msg (str "Cache error: " cache-error)])
-
-              [:div.autoplay-row
+[:div.autoplay-row
                [:label.autoplay-label {:class (when-not next_id "autoplay-label--disabled")}
                 [:input#autoplay-checkbox.autoplay-checkbox
                  {:type      "checkbox"

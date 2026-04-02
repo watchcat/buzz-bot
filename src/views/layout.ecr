@@ -11,5 +11,13 @@
   <div id="app"></div>
   <script>window.BOT_USERNAME = '<%= BotClient.username %>';</script>
   <script src="/js/main.js?v=<%= Assets::VERSION %>"></script>
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', function() {
+        navigator.serviceWorker.register('/sw.js', { scope: '/' })
+          .catch(function(e) { console.warn('SW registration failed:', e); });
+      });
+    }
+  </script>
 </body>
 </html>

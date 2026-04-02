@@ -1,8 +1,7 @@
 (ns buzz-bot.fx
   (:require [re-frame.core :as rf]
             [re-frame.db]
-            [buzz-bot.audio :as audio]
-            [buzz-bot.cache :as cache]))
+            [buzz-bot.audio :as audio]))
 
 ;; ── ::http-fetch ────────────────────────────────────────────────────────────
 ;; Options map:
@@ -121,160 +120,6 @@
                              (str "[data-episode-id='" episode-id "']"))]
                (.scrollIntoView el #js{:block "center" :behavior "smooth"})))))))))
 
-;; ── ::open-cache-db ──────────────────────────────────────────────────────────
-;; Opens the IndexedDB connection once at app startup.
-
-(rf/reg-fx
- ::open-cache-db
- (fn [_]
-   (-> (cache/open-db!)
-       (.then (fn [_] (rf/dispatch [:buzz-bot.events/cache-verify])))
-       (.catch (fn [e] (js/console.warn "IDB open failed:" e))))))
-
-;; ── ::persist-cached-ids ─────────────────────────────────────────────────────
-;; Writes the given vector of episode IDs to localStorage under "buzz-cached-ids".
-
-(rf/reg-fx
- ::persist-cached-ids
- (fn [ids]
-   (js/localStorage.setItem "buzz-cached-ids" (.stringify js/JSON (clj->js ids)))))
-
-;; ── ::verify-cache-ids ───────────────────────────────────────────────────────
-;; Fetches all keys from IDB and dispatches :cache-prune-stale with the valid set.
-
-(rf/reg-fx
- ::verify-cache-ids
- (fn [_]
-   (-> (cache/get-all-keys!)
-       (.then (fn [keys]
-                (rf/dispatch [:buzz-bot.events/cache-prune-stale
-                              (set (js->clj keys))]))))))
-
-;; ── ::persist-cache-meta ──────────────────────────────────────────────────────
-;; Writes episode metadata map to localStorage under "buzz-cache-meta".
-
-(rf/reg-fx
- ::persist-cache-meta
- (fn [meta-map]
-   (js/localStorage.setItem "buzz-cache-meta" (.stringify js/JSON (clj->js meta-map)))))
-
-;; ── ::start-cache-download ───────────────────────────────────────────────────
-;; Downloads audio from audio_proxy and stores the full blob in IDB.
-;; Uses ReadableStream for progress reporting when available; falls back to
-;; response.blob() on environments that don't support it (Android WebView).
-;; Options: :episode-id, :url, :init-data
-;; Dispatches:
-;;   [:buzz-bot.events/cache-progress {:episode-id id :bytes-downloaded N :bytes-total N}]
-;;   [:buzz-bot.events/cache-complete {:episode-id id :blob-url url}]
-;;   [:buzz-bot.events/cache-error    {:episode-id id :error msg}]
-
-(defn- finish-cache! [episode-id blob]
-  (when (.. js/navigator -storage -persist)
-    (.. js/navigator -storage (persist)))
-  (-> (cache/put-blob! episode-id blob)
-      (.then (fn [_]
-               (rf/dispatch [:buzz-bot.events/cache-complete
-                             {:episode-id episode-id
-                              :blob-url   (js/URL.createObjectURL blob)}])))
-      (.catch (fn [e]
-                (rf/dispatch [:buzz-bot.events/cache-error
-                              {:episode-id episode-id :error (str e)}])))))
-
-(rf/reg-fx
- ::start-cache-download
- (fn [{:keys [episode-id url init-data]}]
-   (let [headers (js-obj "X-Init-Data" (or init-data ""))]
-     (-> (js/fetch url #js{:headers headers})
-         (.then
-           (fn [resp]
-             (let [total (js/parseInt (.get (.-headers resp) "content-length") 10)]
-               (rf/dispatch [:buzz-bot.events/cache-progress
-                             {:episode-id episode-id :bytes-downloaded 0 :bytes-total (or total 0)}])
-               (if (and (.-body resp) (.-getReader (.-body resp)))
-                 ;; Streaming path — reports download progress as chunks arrive
-                 (let [chunks #js []
-                       reader (.getReader (.-body resp))]
-                   (letfn [(read-chunk []
-                             (-> (.read reader)
-                                 (.then
-                                   (fn [result]
-                                     (if (.-done result)
-                                       (finish-cache! episode-id (js/Blob. chunks #js{:type "audio/mpeg"}))
-                                       (do (.push chunks (.-value result))
-                                           (let [dl (reduce + 0 (map #(.-byteLength %) chunks))]
-                                             (rf/dispatch [:buzz-bot.events/cache-progress
-                                                           {:episode-id      episode-id
-                                                            :bytes-downloaded dl
-                                                            :bytes-total     (or total 0)}]))
-                                           (read-chunk)))))
-                                 (.catch (fn [e]
-                                           (rf/dispatch [:buzz-bot.events/cache-error
-                                                         {:episode-id episode-id :error (str e)}])))))]
-                     (read-chunk)))
-                 ;; Fallback path — no progress bar, works on Android WebView
-                 (-> (.blob resp)
-                     (.then #(finish-cache! episode-id %))
-                     (.catch (fn [e]
-                               (rf/dispatch [:buzz-bot.events/cache-error
-                                             {:episode-id episode-id :error (str e)}]))))))))
-         (.catch
-           (fn [e]
-             (rf/dispatch [:buzz-bot.events/cache-error
-                           {:episode-id episode-id :error (str e)}])))))))
-
-;; ── ::get-cached-blob ────────────────────────────────────────────────────────
-;; Reads a blob from IDB and dispatches :on-ready with the blob URL,
-;; or :on-missing if the record is not found.
-;; Options: :episode-id, :on-ready (event vec), :on-missing (event vec)
-
-(rf/reg-fx
- ::get-cached-blob
- (fn [{:keys [episode-id on-ready on-missing]}]
-   (-> (cache/get-blob! episode-id)
-       (.then
-         (fn [record]
-           (if record
-             (rf/dispatch (conj on-ready (js/URL.createObjectURL (.-blob record))))
-             (rf/dispatch on-missing))))
-       (.catch
-         (fn [_] (rf/dispatch on-missing))))))
-
-;; ── ::delete-cache-blob ──────────────────────────────────────────────────────
-;; Revokes a blob URL and deletes the IDB record.
-;; Options: :episode-id, :blob-url
-
-(rf/reg-fx
- ::delete-cache-blob
- (fn [{:keys [episode-id blob-url]}]
-   (when blob-url (js/URL.revokeObjectURL blob-url))
-   (cache/delete-blob! episode-id)))
-
-;; ── ::clear-cache-db ─────────────────────────────────────────────────────────
-;; Revokes all blob URLs and clears the entire IDB store.
-;; Value: sequence of blob URL strings to revoke.
-
-(rf/reg-fx
- ::clear-cache-db
- (fn [blob-urls]
-   (doseq [url blob-urls]
-     (when url (js/URL.revokeObjectURL url)))
-   (cache/clear-all-blobs!)))
-
-;; ── ::preload-blob-urls ──────────────────────────────────────────────────────
-;; Reads blobs for a list of episode IDs from IDB and dispatches
-;; :blob-url-loaded for each, populating [:cache :blob-urls] at startup.
-;; This ensures ::audio-load can use cached blobs even after a fresh page load.
-
-(rf/reg-fx
- ::preload-blob-urls
- (fn [episode-ids]
-   (doseq [ep-id episode-ids]
-     (-> (cache/get-blob! ep-id)
-         (.then (fn [record]
-                  (when record
-                    (rf/dispatch [:buzz-bot.events/blob-url-loaded
-                                  ep-id (js/URL.createObjectURL (.-blob record))]))))
-         (.catch (fn [_]))))))
 
 ;; ── ::open-dub-sse ───────────────────────────────────────────────────────────
 ;; Opens an SSE connection for dub progress updates.
@@ -313,3 +158,85 @@
    (when-let [es @active-sse]
      (.close es)
      (reset! active-sse nil))))
+
+;; ── ::persist-cached-ids ─────────────────────────────────────────────────────
+
+(rf/reg-fx
+ ::persist-cached-ids
+ (fn [ids]
+   (js/localStorage.setItem "buzz-cached-audio-ids"
+                             (.stringify js/JSON (clj->js ids)))))
+
+;; ── ::start-audio-download ───────────────────────────────────────────────────
+;; Streams /episodes/:id/audio_proxy (auth-gated Crystal proxy) into chunks,
+;; then stores a synthetic Response in Cache API at /episodes/:id/audio.
+;; Falls back to response.blob() on old WebViews without ReadableStream.
+
+(rf/reg-fx
+ ::start-audio-download
+ (fn [{:keys [episode-id init-data]}]
+   (let [proxy-url (str "/episodes/" episode-id "/audio_proxy")
+         cache-key (str "/episodes/" episode-id "/audio")
+         headers   (js-obj "X-Init-Data" (or init-data ""))]
+     (-> (js/fetch proxy-url #js{:headers headers})
+         (.then
+           (fn [resp]
+             (if-not (.-ok resp)
+               (rf/dispatch [:buzz-bot.events/audio-download-error episode-id])
+               (let [total (js/parseInt (.get (.-headers resp) "content-length") 10)]
+                 (rf/dispatch [:buzz-bot.events/audio-download-progress
+                               episode-id 0 (or total 0)])
+                 (letfn [(store! [blob]
+                           (let [r (js/Response. blob
+                                     #js{:status  200
+                                         :headers #js{"Content-Type"   "audio/mpeg"
+                                                      "Accept-Ranges"  "bytes"
+                                                      "Content-Length" (str (.-size blob))}})]
+                             (-> (.open js/caches "buzz-audio-v1")
+                                 (.then #(.put % cache-key r))
+                                 (.then #(rf/dispatch [:buzz-bot.events/audio-download-complete
+                                                       episode-id]))
+                                 (.catch #(rf/dispatch [:buzz-bot.events/audio-download-error
+                                                        episode-id])))))]
+                   (if (and (.-body resp) (.-getReader (.-body resp)))
+                     ;; Streaming path — accumulate chunks, report progress
+                     (let [chunks #js[]
+                           reader (.getReader (.-body resp))
+                           loaded (atom 0)]
+                       (letfn [(read-chunk []
+                                 (-> (.read reader)
+                                     (.then
+                                       (fn [result]
+                                         (if (.-done result)
+                                           (store! (js/Blob. chunks #js{:type "audio/mpeg"}))
+                                           (let [chunk (.-value result)]
+                                             (.push chunks chunk)
+                                             (swap! loaded + (.-byteLength chunk))
+                                             (rf/dispatch
+                                               [:buzz-bot.events/audio-download-progress
+                                                episode-id @loaded (or total 0)])
+                                             (read-chunk)))))
+                                     (.catch #(rf/dispatch [:buzz-bot.events/audio-download-error
+                                                            episode-id]))))]
+                         (read-chunk)))
+                     ;; Fallback — environments without ReadableStream
+                     (-> (.blob resp)
+                         (.then store!)
+                         (.catch #(rf/dispatch [:buzz-bot.events/audio-download-error
+                                                episode-id])))))))))
+         (.catch #(rf/dispatch [:buzz-bot.events/audio-download-error episode-id]))))))
+
+;; ── ::delete-cached-audio ────────────────────────────────────────────────────
+
+(rf/reg-fx
+ ::delete-cached-audio
+ (fn [ep-id]
+   (-> (.open js/caches "buzz-audio-v1")
+       (.then #(.delete % (str "/episodes/" ep-id "/audio"))))))
+
+;; ── ::clear-audio-cache ──────────────────────────────────────────────────────
+
+(rf/reg-fx
+ ::clear-audio-cache
+ (fn [_]
+   (.delete js/caches "buzz-audio-v1")))

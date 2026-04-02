@@ -1,7 +1,8 @@
 (ns buzz-bot.views.episodes
   (:require [re-frame.core :as rf]
             [buzz-bot.subs :as subs]
-            [buzz-bot.events :as events]))
+            [buzz-bot.events :as events]
+            [buzz-bot.views.utils :refer [img-proxy]]))
 
 (defn- fmt-pub-date [published-at]
   (when published-at
@@ -24,14 +25,14 @@
                        dur-str  dur-str)]
     [:li.episode-item
      {:class           (cond-> ""
-                         (:listened ep)                              (str " listened")
-                         (= (str (:id ep)) (str playing-id))        (str " is-playing")
-                         (contains? cached-ids (str (:id ep)))      (str " cached"))
+                         (:listened ep)                        (str " listened")
+                         (= (str (:id ep)) (str playing-id))  (str " is-playing")
+                         (contains? cached-ids (str (:id ep))) (str " cached"))
       :data-episode-id (str (:id ep))
       :on-click        #(rf/dispatch [::events/navigate :player
                                       {:episode-id (:id ep) :from "episodes"}])}
      (when-let [img (:episode_image_url ep)]
-       [:img.episode-thumb {:src img :alt ""}])
+       [:img.episode-thumb {:src (img-proxy img) :alt ""}])
      [:div.episode-info
       [:span.episode-title (:title ep)]
       (when meta-str [:span.episode-meta meta-str])]

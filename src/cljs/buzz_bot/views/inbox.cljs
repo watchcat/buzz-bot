@@ -2,7 +2,8 @@
   (:require [re-frame.core :as rf]
             [reagent.core :as r]
             [buzz-bot.subs :as subs]
-            [buzz-bot.events :as events]))
+            [buzz-bot.events :as events]
+            [buzz-bot.views.utils :refer [img-proxy]]))
 
 (defn- fmt-pub-date [published-at]
   (when published-at
@@ -41,14 +42,14 @@
     :on-click        #(rf/dispatch [::events/navigate :player
                                     {:episode-id (:id ep) :from "inbox"}])}
    (when-let [img (:episode_image_url ep)]
-     [:img.episode-thumb {:src img :alt ""}])
+     [:img.episode-thumb {:src (img-proxy img) :alt ""}])
    [:div.episode-info
     [:span.episode-feed-name (:feed_title ep)]
     [:strong.episode-title   (:title ep)]
     [episode-meta ep]]
    [:span.episode-play-icon "▶"]])
 
-(defn- compact-group [eps playing-id cached-ids expanded-feeds-atom]
+(defn- compact-group [eps playing-id expanded-feeds-atom cached-ids]
   (let [feed-id  (:feed_id (first eps))
         expanded @expanded-feeds-atom]
     (if (or (= 1 (count eps)) (contains? expanded feed-id))
@@ -58,15 +59,15 @@
         ^{:key (:id (first eps))}
         [:li.episode-item.compact-first
          {:class           (cond-> ""
-                             (:listened (first eps))                        (str " listened")
-                             (= (str (:id (first eps))) (str playing-id))   (str " is-playing")
-                             (contains? cached-ids (str (:id (first eps)))) (str " cached"))
+                             (:listened (first eps))                         (str " listened")
+                             (= (str (:id (first eps))) (str playing-id))    (str " is-playing")
+                             (contains? cached-ids (str (:id (first eps))))  (str " cached"))
           :data-episode-id (str (:id (first eps)))
           :data-feed-id    (str feed-id)
           :on-click        #(rf/dispatch [::events/navigate :player
                                           {:episode-id (:id (first eps)) :from "inbox"}])}
          (when-let [img (:feed_image_url (first eps))]
-           [:img.episode-thumb {:src img :alt ""}])
+           [:img.episode-thumb {:src (img-proxy img) :alt ""}])
          [:div.episode-info
           [:span.episode-feed-name (:feed_title (first eps))]
           [:strong.episode-title   (:title (first eps))]
@@ -95,7 +96,7 @@
            (when (seq cached-ids)
              [:button.btn-clear-cache
               {:title    "Clear cached audio"
-               :on-click #(rf/dispatch [::events/cache-clear-all])}
+               :on-click #(rf/dispatch [::events/audio-cache-clear-all])}
               "🗑"])
            [:button.btn-icon
             {:title    "Refresh"
@@ -132,6 +133,6 @@
             (if compact?
               (let [groups (partition-by :feed_id visible)]
                 (for [grp groups]
-                  (compact-group grp playing-id cached-ids expanded-feeds)))
+                  (compact-group grp playing-id expanded-feeds cached-ids)))
               (for [ep visible]
                 ^{:key (:id ep)} [episode-item ep playing-id cached-ids]))])]))))

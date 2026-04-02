@@ -16,8 +16,8 @@
                  :src "" :playing? false :current-time 0 :duration 0
                  :rate 1 :autoplay? false :pending? false}
    :saved-list  {:view nil :count 0}
-   :cache       {:cached-ids  []   ;; most-recent first, max 5
-                 :in-progress {}   ;; ep-id (string) → {:bytes-downloaded N :bytes-total N}
-                 :blob-urls   {}}  ;; ep-id (string) → blob URL string
-   :dub {:statuses   {}    ;; lang-code → {:status :done/:pending/:processing/:failed/:expired :r2-url nil :translation nil :error nil}
-         :active-lang nil}}) ;; currently playing dubbed language (nil = original)
+:dub {:statuses   {}    ;; lang-code → {:status :done/:pending/:processing/:failed/:expired :r2-url nil :translation nil :error nil}
+         :active-lang nil} ;; currently playing dubbed language (nil = original)
+   :offline {:cached-ids      []   ;; episode IDs, most-recent-first, max 5
+             :in-progress     {}   ;; ep-id → {:bytes-downloaded N :bytes-total N}
+             :network-online? true}})

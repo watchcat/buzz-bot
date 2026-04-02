@@ -1,7 +1,8 @@
 (ns buzz-bot.views.miniplayer
   (:require [re-frame.core :as rf]
             [buzz-bot.subs :as subs]
-            [buzz-bot.events :as events]))
+            [buzz-bot.events :as events]
+            [buzz-bot.views.utils :refer [img-proxy]]))
 
 (defn bar []
   (let [ep-id    @(rf/subscribe [::subs/audio-episode-id])
@@ -15,7 +16,7 @@
        [:div.now-playing-inner
         {:on-click #(rf/dispatch [::events/navigate :player {:episode-id ep-id}])}
         [:div.now-playing-artwork
-         (when artwork {:style {:background-image (str "url('" artwork "')")}})
+         (when artwork {:style {:background-image (str "url('" (img-proxy artwork) "')")}})
          (when-not artwork "🎙")]
         [:div.now-playing-text
          [:span.now-playing-title  title]

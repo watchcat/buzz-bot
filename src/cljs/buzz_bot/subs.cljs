@@ -65,29 +65,21 @@
 (rf/reg-sub ::audio-artwork  :<- [::audio] (fn [a _] (:artwork a)))
 (rf/reg-sub ::audio-src      :<- [::audio] (fn [a _] (:src a)))
 
-;; Cache
+;; ── Offline / audio cache ────────────────────────────────────────────────────
+
+(rf/reg-sub ::network-online?
+  (fn [db _] (get-in db [:offline :network-online?])))
+
+(rf/reg-sub ::cached-ids-vec
+  (fn [db _] (get-in db [:offline :cached-ids])))
+
 (rf/reg-sub ::cached-ids
-  (fn [db _]
-    (set (get-in db [:cache :cached-ids]))))
+  :<- [::cached-ids-vec]
+  (fn [ids _] (set ids)))
 
 (rf/reg-sub ::episode-cached?
-  :<- [::cached-ids]
-  (fn [cached-ids [_ episode-id]]
-    (contains? cached-ids episode-id)))
+  (fn [[_ ep-id] _] (rf/subscribe [::cached-ids]))
+  (fn [ids [_ ep-id]] (contains? ids ep-id)))
 
 (rf/reg-sub ::cache-progress
-  (fn [db [_ episode-id]]
-    (get-in db [:cache :in-progress episode-id])))
-
-(rf/reg-sub ::cache-last-error
-  (fn [db _] (get-in db [:cache :last-error])))
-
-(rf/reg-sub ::cached-episodes
-  (fn [db _]
-    (let [ids   (get-in db [:cache :cached-ids])
-          meta  (get-in db [:cache :episode-meta] {})
-          blobs (get-in db [:cache :blob-urls])]
-      (mapv (fn [id]
-              (merge {:id id :blob-url (get blobs id)}
-                     (get meta (str id))))
-            ids))))
+  (fn [db [_ ep-id]] (get-in db [:offline :in-progress ep-id])))
