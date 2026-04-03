@@ -53,18 +53,11 @@ def process(dub_id : Int64, episode_id : Int64, language : String,
   speaker_wav = upload_voice_clip(dub_id, episode.audio_url)
 
   Log.info { "DubSynthesizer[#{dub_id}]: synthesizing with XTTS-v2" }
-  mp3_url = ReplicateClient.synthesize(translation, speaker_wav, language)
+  audio_data = ReplicateClient.synthesize(translation, speaker_wav, language)
+  Log.info { "DubSynthesizer[#{dub_id}]: synthesized #{audio_data.size} bytes" }
 
-  Log.info { "DubSynthesizer[#{dub_id}]: downloading MP3" }
-  mp3_data = IO::Memory.new
-  HTTP::Client.get(mp3_url) do |resp|
-    raise "MP3 download failed: HTTP #{resp.status_code}" unless resp.success?
-    IO.copy(resp.body_io, mp3_data)
-  end
-  Log.info { "DubSynthesizer[#{dub_id}]: downloaded #{mp3_data.size} bytes" }
-
-  r2_key = "dubbed/#{episode_id}/#{language}.mp3"
-  r2_url  = R2Storage.put(r2_key, mp3_data.to_slice)
+  r2_key = "dubbed/#{episode_id}/#{language}.wav"
+  r2_url  = R2Storage.put(r2_key, audio_data, "audio/wav")
   Log.info { "DubSynthesizer[#{dub_id}]: uploaded to R2: #{r2_url}" }
 
   DubbedEpisode.set_complete(dub_id, r2_url)

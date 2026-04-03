@@ -43,13 +43,112 @@ module ReplicateClient
     {text, lang_code}
   end
 
-  def self.synthesize(text : String, speaker_wav : String, language : String) : String
+  # XTTS-v2 hard-limits input to ~400 tokens (~280 words).
+  # Split long translations into sentence-bounded chunks, synthesize each,
+  # then concatenate the WAV files into a single audio stream.
+  MAX_WORDS_PER_CHUNK = 280
+
+  # Returns raw WAV bytes of the synthesized audio.
+  def self.synthesize(text : String, speaker_wav : String, language : String) : Bytes
+    chunks = split_into_chunks(text, MAX_WORDS_PER_CHUNK)
+    Log.info { "XTTS: #{chunks.size} chunk(s), #{text.split.size} words total" }
+    wav_slices = chunks.map { |chunk| download_bytes(synthesize_chunk(chunk, speaker_wav, language)) }
+    concat_wavs(wav_slices)
+  end
+
+  private def self.synthesize_chunk(text : String, speaker_wav : String, language : String) : String
     output = run_model("lucataco", "xtts-v2", {
       "text"     => text,
       "speaker"  => speaker_wav,
       "language" => language,
     })
     output.as_s? || raise "XTTS-v2 returned unexpected output format: #{output}"
+  end
+
+  # Split text on sentence boundaries, accumulating up to max_words per chunk.
+  private def self.split_into_chunks(text : String, max_words : Int32) : Array(String)
+    sentences = text.split(/(?<=[.!?…])\s+/)
+    chunks = [] of String
+    current = [] of String
+    current_words = 0
+    sentences.each do |sentence|
+      words = sentence.split(/\s+/).reject(&.empty?).size
+      if current_words + words > max_words && !current.empty?
+        chunks << current.join(" ")
+        current = [sentence]
+        current_words = words
+      else
+        current << sentence
+        current_words += words
+      end
+    end
+    chunks << current.join(" ") unless current.empty?
+    chunks
+  end
+
+  private def self.download_bytes(url : String) : Bytes
+    buf = IO::Memory.new
+    HTTP::Client.get(url) do |resp|
+      raise "WAV download failed: HTTP #{resp.status_code}" unless resp.success?
+      IO.copy(resp.body_io, buf)
+    end
+    buf.to_slice
+  end
+
+  # Concatenate WAV files by extracting PCM data from each and rebuilding a
+  # single RIFF/WAVE with the combined data chunk.
+  private def self.concat_wavs(wavs : Array(Bytes)) : Bytes
+    return wavs[0] if wavs.size == 1
+    sample_rate, channels, bits = parse_wav_format(wavs[0])
+    pcm_parts = wavs.map { |wav| extract_wav_pcm(wav) }
+    total_pcm = pcm_parts.sum(&.size)
+
+    out = IO::Memory.new
+    out.write("RIFF".to_slice)
+    out.write_bytes((36 + total_pcm).to_u32, IO::ByteFormat::LittleEndian)
+    out.write("WAVE".to_slice)
+    out.write("fmt ".to_slice)
+    out.write_bytes(16_u32,  IO::ByteFormat::LittleEndian)
+    out.write_bytes(1_u16,   IO::ByteFormat::LittleEndian)  # PCM
+    out.write_bytes(channels.to_u16,    IO::ByteFormat::LittleEndian)
+    out.write_bytes(sample_rate.to_u32, IO::ByteFormat::LittleEndian)
+    out.write_bytes((sample_rate * channels * bits // 8).to_u32, IO::ByteFormat::LittleEndian)
+    out.write_bytes((channels * bits // 8).to_u16, IO::ByteFormat::LittleEndian)
+    out.write_bytes(bits.to_u16, IO::ByteFormat::LittleEndian)
+    out.write("data".to_slice)
+    out.write_bytes(total_pcm.to_u32, IO::ByteFormat::LittleEndian)
+    pcm_parts.each { |pcm| out.write(pcm) }
+    out.to_slice
+  end
+
+  # Scan RIFF chunks to find fmt and return {sample_rate, channels, bits}.
+  # Falls back to XTTS-v2 defaults (24 kHz, mono, 16-bit) if parsing fails.
+  private def self.parse_wav_format(wav : Bytes) : {Int32, Int32, Int32}
+    i = 12
+    while i + 8 <= wav.size
+      chunk_id   = String.new(wav[i, 4])
+      chunk_size = IO::ByteFormat::LittleEndian.decode(UInt32, wav[i + 4, 4]).to_i32
+      if chunk_id == "fmt " && chunk_size >= 16
+        channels    = IO::ByteFormat::LittleEndian.decode(UInt16, wav[i + 10, 2]).to_i32
+        sample_rate = IO::ByteFormat::LittleEndian.decode(UInt32, wav[i + 12, 4]).to_i32
+        bits        = IO::ByteFormat::LittleEndian.decode(UInt16, wav[i + 22, 2]).to_i32
+        return {sample_rate, channels, bits}
+      end
+      i += 8 + chunk_size + (chunk_size & 1)  # WAV chunks are word-aligned
+    end
+    {24000, 1, 16}
+  end
+
+  # Scan RIFF chunks to find the "data" chunk and return its raw PCM bytes.
+  private def self.extract_wav_pcm(wav : Bytes) : Bytes
+    i = 12
+    while i + 8 <= wav.size
+      chunk_id   = String.new(wav[i, 4])
+      chunk_size = IO::ByteFormat::LittleEndian.decode(UInt32, wav[i + 4, 4]).to_i32
+      return wav[i + 8, chunk_size] if chunk_id == "data"
+      i += 8 + chunk_size + (chunk_size & 1)
+    end
+    wav[44..]  # fallback: skip standard 44-byte header
   end
 
   private def self.latest_version(owner : String, name : String) : String
