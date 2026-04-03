@@ -208,7 +208,18 @@
                                      (.then
                                        (fn [result]
                                          (if (.-done result)
-                                           (store! (js/Blob. chunks #js{:type "audio/mpeg"}))
+                                           ;; Validate completeness before caching.
+                                           ;; If the CDN dropped the connection early,
+                                           ;; ReadableStream returns done=true at the
+                                           ;; truncation point — the blob would be
+                                           ;; partial but appear complete without this check.
+                                           (let [blob (js/Blob. chunks #js{:type "audio/mpeg"})]
+                                             (if (and (pos? total)
+                                                      (not (js/isNaN total))
+                                                      (not= (.-size blob) total))
+                                               (rf/dispatch [:buzz-bot.events/audio-download-error
+                                                             episode-id])
+                                               (store! blob)))
                                            (let [chunk (.-value result)]
                                              (.push chunks chunk)
                                              (swap! loaded + (.-byteLength chunk))
@@ -221,7 +232,13 @@
                          (read-chunk)))
                      ;; Fallback — environments without ReadableStream
                      (-> (.blob resp)
-                         (.then store!)
+                         (.then (fn [blob]
+                                  (if (and (pos? total)
+                                           (not (js/isNaN total))
+                                           (not= (.-size blob) total))
+                                    (rf/dispatch [:buzz-bot.events/audio-download-error
+                                                  episode-id])
+                                    (store! blob))))
                          (.catch #(rf/dispatch [:buzz-bot.events/audio-download-error
                                                 episode-id])))))))))
          (.catch #(rf/dispatch [:buzz-bot.events/audio-download-error episode-id]))))))

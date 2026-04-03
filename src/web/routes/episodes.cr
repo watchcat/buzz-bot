@@ -185,7 +185,13 @@ module Web::Routes::Episodes
       %({"sent":true})
     end
 
-    # Stream episode audio via server-side proxy (follows redirects, auth-gated)
+    # Stream episode audio via server-side proxy (follows redirects, auth-gated).
+    # Only used for background download (the audio element plays from the direct
+    # CDN URL). The flush happens inside the CDN response block so that
+    # Content-Length is forwarded — without it the client cannot detect whether
+    # the CDN truncated the response, and a partial blob would be cached as if
+    # complete. The TTFB pre-flush concern only applies to the audio element,
+    # which never hits this endpoint.
     get "/episodes/:id/audio_proxy" do |env|
       user = Auth.current_user(env)
       halt env, status_code: 401, response: "Unauthorized" unless user
@@ -193,16 +199,6 @@ module Web::Routes::Episodes
       episode_id = env.params.url["id"].to_i64
       episode = Episode.find(episode_id)
       halt env, status_code: 404, response: "Episode not found" unless episode
-
-      # Flush headers immediately so the client's fetch() resolves before we
-      # open the CDN connection. Without this, the CDN round-trip (DNS + TLS
-      # + response headers, ~200 ms) exceeds the WebView's TTFB timeout and
-      # the request is cancelled with "TypeError: network error".
-      env.response.status_code = 200
-      env.response.content_type = "audio/mpeg"
-      env.response.headers["X-Accel-Buffering"] = "no"
-      env.response.headers["Cache-Control"] = "no-store"
-      env.response.flush
 
       url = episode.audio_url.sub(/^http:\/\//i, "https://")
       redirects_left = 5
@@ -215,6 +211,16 @@ module Web::Routes::Episodes
             loc = resp.headers["Location"]? || break
             url = loc.starts_with?("http") ? loc : "#{uri.scheme}://#{uri.host}#{loc}"
           else
+            env.response.status_code = 200
+            env.response.content_type = "audio/mpeg"
+            env.response.headers["X-Accel-Buffering"] = "no"
+            env.response.headers["Cache-Control"] = "no-store"
+            # Forward Content-Length so the JS client can verify the full file
+            # was received and reject a partial blob before caching it.
+            if cl = resp.headers["Content-Length"]?
+              env.response.headers["Content-Length"] = cl
+            end
+            env.response.flush
             begin
               IO.copy(resp.body_io, env.response, 128 * 1024)
               env.response.flush

@@ -38,6 +38,7 @@ module Bot
       when "/start"     then handle_start(message, user, param)
       when "/help"      then handle_help(message)
       when "/subscribe" then send_subscribe_keyboard(message.chat.id)
+      when "/flag"      then handle_flag(message, user, param)
       end
     end
 
@@ -90,6 +91,43 @@ module Bot
 
     private def self.escape_md(text : String) : String
       text.gsub(/[_*\[\]()~`>#+\-=|{}.!\\]/) { |c| "\\#{c}" }
+    end
+
+    private def self.handle_flag(message : Tourmaline::Message, user : User, param : String)
+      unless Config.admin_user_ids.includes?(user.telegram_id)
+        BotClient.client.send_message(message.chat.id, "⛔ Not authorised.")
+        return
+      end
+
+      parts = param.split(" ", limit: 2)
+
+      # /flag list
+      if parts.first == "list" || param.blank?
+        lines = FeatureFlags.all.map { |name, enabled| "#{enabled ? "✅" : "❌"} #{name}" }
+        BotClient.client.send_message(message.chat.id,
+          lines.empty? ? "No flags defined." : lines.join("\n"))
+        return
+      end
+
+      # /flag <name> <on|off>
+      name  = parts[0]
+      value = parts[1]?.to_s.downcase
+
+      unless {"on", "off"}.includes?(value)
+        BotClient.client.send_message(message.chat.id, "Usage: /flag <name> on|off\n/flag list")
+        return
+      end
+
+      unless FeatureFlags::DEFAULTS.has_key?(name)
+        BotClient.client.send_message(message.chat.id,
+          "Unknown flag '#{name}'. Known flags: #{FeatureFlags::DEFAULTS.keys.join(", ")}")
+        return
+      end
+
+      enabled = value == "on"
+      FeatureFlags.set!(name, enabled)
+      BotClient.client.send_message(message.chat.id,
+        "#{enabled ? "✅" : "❌"} #{name} is now #{enabled ? "ON" : "OFF"}")
     end
 
     private def self.handle_help(message : Tourmaline::Message)

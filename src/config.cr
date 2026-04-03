@@ -32,6 +32,12 @@ module Config
     ENV["TELEGRAM_API_SERVER"]?.presence
   end
 
+  # Comma-separated Telegram user IDs allowed to access admin endpoints and bot commands.
+  # Example: ADMIN_USER_IDS=168682956,987654321
+  def self.admin_user_ids : Array(Int64)
+    ENV["ADMIN_USER_IDS"]?.to_s.split(",").compact_map { |s| s.strip.to_i64? }
+  end
+
   def self.replicate_api_token : String
     ENV["REPLICATE_API_TOKEN"]? || raise "REPLICATE_API_TOKEN not set"
   end

@@ -33,6 +33,8 @@ require "./web/routes/inbox"
 require "./web/routes/search"
 require "./web/routes/discover"
 require "./web/routes/dub"
+require "./web/routes/flags"
+require "./feature_flags"
 
 Log.setup(:info)
 
@@ -41,6 +43,7 @@ Log.info { "Starting Buzz-Bot..." }
 # Initialize DB connection pool
 db = AppDB.pool
 Log.info { "Database connected" }
+FeatureFlags.setup!
 DubbedEpisode.reset_stale_jobs
 DubHub.instance.start
 

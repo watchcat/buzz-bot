@@ -11,7 +11,9 @@ A Telegram bot and Mini App for podcast listening. Subscribe to RSS feeds, track
 - **Episode player** — native audio playback inside Telegram with resume-from-position, variable speed (1×/1.5×/2×), and ±15/30 s skip
 - **Autoplay** — automatically advance to the next episode in a feed when one finishes
 - **Progress tracking** — listening position saved automatically every 5 seconds; offline saves queued and replayed on reconnect
-- **Offline caching** — episode audio is progressively downloaded and cached; the player switches to the local copy after 5 minutes of buffering ahead, enabling interrupted listening
+- **Offline caching** — episode audio is fully downloaded and cached in the browser; the player seamlessly switches to the local copy once available, with stall/error recovery that falls back to the cached copy on network loss
+- **Image proxy** — all external podcast artwork is routed through `/img-proxy` to satisfy Telegram's restrictive `img-src` CSP
+- **Feature flags** — runtime toggleable switches stored in PostgreSQL; toggled via bot `/flag` command; consumed client-side without a page reload
 - **Collaborative filtering recommendations** — surface episodes liked by users with similar taste
 - **Share & send** — share any episode via Telegram's share sheet, or send the audio file directly to your own Telegram chat (premium)
 - **Episode dubbing** — AI-powered dubbing into 15 languages: transcribe with Whisper, translate with DeepL, synthesize with XTTS-v2 voice cloning (premium)
@@ -85,7 +87,7 @@ POST /episodes/:id/dub  ──────────────────�
          ◄────────────────────────────────────────────────── │
          │  status: done / pending / failed                  │
          ▼
-  Client polls GET /episodes/:id/dub/:lang every 5 s
+  Client receives dub progress via SSE (GET /episodes/:id/dub/:lang/stream)
          │
          ▼
   "▶ Play Dubbed" + "📨 Send Dubbed to Telegram"
@@ -115,6 +117,34 @@ pending → processing → done
 ```
 
 `expired` means the R2 file has been deleted by the lifecycle rule (29 days after creation). The UI shows "🎙 Dub Episode (expired)" which triggers a fresh dub.
+
+---
+
+## Feature Flags
+
+Runtime toggleable switches stored in PostgreSQL and cached in memory. All flags default to `true` when undefined (safe-by-default).
+
+| Flag | Default | Description |
+|---|---|---|
+| `offline_caching` | `true` | Download and cache episode audio for offline playback |
+| `stall_recovery` | `true` | Auto-recover from network stalls and audio errors |
+| `img_proxy` | `true` | Route external podcast artwork through `/img-proxy` |
+
+### Toggle via bot command
+
+```
+/flag list              — show all flags and current values
+/flag offline_caching off
+/flag stall_recovery on
+```
+
+Only Telegram user IDs listed in `ADMIN_USER_IDS` can use `/flag`. Non-admins get a "permission denied" reply.
+
+### How it works
+
+- `FeatureFlags.setup!` runs `CREATE TABLE IF NOT EXISTS feature_flags` on startup — no migration file needed.
+- Changes written by the bot command are effective immediately (in-memory cache updated).
+- The client fetches `/flags` once on startup and stores values in `[:flags]` in app-db.
 
 ---
 
@@ -169,6 +199,7 @@ BASE_URL=https://yourdomain.com
 | `R2_SECRET_ACCESS_KEY` | R2 API token secret — required for dubbing |
 | `R2_BUCKET` | R2 bucket name — required for dubbing |
 | `R2_PUBLIC_URL` | Public URL of the R2 bucket (e.g. `https://pub-xxx.r2.dev`) — required for dubbing |
+| `ADMIN_USER_IDS` | Comma-separated Telegram user IDs allowed to toggle feature flags (e.g. `123456789,987654321`) |
 
 ### 3. Run the database migrations
 
@@ -412,8 +443,9 @@ buzz-bot/
 │   └── sw.js                      # Service Worker — offline audio cache + write queue
 ├── src/
 │   ├── buzz_bot.cr                # Entry point — starts Kemal + registers webhook
-│   ├── config.cr                  # ENV accessors
+│   ├── config.cr                  # ENV accessors (incl. admin_user_ids)
 │   ├── db.cr                      # DB pool singleton (AppDB)
+│   ├── feature_flags.cr           # DB-backed runtime feature flags with in-memory cache
 │   ├── feed_refresher.cr          # Background RSS refresh on feed load
 │   ├── bot/
 │   │   ├── audio_sender.cr        # Sends episode audio to user's Telegram chat
@@ -421,16 +453,18 @@ buzz-bot/
 │   │   └── handlers.cr            # /start, /help, callback handlers
 │   ├── cljs/buzz_bot/             # ClojureScript SPA
 │   │   ├── core.cljs              # App entry point — reads initData, dispatches :init
-│   │   ├── db.cljs                # re-frame initial app-db shape
-│   │   ├── events.cljs            # re-frame event handlers (player, nav, feeds, inbox)
+│   │   ├── db.cljs                # re-frame initial app-db shape (incl. :flags {})
+│   │   ├── events.cljs            # re-frame event handlers (player, nav, feeds, inbox, flags)
 │   │   ├── events/
-│   │   │   └── dub.cljs           # Dub events: request, poll, send, language picker
+│   │   │   └── dub.cljs           # Dub events: request, SSE stream, send, language picker
 │   │   ├── fx.cljs                # Custom effects: http-fetch, audio-cmd,
 │   │   │                          #   copy-to-clipboard, open-telegram-link, poll-after
-│   │   ├── subs.cljs              # re-frame subscriptions
+│   │   │                          #   audio-cache-store (SW caching with Range support)
+│   │   ├── subs.cljs              # re-frame subscriptions (incl. ::flag parameterized sub)
 │   │   ├── subs/
 │   │   │   └── dub.cljs           # Dub subscriptions: status, r2-url, translation, etc.
 │   │   ├── audio.cljs             # Singleton <audio> element outside React tree
+│   │   │                          #   stall/error recovery, Media Session API
 │   │   └── views/
 │   │       ├── layout.cljs        # App shell (tab bar, theme init, mini-player slot)
 │   │       ├── inbox.cljs         # Inbox — all unheard episodes, compact mode
@@ -439,6 +473,7 @@ buzz-bot/
 │   │       ├── bookmarks.cljs     # Bookmarked episodes with search
 │   │       ├── player.cljs        # Full-screen player — controls, share, send, dub panel
 │   │       ├── miniplayer.cljs    # Persistent mini-player (shown on all non-player views)
+│   │       ├── utils.cljs         # Shared helpers: img-proxy URL wrapper
 │   │       └── dub.cljs           # Dub panel + language picker component
 │   ├── dub/
 │   │   ├── dub_job.cr             # Async pipeline: download → Whisper → DeepL → XTTS-v2 → R2
@@ -468,7 +503,8 @@ buzz-bot/
 │           ├── feeds.cr           # Feed CRUD + subscribe
 │           ├── episodes.cr        # Episodes, player data, progress, signals, audio proxy
 │           ├── inbox.cr           # GET /inbox
-│           ├── dub.cr             # POST /episodes/:id/dub, GET /episodes/:id/dub/:lang
+│           ├── dub.cr             # POST /episodes/:id/dub, GET /episodes/:id/dub/:lang + SSE stream
+│           ├── flags.cr           # GET /flags (admin-only feature flag state)
 │           ├── discover.cr        # GET /bookmarks, GET /bookmarks/search
 │           ├── search.cr          # GET /search, POST /search/subscribe
 │           └── recommendations.cr
@@ -503,10 +539,14 @@ All Mini App routes authenticate via the `X-Init-Data` request header (Telegram 
 | `PUT` | `/episodes/:id/progress` | Save playback position |
 | `PUT` | `/episodes/:id/signal` | Toggle bookmark |
 | `POST` | `/episodes/:id/send` | Send audio file to user's Telegram chat (premium; `dubbed=true&language=es` for dubbed) |
+| `GET` | `/episodes/:id/audio` | Serve cached episode audio (auth-gated, streams from DB-cached blob) |
 | `GET` | `/episodes/:id/audio_proxy` | Auth-gated streaming proxy — follows redirects, flushes headers before CDN connection |
 | `POST` | `/episodes/:id/dub` | Start or retry a dub job `{language: "es"}` — returns status immediately, job runs async |
 | `GET` | `/episodes/:id/dub/:lang` | Poll dub status — returns `{status, r2_url?, translation?}` |
+| `GET` | `/episodes/:id/dub/:lang/stream` | SSE stream for real-time dub progress updates |
 | `PUT` | `/user/dub_language` | Save the user's preferred dub language |
+| `GET` | `/img-proxy?url=` | HTTPS image proxy — routes external artwork through own origin to satisfy Telegram CSP |
+| `GET` | `/flags` | Current feature flag state (admin-only — non-admins get 403 and client defaults all flags to `true`) |
 | `GET` | `/bookmarks` | Bookmarked episodes |
 | `GET` | `/bookmarks/search?q=X` | Search bookmarked episodes |
 | `GET` | `/search?q=X` | Search Apple Podcasts directory |
@@ -541,8 +581,11 @@ core.cljs          ← mounts app, reads initData from DOM, dispatches :init
 
 - **Audio continuity** — the `<audio>` element is a `defonce` at the module level. Navigating between views never interrupts playback.
 - **Offline write queue** — progress saves that fail offline are queued in IndexedDB by the Service Worker and replayed automatically on reconnect.
-- **Progressive audio caching** — the Service Worker downloads episode audio in the background and the player switches to the local cached copy once 5 minutes are buffered ahead.
-- **Dub polling** — after requesting a dub, the client polls `GET /episodes/:id/dub/:lang` every 5 seconds via the `::poll-after` effect until status is `done` or `failed`.
+- **Full audio caching** — episode audio is downloaded completely in the background via `fx.cljs`; the Service Worker stores it and handles `Range` requests (returning HTTP 206) so seeking works on cached audio. The player switches to the local copy via `:switch-src` once available.
+- **Stall/error recovery** — `audio.cljs` listens for `waiting` and `error` events; after 5 s of stalling, it reloads from the cached copy (if available) or retries the stream URL, guarded by the `stall_recovery` feature flag.
+- **Dub progress via SSE** — after requesting a dub, the client opens an SSE connection to `GET /episodes/:id/dub/:lang/stream`; the server pushes `step:` and `done:` / `failed:` events via PostgreSQL `NOTIFY` so no polling loop is needed.
+- **Feature flags** — fetched once on startup from `GET /flags`; stored in `[:flags]` in app-db; read via the `::flag` subscription or directly from `@re-frame.db/app-db` in non-reactive contexts (`audio.cljs`). All flags default to `true` when the endpoint is unreachable.
+- **Image proxy** — all external artwork URLs are wrapped through `views/utils/img-proxy` before rendering, routing them through `/img-proxy` to satisfy Telegram's restrictive `img-src` CSP.
 
 ---
 

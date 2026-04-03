@@ -37,6 +37,7 @@ module WebServer
     Web::Routes::Search.register
     Web::Routes::Discover.register
     Web::Routes::Dub.register
+    Web::Routes::Flags.register
   end
 
   def self.run(port : Int32)

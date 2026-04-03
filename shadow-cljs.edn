@@ -7,4 +7,5 @@
         :asset-path "/js"
         :modules    {:main {:init-fn buzz-bot.core/init!}}
         :release    {:compiler-options {:source-map "public/js/main.js.map"}}
+        :build-options {:cache-level :off}
         :devtools   {:repl-init-ns buzz-bot.core}}}}

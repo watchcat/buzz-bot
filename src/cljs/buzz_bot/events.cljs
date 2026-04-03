@@ -8,6 +8,19 @@
 (rf/reg-event-db ::initialize-db (fn [_ _] db/default-db))
 (rf/reg-event-db ::noop (fn [db _] db))
 
+;; ── Feature flags ────────────────────────────────────────────────────────────
+
+(rf/reg-event-fx
+ ::fetch-flags
+ (fn [_ _]
+   {::buzz-bot.fx/http-fetch {:method :get :url "/flags"
+                              :on-ok  [::flags-loaded] :on-err [::noop]}}))
+
+(rf/reg-event-db
+ ::flags-loaded
+ (fn [db [_ resp]]
+   (assoc db :flags (or resp {}))))
+
 ;; ── Navigation ───────────────────────────────────────────────────────────────
 
 (rf/reg-event-fx
@@ -289,7 +302,8 @@
  ::audio-load
  (fn [{:keys [db]} [_ opts]]
    (let [ep-id     (str (get-in db [:player :data :episode :id]))
-         cached?   (some #{ep-id} (get-in db [:offline :cached-ids]))
+         caching?  (get-in db [:flags "offline_caching"] true)
+         cached?   (and caching? (some #{ep-id} (get-in db [:offline :cached-ids])))
          src       (if cached?
                      (str "/episodes/" ep-id "/audio")
                      (get-in db [:player :data :episode :audio_url]))
@@ -534,13 +548,14 @@
                     (catch :default _ [])))]
      (assoc-in db [:offline :cached-ids] (or ids [])))))
 
-;; Idempotent — no-op if already cached or download already in progress.
+;; Idempotent — no-op if already cached, download already in progress, or flag disabled.
 (rf/reg-event-fx
  ::audio-download-start
  (fn [{:keys [db]} [_ ep-id]]
    (let [cached-ids  (get-in db [:offline :cached-ids])
-         in-progress (get-in db [:offline :in-progress])]
-     (if (or (some #{ep-id} cached-ids) (contains? in-progress ep-id))
+         in-progress (get-in db [:offline :in-progress])
+         caching?    (get-in db [:flags "offline_caching"] true)]
+     (if (or (not caching?) (some #{ep-id} cached-ids) (contains? in-progress ep-id))
        {}
        {:db (assoc-in db [:offline :in-progress ep-id]
                       {:bytes-downloaded 0 :bytes-total 0})

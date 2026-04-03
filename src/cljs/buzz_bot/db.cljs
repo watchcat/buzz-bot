@@ -20,4 +20,5 @@
          :active-lang nil} ;; currently playing dubbed language (nil = original)
    :offline {:cached-ids      []   ;; episode IDs, most-recent-first, max 5
              :in-progress     {}   ;; ep-id → {:bytes-downloaded N :bytes-total N}
-             :network-online? true}})
+             :network-online? true}
+   :flags   {}})  ;; feature flag name → bool, loaded from /flags on init

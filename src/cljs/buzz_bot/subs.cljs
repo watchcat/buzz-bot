@@ -6,6 +6,10 @@
 (rf/reg-sub ::view-params  (fn [db _] (:view-params db)))
 (rf/reg-sub ::init-data    (fn [db _] (:init-data db)))
 
+;; Feature flags — (rf/subscribe [::flag "offline_caching"]) → bool (default true)
+(rf/reg-sub ::flag
+  (fn [db [_ name]] (get-in db [:flags name] true)))
+
 ;; Inbox
 (rf/reg-sub ::inbox        (fn [db _] (:inbox db)))
 (rf/reg-sub ::inbox-episodes

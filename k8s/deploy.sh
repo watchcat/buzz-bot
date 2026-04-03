@@ -18,7 +18,7 @@ cd "$REPO_DIR"
 nix-shell -p nodejs -p openjdk --run "npm ci --prefer-offline && node node_modules/.bin/shadow-cljs release app"
 
 echo "==> Building $IMAGE"
-docker build -t buzz-bot:latest .
+docker build --platform linux/amd64 -t buzz-bot:latest .
 
 echo "==> Exporting image"
 docker save buzz-bot:latest | gzip > "$TMPFILE"

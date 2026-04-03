@@ -70,12 +70,20 @@
         cached?    (some #{ep-id} cached-ids)
         stream-url (get-in @re-frame.db/app-db [:audio :src])
         t          (.-currentTime (el))
+        cache-url  (when ep-id (str "/episodes/" ep-id "/audio"))
+        ;; Are we already playing from the cached copy?
+        on-cache?  (and cache-url
+                        (= (.-src (el))
+                           (.-href (js/URL. cache-url js/location.href))))
+        ;; If cached but not yet on the cache URL → upgrade to the local copy.
+        ;; If already on the cache URL (stalled or errored) → the cached file is
+        ;; suspect; fall back to the stream so the user isn't stuck on bad data.
         target     (cond
-                     cached?    (str "/episodes/" ep-id "/audio")
-                     stream-url stream-url
-                     :else      nil)]
-    ;; Guard: if we already tried this URL and it errored, don't loop.
-    ;; (.-src el) returns an absolute URL; target is relative — resolve before comparing.
+                     (and cached? (not on-cache?)) cache-url
+                     stream-url                    stream-url
+                     :else                         nil)]
+    ;; Guard: resolve relative target to absolute before comparing so we never
+    ;; reload the URL we're already on (prevents infinite error→recover loops).
     (when (and target (not= (.-src (el)) (.-href (js/URL. target js/location.href))))
       (reset! recovering? true)
       (set! (.-src (el)) target)
@@ -119,19 +127,21 @@
     ;; Recovery reloads from cached blob if available, or retries the stream URL.
     (.addEventListener audio "waiting"
       (fn []
-        (when-not (or @stall-timer @recovering?)
-          (reset! stall-timer
-                  (js/setTimeout
-                    (fn []
-                      (reset! stall-timer nil)
-                      (recover-from-stall!))
-                    5000)))))
+        (let [stall-recovery? (get-in @re-frame.db/app-db [:flags "stall_recovery"] true)]
+          (when (and stall-recovery? (not (or @stall-timer @recovering?)))
+            (reset! stall-timer
+                    (js/setTimeout
+                      (fn []
+                        (reset! stall-timer nil)
+                        (recover-from-stall!))
+                      5000))))))
     ;; `error` handles hard failures (bad URL, decode error, etc.).
     (.addEventListener audio "error"
       (fn []
         (reset! recovering? false)
         (cancel-stall-timer!)
-        (recover-from-stall!)))))
+        (let [stall-recovery? (get-in @re-frame.db/app-db [:flags "stall_recovery"] true)]
+          (when stall-recovery? (recover-from-stall!)))))))
 
 ;; ── Media Session action handlers ────────────────────────────────────────────
 

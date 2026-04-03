@@ -106,6 +106,7 @@
   (rf/dispatch-sync [::events/initialize-db])
   (rf/dispatch-sync [::events/set-init-data (.. (tg) -initData)])
   (rf/dispatch-sync [::events/offline-init])
+  (rf/dispatch [::events/fetch-flags])
   (wire-network!)
   (register-sw!)
   (restore-audio-state!)
