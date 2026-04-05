@@ -95,7 +95,8 @@ module Bot
 
     private def self.handle_flag(message : Tourmaline::Message, user : User, param : String)
       unless Config.admin_user_ids.includes?(user.telegram_id)
-        BotClient.client.send_message(message.chat.id, "⛔ Not authorised.")
+        BotClient.client.send_message(message.chat.id, "⛔ Not authorised.",
+          parse_mode: Tourmaline::ParseMode::HTML)
         return
       end
 
@@ -105,7 +106,8 @@ module Bot
       if parts.first == "list" || param.blank?
         lines = FeatureFlags.all.map { |name, enabled| "#{enabled ? "✅" : "❌"} #{name}" }
         BotClient.client.send_message(message.chat.id,
-          lines.empty? ? "No flags defined." : lines.join("\n"))
+          lines.empty? ? "No flags defined." : lines.join("\n"),
+          parse_mode: Tourmaline::ParseMode::HTML)
         return
       end
 
@@ -114,20 +116,23 @@ module Bot
       value = parts[1]?.to_s.downcase
 
       unless {"on", "off"}.includes?(value)
-        BotClient.client.send_message(message.chat.id, "Usage: /flag <name> on|off\n/flag list")
+        BotClient.client.send_message(message.chat.id, "Usage: /flag <name> on|off\n/flag list",
+          parse_mode: Tourmaline::ParseMode::HTML)
         return
       end
 
       unless FeatureFlags::DEFAULTS.has_key?(name)
         BotClient.client.send_message(message.chat.id,
-          "Unknown flag '#{name}'. Known flags: #{FeatureFlags::DEFAULTS.keys.join(", ")}")
+          "Unknown flag '#{name}'. Known flags: #{FeatureFlags::DEFAULTS.keys.join(", ")}",
+          parse_mode: Tourmaline::ParseMode::HTML)
         return
       end
 
       enabled = value == "on"
       FeatureFlags.set!(name, enabled)
       BotClient.client.send_message(message.chat.id,
-        "#{enabled ? "✅" : "❌"} #{name} is now #{enabled ? "ON" : "OFF"}")
+        "#{enabled ? "✅" : "❌"} #{name} is now #{enabled ? "ON" : "OFF"}",
+        parse_mode: Tourmaline::ParseMode::HTML)
     end
 
     private def self.handle_help(message : Tourmaline::Message)

@@ -54,7 +54,8 @@
 ;; ── Stall / network-error recovery ──────────────────────────────────────────
 ;; On mobile WebViews, network loss typically causes `waiting` (buffer empty)
 ;; rather than `error`. We wait 5 s for the network to recover; if the element
-;; is still stalled, we reload from the cached blob (if available).
+;; is still stalled, we reload from the cached blob (if available), or retry
+;; the stream URL when connectivity returns.
 
 (defonce ^:private stall-timer (atom nil))
 (defonce ^:private recovering? (atom false))
@@ -63,6 +64,27 @@
   (when-let [id @stall-timer]
     (js/clearTimeout id)
     (reset! stall-timer nil)))
+
+;; Load (or reload) the current audio src and resume from position t.
+;; Keeps recovering?=true through the seek so waiting events during
+;; buffering do not retrigger the stall timer prematurely.
+(defn- load-and-resume! [t]
+  (reset! recovering? true)
+  (.load (el))
+  (.addEventListener (el) "canplay"
+    (fn []
+      (if (pos? t)
+        (do
+          (set! (.-currentTime (el)) t)
+          (.addEventListener (el) "seeked"
+            (fn []
+              (reset! recovering? false)
+              (-> (.play (el)) (.catch (fn []))))
+            #js{:once true}))
+        (do
+          (reset! recovering? false)
+          (-> (.play (el)) (.catch (fn []))))))
+    #js{:once true}))
 
 (defn- recover-from-stall! []
   (let [ep-id      (get-in @re-frame.db/app-db [:audio :episode-id])
@@ -76,24 +98,19 @@
                         (= (.-src (el))
                            (.-href (js/URL. cache-url js/location.href))))
         ;; If cached but not yet on the cache URL → upgrade to the local copy.
-        ;; If already on the cache URL (stalled or errored) → the cached file is
-        ;; suspect; fall back to the stream so the user isn't stuck on bad data.
+        ;; If already on the cache URL → do NOT fall back to the stream: the SW
+        ;; serves it from memory and a transient stall should resolve on its own.
+        ;; Falling back would reload the CDN URL, which fails when offline.
+        ;; If not cached at all → retry the stream URL.
         target     (cond
                      (and cached? (not on-cache?)) cache-url
-                     stream-url                    stream-url
+                     (not cached?)                 stream-url
                      :else                         nil)]
     ;; Guard: resolve relative target to absolute before comparing so we never
     ;; reload the URL we're already on (prevents infinite error→recover loops).
     (when (and target (not= (.-src (el)) (.-href (js/URL. target js/location.href))))
-      (reset! recovering? true)
       (set! (.-src (el)) target)
-      (.load (el))
-      (.addEventListener (el) "canplay"
-        (fn []
-          (reset! recovering? false)
-          (set! (.-currentTime (el)) t)
-          (-> (.play (el)) (.catch (fn []))))
-        #js{:once true}))))
+      (load-and-resume! t))))
 
 ;; ── Listener wiring ──────────────────────────────────────────────────────────
 
@@ -141,7 +158,28 @@
         (reset! recovering? false)
         (cancel-stall-timer!)
         (let [stall-recovery? (get-in @re-frame.db/app-db [:flags "stall_recovery"] true)]
-          (when stall-recovery? (recover-from-stall!)))))))
+          (when stall-recovery? (recover-from-stall!)))))
+    ;; When connectivity is restored, reload if the audio element is stalled or
+    ;; in an error state (readyState < HAVE_FUTURE_DATA = 3). This handles the
+    ;; case where the download hadn't finished before the connection was cut:
+    ;; the browser buffer ran dry while offline, and now that we're back we can
+    ;; resume streaming or switch to the now-downloadable cached copy.
+    (.addEventListener js/window "online"
+      (fn []
+        (let [t (.-currentTime (el))]
+          (when (and (not @recovering?)
+                     (pos? t)
+                     (or (.-error (el))
+                         (< (.-readyState (el)) 3)))
+            ;; First see if we should upgrade to a cached copy (it may have
+            ;; become available while offline via a parallel download that
+            ;; completed just before the cut).
+            (recover-from-stall!)
+            ;; If recover-from-stall! decided there was nothing to switch to
+            ;; (e.g. not cached, same URL) we force a reload of the current src
+            ;; so the stream can resume now that the network is back.
+            (when (not @recovering?)
+              (load-and-resume! t))))))))
 
 ;; ── Media Session action handlers ────────────────────────────────────────────
 

@@ -4,6 +4,36 @@
             [buzz-bot.subs :as subs]
             [buzz-bot.events :as events]))
 
+(defn- downloaded-section []
+  (let [open? (r/atom true)]
+    (fn []
+      (let [ids        @(rf/subscribe [::subs/cached-ids-vec])
+            metas      @(rf/subscribe [::subs/cached-episode-metas])
+            playing-id @(rf/subscribe [::subs/audio-episode-id])]
+        (when (seq ids)
+          [:div.downloaded-section
+           [:div.downloaded-section-header
+            {:on-click #(swap! open? not)}
+            [:span.downloaded-section-title (str "Downloaded (" (count ids) ")")]
+            [:span.downloaded-chevron (if @open? "▾" "▸")]]
+           (when @open?
+             [:ul.downloaded-list
+              (for [ep-id ids]
+                (let [meta (get metas (str ep-id))]
+                  ^{:key ep-id}
+                  [:li.episode-item
+                   {:class           (when (= (str ep-id) (str playing-id)) "is-playing")
+                    :data-episode-id (str ep-id)
+                    :on-click        #(rf/dispatch [::events/navigate :player {:episode-id ep-id}])}
+                   [:div.episode-info
+                    [:span.episode-feed-name (or (:feed_title meta) "…")]
+                    [:span.episode-title     (or (:title meta) (str "Episode " ep-id))]]
+                   [:button.downloaded-delete
+                    {:on-click (fn [e]
+                                 (.stopPropagation e)
+                                 (rf/dispatch [::events/audio-cache-evict ep-id]))}
+                    "✕"]]))])])))))
+
 (defn- episode-item [ep playing-id]
   [:li.episode-item
    {:class           (when (= (str (:id ep)) (str playing-id)) "is-playing")
@@ -25,6 +55,7 @@
         [:div.episodes-container
          [:div.section-header
           [:div.section-header-row [:h2 "Bookmarks"]]]
+         [downloaded-section]
          [:div.search-section
           [:input.search-input
            {:type        "search"

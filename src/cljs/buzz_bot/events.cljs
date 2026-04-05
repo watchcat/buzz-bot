@@ -259,8 +259,29 @@
                  (:count saved))
          url   (if limit (str "/bookmarks?limit=" limit) "/bookmarks")]
      {:db         (assoc-in db [:bookmarks :loading?] true)
+      :dispatch   [::fetch-cached-metas]
       ::buzz-bot.fx/http-fetch {:method :get :url url
                                 :on-ok  [::bookmarks-loaded] :on-err [::fetch-error]}})))
+
+(rf/reg-event-fx
+ ::fetch-cached-metas
+ (fn [{:keys [db]} _]
+   (let [ids (get-in db [:offline :cached-ids])]
+     (if (empty? ids)
+       {}
+       {::buzz-bot.fx/http-fetch
+        {:method :get
+         :url    (str "/episodes/meta?ids=" (str/join "," ids))
+         :on-ok  [::cached-metas-loaded]
+         :on-err [::noop]}}))))
+
+(rf/reg-event-db
+ ::cached-metas-loaded
+ (fn [db [_ resp]]
+   (if resp
+     (assoc-in db [:offline :episode-metas]
+               (into {} (map #(vector (str (:id %)) %) resp)))
+     db)))
 
 (rf/reg-event-fx
  ::bookmarks-loaded

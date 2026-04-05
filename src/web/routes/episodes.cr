@@ -187,11 +187,14 @@ module Web::Routes::Episodes
 
     # Stream episode audio via server-side proxy (follows redirects, auth-gated).
     # Only used for background download (the audio element plays from the direct
-    # CDN URL). The flush happens inside the CDN response block so that
-    # Content-Length is forwarded — without it the client cannot detect whether
-    # the CDN truncated the response, and a partial blob would be cached as if
-    # complete. The TTFB pre-flush concern only applies to the audio element,
-    # which never hits this endpoint.
+    # CDN URL). After IO.copy we call env.response.close so that:
+    #   - chunked responses get the "0\r\n\r\n" terminator before Kemal's
+    #     post-processing runs (without this, Kemal raising "Headers already sent"
+    #     would close the socket without the terminator, the browser sees an
+    #     incomplete response and discards the download)
+    #   - Content-Length responses are cleanly finalised
+    # The rescue only fires for errors that occur BEFORE headers are sent; once
+    # streaming has started we let the connection close naturally.
     get "/episodes/:id/audio_proxy" do |env|
       user = Auth.current_user(env)
       halt env, status_code: 401, response: "Unauthorized" unless user
@@ -202,6 +205,7 @@ module Web::Routes::Episodes
 
       url = episode.audio_url.sub(/^http:\/\//i, "https://")
       redirects_left = 5
+      streaming_started = false
 
       while redirects_left > 0
         redirects_left -= 1
@@ -215,24 +219,30 @@ module Web::Routes::Episodes
             env.response.content_type = "audio/mpeg"
             env.response.headers["X-Accel-Buffering"] = "no"
             env.response.headers["Cache-Control"] = "no-store"
-            # Forward Content-Length so the JS client can verify the full file
-            # was received and reject a partial blob before caching it.
+            # Forward Content-Length so the JS client can verify completeness.
             if cl = resp.headers["Content-Length"]?
               env.response.headers["Content-Length"] = cl
             end
             env.response.flush
+            streaming_started = true
             begin
               IO.copy(resp.body_io, env.response, 128 * 1024)
-              env.response.flush
             rescue IO::Error
               Log.debug { "audio_proxy client disconnected mid-stream" }
             end
+            # Close the response before returning so Kemal's post-processing
+            # cannot corrupt the stream (chunked terminator is sent here).
+            env.response.close
             break
           end
         end
       end
       nil
     rescue ex
+      # Only log/respond if streaming hadn't started yet; once we've flushed
+      # headers and begun sending bytes, any exception is a Kemal housekeeping
+      # artefact — the stream was already properly closed above.
+      next if streaming_started
       Log.error { "audio_proxy error: #{ex.message}" }
       "Proxy error"
     end

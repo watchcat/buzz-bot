@@ -1624,6 +1624,59 @@ body:has(.now-playing-bar) main {
   box-shadow: inset 0 -2px 0 var(--button-color);
 }
 
+/* ── Bookmarks: downloaded episodes section ─────────────────────────────── */
+
+.downloaded-section {
+  margin-bottom: var(--gap);
+}
+
+.downloaded-section-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 2px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.downloaded-section-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--hint-color);
+  flex: 1;
+}
+
+.downloaded-chevron {
+  font-size: 13px;
+  color: var(--hint-color);
+}
+
+.downloaded-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.downloaded-delete {
+  background: none;
+  border: none;
+  color: var(--hint-color);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 4px 6px;
+  flex-shrink: 0;
+  opacity: 0.6;
+}
+
+.downloaded-delete:active {
+  opacity: 1;
+  color: #e53e3e;
+}
+
 /* ── Player download progress bar ───────────────────────────────────────── */
 
 .player-download-bar {

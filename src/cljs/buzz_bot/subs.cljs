@@ -87,3 +87,6 @@
 
 (rf/reg-sub ::cache-progress
   (fn [db [_ ep-id]] (get-in db [:offline :in-progress ep-id])))
+
+(rf/reg-sub ::cached-episode-metas
+  (fn [db _] (get-in db [:offline :episode-metas] {})))
