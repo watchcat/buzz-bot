@@ -31,7 +31,7 @@ A Telegram bot and Mini App for podcast listening. Subscribe to RSS feeds, track
 | Frontend | ClojureScript · [re-frame](https://github.com/day8/re-frame) · [Reagent](https://reagent-project.github.io/) |
 | Frontend build | [shadow-cljs](https://github.com/thheller/shadow-cljs) |
 | Service Worker | Custom SW for offline audio caching and offline write queue |
-| Speech-to-text | [OpenAI Whisper large-v3](https://replicate.com/openai/whisper) via [Replicate](https://replicate.com) |
+| Speech-to-text | [Whisper large-v3](https://github.com/ggerganov/whisper.cpp) running locally via whisper-service (Apple M4 GPU) |
 | Translation | [DeepL API](https://www.deepl.com/pro-api) |
 | Text-to-speech | [lucataco/xtts-v2](https://replicate.com/lucataco/xtts-v2) via Replicate (voice cloning) |
 | Dubbed audio storage | [Cloudflare R2](https://developers.cloudflare.com/r2/) |
@@ -200,6 +200,9 @@ BASE_URL=https://yourdomain.com
 | `R2_BUCKET` | R2 bucket name — required for dubbing |
 | `R2_PUBLIC_URL` | Public URL of the R2 bucket (e.g. `https://pub-xxx.r2.dev`) — required for dubbing |
 | `ADMIN_USER_IDS` | Comma-separated Telegram user IDs allowed to toggle feature flags (e.g. `123456789,987654321`) |
+| `WHISPER_REDIS_URL` | Redis URL used by `dub-transcriber` to enqueue transcription jobs (e.g. `redis://default:pass@redis.whisper.svc.cluster.local:6379`) |
+| `WHISPER_CALLBACK_BASE` | Base URL the whisper-worker posts results back to (e.g. `https://app.buzz-bot.top`) |
+| `WHISPER_QUEUE_KEY` | Redis list key for the job queue (default: `whisper:jobs`) |
 
 ### 3. Run the database migrations
 
@@ -328,6 +331,63 @@ curl https://app.yourdomain.com/              # should return HTTP 200
 kubectl logs -n buzz-bot deploy/buzz-bot -f  # live logs
 ./k8s/hetzner-k3s.sh delete --config k8s/cluster.yaml  # tear down cluster
 ```
+
+### Monitoring
+
+**Resource usage** (requires metrics-server — see below):
+
+```sh
+KUBECONFIG=k8s/kubeconfig kubectl top nodes
+KUBECONFIG=k8s/kubeconfig kubectl top pods -A --sort-by=memory
+```
+
+**Interactive cluster dashboard** (k9s):
+
+```sh
+nix-shell -p k9s --run "KUBECONFIG=k8s/kubeconfig k9s"
+```
+
+Inside k9s: `:ns` to switch namespaces, `l` for logs, `d` for describe, `u` to see CPU/memory per pod.
+
+**metrics-server** must be installed and imported manually (the node has no internet access):
+
+```sh
+# On your Mac — pull, save, and transfer the image
+echo 'FROM registry.k8s.io/metrics-server/metrics-server:v0.8.1' | \
+  docker build --platform linux/amd64 -t metrics-server:v0.8.1 -
+docker save metrics-server:v0.8.1 | gzip > /tmp/metrics-server.tar.gz
+scp /tmp/metrics-server.tar.gz root@<NODE-IP>:/tmp/
+
+# On the node
+k3s ctr --namespace k8s.io images import /tmp/metrics-server.tar.gz
+k3s ctr --namespace k8s.io images tag \
+  docker.io/library/metrics-server:v0.8.1 \
+  registry.k8s.io/metrics-server/metrics-server:v0.8.1
+
+# Deploy metrics-server (k3s uses self-signed kubelet certs)
+kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml
+kubectl patch deployment metrics-server -n kube-system \
+  --type=json \
+  -p '[{"op":"add","path":"/spec/template/spec/containers/0/args/-","value":"--kubelet-insecure-tls"},
+       {"op":"add","path":"/spec/template/spec/containers/0/imagePullPolicy","value":"Never"}]'
+```
+
+**Telegram alerts** — a cron job on the node fires every 30 minutes and sends a bot message when:
+
+| Condition | Threshold | Message |
+|---|---|---|
+| RAM usage | > 80% | ⚠️ Consider upgrading |
+| Disk usage | > 70% | ⚠️ Prune images or upgrade |
+| OOM kills | Any in last hour | 🚨 Upgrade NOW |
+
+The script lives at `/usr/local/bin/node-health-alert.sh` on the node, installed via `/etc/cron.d/node-health`.
+
+**When to upgrade** (current node is cpx22: 2 vCPU, 4 GB RAM, 75 GB disk):
+
+- RAM consistently >80% at idle — whisper dubbing jobs push memory up temporarily
+- OOM kills — no swap means the kernel kills pods without warning
+- CPU >80% sustained — audio proxy + dubbing pipeline compete for the 2 cores
+- Disk >70% — containerd image cache grows over time; prune with `k3s ctr images rm` or upgrade to cpx32
 
 ---
 
