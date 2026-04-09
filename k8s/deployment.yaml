@@ -16,7 +16,7 @@ spec:
       containers:
         - name: buzz-bot
           image: ghcr.io/watchcat/buzz-bot:latest
-          imagePullPolicy: Always
+          imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 3000
           env:
@@ -28,7 +28,7 @@ spec:
           resources:
             requests:
               cpu: 100m
-              memory: 256Mi
+              memory: 384Mi
             limits:
               cpu: 500m
               memory: 512Mi

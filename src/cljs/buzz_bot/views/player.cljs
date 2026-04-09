@@ -31,18 +31,20 @@
         (str h ":" (.padStart (str m) 2 "0") ":" (.padStart (str s) 2 "0"))
         (str m ":" (.padStart (str s) 2 "0"))))))
 
-(defn- seek-bar [_current _duration _pending?]
+(defn- seek-bar [_current _duration _pending? _dl-pct]
   (let [dragging? (r/atom false)
         drag-pct  (r/atom 0)]
-    (fn [current duration pending?]
-      (let [pct (if (pos? duration) (* 100 (/ current duration)) 0)]
+    (fn [current duration pending? dl-pct]
+      (let [pct   (if (pos? duration) (* 100 (/ current duration)) 0)
+            style (cond-> {"--pct" (str (.toFixed (if @dragging? @drag-pct pct) 2) "%")}
+                    dl-pct (assoc "--dl-pct" (str dl-pct "%")))]
         (when-not @dragging?
           (reset! drag-pct pct))
         [:input#player-seek.player-seek-bar
          {:type          "range" :min 0 :max 100 :step 0.1
           :value         (str @drag-pct)
           :disabled      pending?
-          :style         {"--pct" (str (.toFixed @drag-pct 2) "%")}
+          :style         style
           :on-change     #(when (pos? duration)
                             (reset! dragging? true)
                             (reset! drag-pct (js/parseFloat (.. % -target -value))))
@@ -171,15 +173,12 @@
               [:div.player-controls
                [:div.player-progress-row
                 [:span#player-current-time.player-time (fmt-time cur-time)]
-                [seek-bar cur-time duration pending?]
+                [seek-bar cur-time duration pending?
+                 (when-let [prog cache-progress]
+                   (when (pos? (:bytes-total prog 0))
+                     (int (* 100 (/ (:bytes-downloaded prog 0)
+                                    (:bytes-total prog 0))))))]
                 [:span#player-duration.player-time (fmt-time duration)]]
-               (when-let [prog cache-progress]
-                 (let [pct (if (pos? (:bytes-total prog 0))
-                             (int (* 100 (/ (:bytes-downloaded prog 0)
-                                            (:bytes-total prog 0))))
-                             0)]
-                   [:div.player-download-bar
-                    {:style {"--dl-pct" (str pct "%")}}]))
                [:div.player-buttons-row
                 [:button.btn-seek {:on-click #(rf/dispatch [::events/audio-seek-relative -15])}
                  [:span.btn-seek-icon "↺"] [:span.btn-seek-label "15s"]]

@@ -1,5 +1,5 @@
 ---
-hetzner_token: b9XVsqeAHYNg8zyWUduFN5tO4soPMevADjpRiyn4AIWqlhvJHgBOin2WXjEVxnLt
+hetzner_token: REPLACE_WITH_HETZNER_TOKEN
 cluster_name: buzz-bot
 kubeconfig_path: "./k8s/kubeconfig"
 k3s_version: v1.32.2+k3s1
@@ -15,6 +15,21 @@ networking:
       - 0.0.0.0/0
     api:
       - 0.0.0.0/0
+  extra_firewall_rules:
+    - description: HTTP
+      direction: in
+      protocol: tcp
+      port: "80"
+      source_ips:
+        - 0.0.0.0/0
+        - ::/0
+    - description: HTTPS
+      direction: in
+      protocol: tcp
+      port: "443"
+      source_ips:
+        - 0.0.0.0/0
+        - ::/0
   public_network:
     ipv4: true
     ipv6: false

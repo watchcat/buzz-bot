@@ -801,7 +801,9 @@ main {
     to right,
     var(--button-color) 0%,
     var(--button-color) var(--pct),
-    rgba(0,0,0,0.15)    var(--pct),
+    #4caf50             var(--pct),
+    #4caf50             var(--dl-pct, var(--pct)),
+    rgba(0,0,0,0.15)    var(--dl-pct, var(--pct)),
     rgba(0,0,0,0.15)    100%
   );
 }
@@ -1679,15 +1681,3 @@ body:has(.now-playing-bar) main {
 
 /* ── Player download progress bar ───────────────────────────────────────── */
 
-.player-download-bar {
-  height: 3px;
-  border-radius: 2px;
-  margin: 4px 0 0;
-  background: linear-gradient(
-    to right,
-    var(--button-color) 0%,
-    var(--button-color) var(--dl-pct, 0%),
-    rgba(0, 0, 0, 0.10) var(--dl-pct, 0%)
-  );
-  opacity: 0.6;
-}

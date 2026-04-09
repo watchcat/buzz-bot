@@ -12,6 +12,8 @@ dependencies:
     github: will/crystal-pg
   dotenv:
     github: drum445/dotenv
+  redis:
+    github: jgaskins/redis
 
 crystal: ">= 1.6.0"
 

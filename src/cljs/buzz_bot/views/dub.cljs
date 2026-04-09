@@ -7,16 +7,24 @@
 ;; Pipeline step → progress percentage and human label.
 (defn- step->pct [step]
   (case step
-    ("transcription" "transcribing") "30%"
-    ("translation"   "translating")  "60%"
-    ("synthesis"     "synthesizing")  "85%"
-    "15%"))   ; pending / unknown → show minimal fill
+    "queued"                "5%"
+    "separating"            "15%"
+    "transcribing"          "30%"
+    "translating"           "50%"
+    "synthesizing"          "70%"
+    "assembling"            "90%"
+    ("mixing" "uploading")  "95%"
+    "5%"))   ; unknown → minimal fill
 
 (defn- step->label [step]
   (case step
-    ("transcription" "transcribing") "Transcribing audio…"
-    ("translation"   "translating")  "Translating…"
-    ("synthesis"     "synthesizing") "Synthesizing dubbed voice…"
+    "queued"                "Starting…"
+    "separating"            "Separating audio stems…"
+    "transcribing"          "Transcribing audio…"
+    "translating"           "Translating…"
+    "synthesizing"          "Synthesizing dubbed voice…"
+    "assembling"            "Assembling timeline…"
+    ("mixing" "uploading")  "Finishing up…"
     "Starting…"))
 
 ;; Unified dub section: sits below the meta row.

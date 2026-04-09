@@ -3,6 +3,8 @@ module FeatureFlags
     "offline_caching" => true,
     "stall_recovery"  => true,
     "img_proxy"       => true,
+    "dub_translation" => true,
+    "dub_synthesis"   => true,
   }
 
   @@flags : Hash(String, Bool) = DEFAULTS.dup

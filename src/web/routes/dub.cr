@@ -1,4 +1,5 @@
 require "json"
+require "redis"
 
 module Web::Routes::Dub
   def self.register
@@ -53,6 +54,30 @@ module Web::Routes::Dub
       end
 
       dub_id = DubbedEpisode.upsert_pending(episode_id, language, user.telegram_id)
+
+      begin
+        bg_volume     = data["bg_volume"]?.try(&.as_f?) || 0.15
+        job_id        = Random::Secure.hex(16)
+        callback_base = Config.dub_callback_base
+        payload = {
+          job_id:       job_id,
+          dub_id:       dub_id,
+          episode_id:   episode_id,
+          audio_url:    episode.audio_url,
+          language:     language,
+          bg_volume:    bg_volume,
+          callback_url: "#{callback_base}/internal/dub_result",
+        }.to_json
+        r = Redis::Client.new(URI.parse(Config.dub_redis_url))
+        r.run({"RPUSH", Config.dub_queue_key, payload})
+        Log.info { "Dub[#{dub_id}]: job #{job_id} enqueued → dub pipeline (episode #{episode_id} → #{language})" }
+      rescue ex
+        Log.error { "Dub[#{dub_id}]: failed to enqueue — #{ex.message}" }
+        DubbedEpisode.set_failed(dub_id, "Failed to enqueue job: #{ex.message}")
+        env.response.content_type = "application/json"
+        env.response.status_code = 500
+        next %({"error":"enqueue_failed"})
+      end
 
       env.response.content_type = "application/json"
       env.response.status_code = 202

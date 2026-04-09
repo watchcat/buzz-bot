@@ -1,0 +1,35 @@
+require "json"
+require "../../models/dubbed_episode"
+
+module Web::Routes::DubProgress
+  private struct Payload
+    include JSON::Serializable
+    getter dub_id : Int64
+    getter step   : String
+    getter pct    : Float64?
+  end
+
+  def self.register
+    # Internal endpoint — called by dub-pipeline to report intermediate step changes.
+    # The dub_update_notify PG trigger fires on every UPDATE to dubbed_episodes,
+    # fanning out a 'dub_status' NOTIFY to DubHub → SSE clients automatically.
+    post "/internal/dub_progress" do |env|
+      body    = env.request.body.try(&.gets_to_end) || ""
+      payload = Payload.from_json(body)
+
+      DubbedEpisode.set_step(payload.dub_id, payload.step)
+      Log.info { "DubProgress[#{payload.dub_id}]: step=#{payload.step}#{payload.pct ? " (#{payload.pct}%)" : ""}" }
+
+      env.response.content_type = "application/json"
+      {ok: true}.to_json
+    rescue ex : JSON::ParseException
+      Log.error { "DubProgress: malformed payload — #{ex.message}" }
+      env.response.status_code = 400
+      {error: "Invalid JSON"}.to_json
+    rescue ex
+      Log.error { "DubProgress: #{ex.message}" }
+      env.response.status_code = 500
+      {error: "Internal error"}.to_json
+    end
+  end
+end

@@ -1,47 +1,26 @@
 # Buzz-Bot
 
-A Telegram bot and Mini App for podcast listening. Subscribe to RSS feeds, track your listening progress, discover new episodes through collaborative filtering recommendations, and dub any episode into another language with AI voice cloning.
+**Podcast player for the AI epoch.**
+
+Listen to any podcast, then tap one button and hear it in your language — same voices, different words. Buzz-Bot runs inside Telegram as a Mini App and uses a local AI pipeline (Apple Silicon, no cloud GPU bills) to transcribe, translate, and re-synthesize every speaker's voice with sub-minute latency per segment.
 
 ## Features
 
 - **RSS subscriptions** — add any podcast by RSS URL; bulk-import via OPML
-- **Podcast search** — search by name via the Apple Podcasts directory and subscribe in one tap
+- **Podcast search** — search the Apple Podcasts directory and subscribe in one tap
 - **Episode inbox** — unified feed of unheard episodes across all subscriptions, with "hide listened" and compact grouping filters
-- **Bookmarks** — bookmark episodes with a single tap; search your saved episodes
-- **Episode player** — native audio playback inside Telegram with resume-from-position, variable speed (1×/1.5×/2×), and ±15/30 s skip
-- **Autoplay** — automatically advance to the next episode in a feed when one finishes
-- **Progress tracking** — listening position saved automatically every 5 seconds; offline saves queued and replayed on reconnect
-- **Offline caching** — episode audio is fully downloaded and cached in the browser; the player seamlessly switches to the local copy once available, with stall/error recovery that falls back to the cached copy on network loss
-- **Image proxy** — all external podcast artwork is routed through `/img-proxy` to satisfy Telegram's restrictive `img-src` CSP
-- **Feature flags** — runtime toggleable switches stored in PostgreSQL; toggled via bot `/flag` command; consumed client-side without a page reload
+- **Episode player** — native audio playback inside Telegram with resume-from-position, variable speed (1×/1.5×/2×), ±15/30 s skip, and a persistent mini-player visible on every screen
+- **Autoplay** — automatically advance to the next episode when one finishes
+- **Progress tracking** — listening position saved every 5 seconds; offline saves queued and replayed on reconnect
+- **Offline caching** — episode audio is downloaded in the background; player seamlessly switches to the local copy on network loss; progress bar shows cached vs. listened portion in two colours
+- **Bookmarks** — bookmark episodes with a single tap; search saved episodes
 - **Collaborative filtering recommendations** — surface episodes liked by users with similar taste
-- **Share & send** — share any episode via Telegram's share sheet, or send the audio file directly to your own Telegram chat (premium)
-- **Episode dubbing** — AI-powered dubbing into 15 languages: transcribe with Whisper, translate with DeepL, synthesize with XTTS-v2 voice cloning (premium)
-- **Telegram-native UI** — adapts to the user's Telegram theme (dark/light, accent colours); persistent mini-player stays visible while browsing
+- **Share & send** — share any episode via Telegram's share sheet, or send the audio file directly to your own chat
+- **AI dubbing** — hear any podcast in your language with the original speaker's voice cloned (see below)
 
-## Tech Stack
+## AI Dubbing
 
-| Layer | Technology |
-|---|---|
-| Language | [Crystal](https://crystal-lang.org/) >= 1.6 |
-| Web server | [Kemal](https://kemalcr.com/) |
-| Telegram bot | [Tourmaline](https://github.com/protoncr/tourmaline) |
-| Database driver | [crystal-pg](https://github.com/will/crystal-pg) + [crystal-db](https://github.com/crystal-lang/crystal-db) |
-| Database | PostgreSQL (tested with [Neon](https://neon.tech)) |
-| Frontend | ClojureScript · [re-frame](https://github.com/day8/re-frame) · [Reagent](https://reagent-project.github.io/) |
-| Frontend build | [shadow-cljs](https://github.com/thheller/shadow-cljs) |
-| Service Worker | Custom SW for offline audio caching and offline write queue |
-| Speech-to-text | [Whisper large-v3](https://github.com/ggerganov/whisper.cpp) running locally via whisper-service (Apple M4 GPU) |
-| Translation | [DeepL API](https://www.deepl.com/pro-api) |
-| Text-to-speech | [lucataco/xtts-v2](https://replicate.com/lucataco/xtts-v2) via Replicate (voice cloning) |
-| Dubbed audio storage | [Cloudflare R2](https://developers.cloudflare.com/r2/) |
-| Deployment | Docker · k3s on Hetzner (via [hetzner-k3s](https://github.com/vitobotta/hetzner-k3s)) |
-
----
-
-## Episode Dubbing
-
-Dubbing converts any podcast episode into another language, preserving the original speaker's voice.
+The centrepiece feature. Tap **🎙 Dub in…**, pick a language, and Buzz-Bot re-records the episode with every speaker's voice cloned into the target language. The dubbed MP3 is stored on Cloudflare R2 and playable directly in the player or sendable to Telegram chat.
 
 ### Supported Languages
 
@@ -50,101 +29,159 @@ English · Spanish · French · German · Italian · Portuguese · Polish · Tur
 ### How It Works
 
 ```
-User taps "🎙 Dub Episode"
+User taps "🎙 Dub in…" → picks language
          │
          ▼
-   Language picker (remembers preference)
+POST /episodes/:id/dub
+  Creates dubbed_episodes row (status: queued)
+  RPUSHes job to Redis queue (dub:jobs)
+         │
+         ▼  (Mac Mini — dub-pipeline worker)
+         │
+  1. Separate stems — Demucs htdemucs_ft
+     → vocals.wav + background.wav (cached in R2, reused)
+         │
+  2. Transcribe — mlx-whisper large-v3 (Metal/MPS)
+     + pyannote speaker diarization
+     → segments with speaker IDs, timestamps, word confidences
+         │
+  3. Extract voice samples — best 15–30 s clip per speaker
+         │
+  4. Split long segments at sentence boundaries / pauses
+         │
+  5. Translate — DeepL Pro
+     → translated_text per segment (same-language = no-op)
+         │
+  6. Synthesize — XTTS-v2 (Coqui TTS, local GPU)
+     voice cloning: each speaker's sample → target language TTS
+         │
+  7. Assemble — cursor-based placement
+     synth audio placed at original timestamps;
+     over-runs consume gaps, under-runs add 50% silence;
+     110% duration cap
+         │
+  8. Mix — ffmpeg amix
+     dubbed vocals + background at configurable volume
+         │
+  9. Upload → R2 dubbed/{episode_id}/{lang}.mp3
          │
          ▼
-POST /episodes/:id/dub  ─────────────────────────────────────┐
-         │                                                    │
-         │  (async, server-side fiber)                        │
-         ▼                                                    │
-  1. Download full episode audio → upload to R2 temp         │
-         │                                                    │
-         ▼                                                    │
-  2. Whisper large-v3 (Replicate)                            │
-     speech-to-text → transcript                             │
-     (cached on episodes.transcript — reused across langs)   │
-         │                                                    │
-         ▼                                                    │
-  3. DeepL API                                               │
-     translate transcript → target language                  │
-         │                                                    │
-         ▼                                                    │
-  4. Download first 3 MB of episode → upload to R2 temp      │
-     (voice sample for speaker cloning)                      │
-         │                                                    │
-         ▼                                                    │
-  5. XTTS-v2 (Replicate)                                     │
-     TTS with voice cloning → WAV → MP3 URL                  │
-         │                                                    │
-         ▼                                                    │
-  6. Download MP3 → upload to R2  dubbed/:id/:lang.mp3       │
-         │                                                    │
-         └──────────────────────────────────────────────────►│
-                                                             │
-         ◄────────────────────────────────────────────────── │
-         │  status: done / pending / failed                  │
-         ▼
-  Client receives dub progress via SSE (GET /episodes/:id/dub/:lang/stream)
-         │
-         ▼
-  "▶ Play Dubbed" + "📨 Send Dubbed to Telegram"
-  + collapsible translation text
+POST /internal/dub_result  (callback from Mac Mini to buzz-bot)
+  Updates dubbed_episodes: status=done, r2_url, speaker_count
+  Sends Telegram notification to user
+
+Progress updates via POST /internal/dub_progress → pg_notify → SSE
 ```
+
+### Real-time Progress
+
+While dubbing runs, the client subscribes to `GET /episodes/:id/dub/:lang/stream` (SSE). The Mac Mini posts step updates to `/internal/dub_progress`; buzz-bot writes to PostgreSQL and triggers `pg_notify`; the SSE handler fans out to all connected clients without polling.
+
+| Step | Label | Progress |
+|---|---|---|
+| `queued` | Queued | 5% |
+| `separating` | Separating stems | 15% |
+| `transcribing` | Transcribing | 30% |
+| `translating` | Translating | 50% |
+| `synthesizing` | Synthesizing voices | 70% |
+| `assembling` | Assembling audio | 90% |
+| `mixing` | Mixing | 95% |
+| `uploading` | Uploading | 95% |
+| `complete` | Done | 100% |
+
+### Stem Reuse
+
+Vocal separation (Demucs, ~2 min) and its outputs are stored in R2 under `dub-stems/{episode_id}/`. Re-dubbing the same episode into a second language skips this step entirely.
 
 ### Data Model
 
-| What | Where | Why |
-|---|---|---|
-| Transcript (Whisper output) | `episodes.transcript` | Language-independent — reused when the same episode is dubbed into multiple languages |
-| Translation (DeepL output) | `dubbed_episodes.translation` | Language-specific |
-| Dubbed MP3 | Cloudflare R2 `dubbed/:episode_id/:lang.mp3` | Expires after 29 days |
-| Voice sample | Cloudflare R2 `tmp/voice/:dub_id.mp3` | Temp — 7-day lifecycle rule |
-| Full audio temp | Cloudflare R2 `tmp/audio/:dub_id.mp3` | Temp — 7-day lifecycle rule |
+| What | Where |
+|---|---|
+| Vocals stem | R2 `dub-stems/{episode_id}/vocals.wav` |
+| Background stem | R2 `dub-stems/{episode_id}/background.wav` |
+| Speaker voice samples | R2 `dub-stems/{episode_id}/speaker_{id}.wav` |
+| Dubbed MP3 | R2 `dubbed/{episode_id}/{lang}.mp3` |
 
-### Retry Behaviour
+---
 
-A failed dub is retried from scratch on the next tap. `dubbed_episodes` resets to `pending` and a new fiber is spawned. The transcript cache means only the Whisper step is skipped on retry for the same episode.
+## Tech Stack
 
-### Dub Status Flow
+| Layer | Technology |
+|---|---|
+| Language | [Crystal](https://crystal-lang.org/) >= 1.9 |
+| Web server | [Kemal](https://kemalcr.com/) |
+| Telegram bot | [Tourmaline](https://github.com/protoncr/tourmaline) |
+| Database | PostgreSQL ([Neon](https://neon.tech)) via crystal-pg |
+| Frontend | ClojureScript · [re-frame](https://github.com/day8/re-frame) · [Reagent](https://reagent-project.github.io/) |
+| Frontend build | [shadow-cljs](https://github.com/thheller/shadow-cljs) |
+| Service Worker | Offline audio cache (Range-aware) + offline write queue |
+| Job queue | Redis (k8s `whisper` namespace, NodePort 30379) |
+| Stem separation | [Demucs](https://github.com/facebookresearch/demucs) `htdemucs_ft` (local, Apple Silicon) |
+| Speech-to-text | [mlx-whisper](https://github.com/ml-explore/mlx-examples) large-v3 (Metal/MPS, Apple Silicon) |
+| Speaker diarization | [pyannote.audio](https://github.com/pyannote/pyannote-audio) 3.x (MPS) |
+| Translation | [DeepL Pro API](https://www.deepl.com/pro-api) |
+| Text-to-speech | [XTTS-v2](https://github.com/coqui-ai/TTS) (Coqui, local, Apple Silicon) |
+| Audio processing | ffmpeg (Demucs stem output, final mix) |
+| Dubbed audio storage | [Cloudflare R2](https://developers.cloudflare.com/r2/) |
+| Deployment | Docker · k3s on Hetzner (via [hetzner-k3s](https://github.com/vitobotta/hetzner-k3s)) |
+| Ingress | Traefik v3 (Helm, DaemonSet, hostPorts 80/443) |
+| TLS | cert-manager + Let's Encrypt |
 
-```
-pending → processing → done
-                    ↘ failed → (retry) → pending → ...
-                    ↘ expired
-```
+---
 
-`expired` means the R2 file has been deleted by the lifecycle rule (29 days after creation). The UI shows "🎙 Dub Episode (expired)" which triggers a fresh dub.
+## Environment Variables
+
+### buzz-bot (k8s secret `buzz-bot-env`)
+
+| Variable | Description |
+|---|---|
+| `BOT_TOKEN` | Token from [@BotFather](https://t.me/BotFather) |
+| `WEBHOOK_URL` | Full public URL to `/webhook` |
+| `DATABASE_URL` | PostgreSQL connection string |
+| `PORT` | Port Kemal listens on (default: `3000`) |
+| `BASE_URL` | Public base URL — used for the Mini App button |
+| `TELEGRAM_API_SERVER` | *(optional)* Self-hosted Bot API URL (enables >50 MB file transfers) |
+| `ADMIN_USER_IDS` | Comma-separated Telegram user IDs for `/flag` command |
+| `DUB_REDIS_URL` | Redis URL for the dub job queue (e.g. `redis://default:pass@redis.whisper.svc.cluster.local:6379`) |
+| `DUB_QUEUE_KEY` | Redis list key (default: `dub:jobs`) |
+| `DUB_CALLBACK_BASE` | Base URL the Mac Mini posts results back to (e.g. `https://app.buzz-bot.top`) |
+
+### dub-pipeline (Mac Mini `.env`)
+
+| Variable | Description |
+|---|---|
+| `REDIS_URL` | Redis URL (NodePort: `redis://default:pass@<NODE_IP>:30379`) |
+| `QUEUE_KEY` | Redis list key (default: `dub:jobs`) |
+| `PROGRESS_URL` | `https://app.buzz-bot.top/internal/dub_progress` |
+| `R2_ENDPOINT` | Cloudflare R2 S3-compatible endpoint |
+| `R2_ACCESS_KEY_ID` | R2 API token key ID |
+| `R2_SECRET_ACCESS_KEY` | R2 API token secret |
+| `R2_BUCKET` | R2 bucket name |
+| `R2_PUBLIC_URL` | Public R2 URL (e.g. `https://pub-xxx.r2.dev`) |
+| `DEEPL_API_KEY` | DeepL Pro API key |
+| `HF_TOKEN` | HuggingFace token — required for pyannote models |
+| `TTS_DEVICE` | `cpu` (MPS has a 65536-channel limit incompatible with XTTS-v2) |
+| `DEMUCS_MODEL` | `htdemucs_ft` |
+| `WHISPER_MODEL` | `large-v3` |
+| `BG_VOLUME_DEFAULT` | Background music volume (default: `0.15`) |
 
 ---
 
 ## Feature Flags
 
-Runtime toggleable switches stored in PostgreSQL and cached in memory. All flags default to `true` when undefined (safe-by-default).
+Runtime toggleable switches stored in PostgreSQL; toggled via the bot `/flag` command (admin only).
 
 | Flag | Default | Description |
 |---|---|---|
 | `offline_caching` | `true` | Download and cache episode audio for offline playback |
 | `stall_recovery` | `true` | Auto-recover from network stalls and audio errors |
-| `img_proxy` | `true` | Route external podcast artwork through `/img-proxy` |
+| `img_proxy` | `true` | Route external artwork through `/img-proxy` |
 
-### Toggle via bot command
-
-```
-/flag list              — show all flags and current values
+```sh
+/flag list
 /flag offline_caching off
 /flag stall_recovery on
 ```
-
-Only Telegram user IDs listed in `ADMIN_USER_IDS` can use `/flag`. Non-admins get a "permission denied" reply.
-
-### How it works
-
-- `FeatureFlags.setup!` runs `CREATE TABLE IF NOT EXISTS feature_flags` on startup — no migration file needed.
-- Changes written by the bot command are effective immediately (in-memory cache updated).
-- The client fetches `/flags` once on startup and stores values in `[:flags]` in app-db.
 
 ---
 
@@ -152,12 +189,12 @@ Only Telegram user IDs listed in `ADMIN_USER_IDS` can use `/flag`. Non-admins ge
 
 ### Prerequisites
 
-- Crystal >= 1.6 and `shards` (for local development)
-- Node.js >= 18 and npm (to build the ClojureScript frontend)
-- Docker and Docker Compose (for production)
-- A PostgreSQL database (Neon free tier works)
-- A Telegram bot token from [@BotFather](https://t.me/BotFather)
-- A public HTTPS URL pointing to your server (required for webhooks)
+- Crystal >= 1.9 + `shards`
+- Node.js >= 18 + npm
+- Docker
+- PostgreSQL (Neon free tier works)
+- Telegram bot token from [@BotFather](https://t.me/BotFather)
+- Public HTTPS URL for webhooks
 
 ### 1. Clone and install dependencies
 
@@ -171,157 +208,114 @@ npm install
 ### 2. Configure environment
 
 ```sh
-cp .env.example .env
+cp k8s/secret.example.yaml k8s/secret.yaml
+# Fill in all values
 ```
 
-Edit `.env`:
-
-```env
-BOT_TOKEN=your-telegram-bot-token
-WEBHOOK_URL=https://yourdomain.com/webhook
-DATABASE_URL=postgres://user:pass@neon-host/dbname?sslmode=require
-PORT=3000
-BASE_URL=https://yourdomain.com
-```
-
-| Variable | Description |
-|---|---|
-| `BOT_TOKEN` | Token from [@BotFather](https://t.me/BotFather) |
-| `WEBHOOK_URL` | Full public URL to the `/webhook` endpoint |
-| `DATABASE_URL` | PostgreSQL connection string |
-| `PORT` | Port Kemal listens on (default: `3000`) |
-| `BASE_URL` | Public base URL — used for the Mini App button in `/start` |
-| `TELEGRAM_API_SERVER` | *(optional)* Self-hosted Bot API server URL (e.g. `http://telegram-bot-api:8081/`). Omit to use `api.telegram.org`. Required for >50 MB file transfers. |
-| `REPLICATE_API_TOKEN` | [Replicate](https://replicate.com) API token — required for dubbing |
-| `DEEPL_API_KEY` | [DeepL](https://www.deepl.com/pro-api) API key — required for dubbing |
-| `R2_ACCOUNT_ID` | Cloudflare account ID — required for dubbing |
-| `R2_ACCESS_KEY_ID` | R2 API token key ID — required for dubbing |
-| `R2_SECRET_ACCESS_KEY` | R2 API token secret — required for dubbing |
-| `R2_BUCKET` | R2 bucket name — required for dubbing |
-| `R2_PUBLIC_URL` | Public URL of the R2 bucket (e.g. `https://pub-xxx.r2.dev`) — required for dubbing |
-| `ADMIN_USER_IDS` | Comma-separated Telegram user IDs allowed to toggle feature flags (e.g. `123456789,987654321`) |
-| `WHISPER_REDIS_URL` | Redis URL used by `dub-transcriber` to enqueue transcription jobs (e.g. `redis://default:pass@redis.whisper.svc.cluster.local:6379`) |
-| `WHISPER_CALLBACK_BASE` | Base URL the whisper-worker posts results back to (e.g. `https://app.buzz-bot.top`) |
-| `WHISPER_QUEUE_KEY` | Redis list key for the job queue (default: `whisper:jobs`) |
-
-### 3. Run the database migrations
-
-If you have `psql` available:
+### 3. Run migrations
 
 ```sh
 for f in migrations/*.sql; do psql "$DATABASE_URL" -f "$f"; done
 ```
 
-Or use the included Crystal migration runner (no `psql` required):
+### 4. Build frontend
 
 ```sh
-crystal run migrate.cr
-```
-
-### 4. Build the frontend
-
-```sh
-# Development — fast incremental builds with live reloading
+# Development (live reload)
 npx shadow-cljs watch app
 
-# Production — minified output (also run by the Dockerfile)
+# Production
 npx shadow-cljs release app
 ```
 
-The compiled output lands in `public/js/main.js`.
-
-### 5a. Run locally
-
-Both the Telegram webhook and the Mini App require a public HTTPS URL — Telegram's servers push updates to `/webhook`, and Telegram's WebView refuses to load `http://` Mini App links. Use Cloudflare Tunnel to expose your local server for both — see [Local Development with Cloudflare Tunnel](#local-development-with-cloudflare-tunnel) below.
+### 5. Run locally
 
 ```sh
 crystal run src/buzz_bot.cr
 ```
 
-On startup the bot automatically calls `setWebhook` to register `WEBHOOK_URL` with Telegram.
-
-### 5b. Run with Docker (single server)
-
-```sh
-docker compose up -d
-```
-
-The image is built in two stages: a Crystal/Alpine builder compiles a fully static binary and runs `npx shadow-cljs release app`; the output is copied into a minimal Alpine runtime image.
+Use Cloudflare Tunnel to expose localhost over HTTPS for Telegram webhooks — see [Local Development](#local-development-with-cloudflare-tunnel).
 
 ---
 
 ## Kubernetes Deployment (k3s on Hetzner)
 
-A single `cpx11` node (2 vCPU, 2 GB RAM, ~€4/mo) is enough for the bot. The setup uses:
+A single `cpx22` node (2 vCPU, 4 GB RAM, ~€7/mo) runs the full stack. The Mac Mini runs the dub-pipeline worker and connects to Redis via NodePort.
 
-- **[hetzner-k3s](https://github.com/vitobotta/hetzner-k3s)** to provision a k3s cluster on Hetzner Cloud
-- **Traefik** (built into k3s) as the ingress controller
-- **cert-manager** for automatic Let's Encrypt TLS
-- **aiogram/telegram-bot-api** as a self-hosted Bot API server (optional, enables >50 MB file transfers)
-
-### 1. Install hetzner-k3s
+### 1. Install tools
 
 ```sh
-curl -L https://github.com/vitobotta/hetzner-k3s/releases/download/v2.4.6/hetzner-k3s-linux-amd64 \
-  -o ~/.local/bin/hetzner-k3s
-chmod +x ~/.local/bin/hetzner-k3s
-hetzner-k3s --version   # should print 2.4.6
+# hetzner-k3s (macOS ARM64)
+curl -L https://github.com/vitobotta/hetzner-k3s/releases/download/v2.4.7/hetzner-k3s-macos-arm64 \
+  -o /usr/local/bin/hetzner-k3s && chmod +x /usr/local/bin/hetzner-k3s
+
+# helm (via Nix)
+nix-shell   # shell.nix includes kubernetes-helm
 ```
 
-> **NixOS note:** use `k8s/hetzner-k3s.sh` instead of `hetzner-k3s` directly. The wrapper sets `SSL_CERT_FILE` and `ZONEINFO` which the statically-compiled binary cannot locate on NixOS.
+> **Nix note:** `k8s/hetzner-k3s.sh` wraps the binary with `SSL_CERT_FILE` and `ZONEINFO` — required on NixOS and Nix on macOS since the statically-compiled Crystal binary can't find system paths.
 
-### 2. Create the cluster
+### 2. Configure cluster token
 
-Edit `k8s/cluster.yaml` and fill in your Hetzner API token, then:
+Add `HETZNER_TOKEN=<your-token>` to `.env`. Never put the real token in `cluster.yaml` — it's committed with a placeholder.
+
+### 3. Create the cluster
 
 ```sh
-./k8s/hetzner-k3s.sh create --config k8s/cluster.yaml
+nix-shell --run './k8s/cluster-apply.sh create'
 export KUBECONFIG=k8s/kubeconfig
-kubectl get nodes   # should show one Ready node
+kubectl get nodes   # should show buzz-bot-master1 Ready
 ```
 
-### 3. Install cert-manager
+### 4. Preload images
+
+k3s 1.32 + hetzner-k3s disables Traefik and ServiceLB; images must be pulled manually to avoid Docker Hub rate limits:
+
+```sh
+./k8s/preload-images.sh
+```
+
+This pulls all system images (pause, Traefik, cert-manager, Redis, Hetzner CCM/CSI, Telegram Bot API) and scales cluster-autoscaler to 0 (unused on single-node).
+
+### 5. Install Traefik
+
+```sh
+nix-shell --run '
+  export KUBECONFIG=k8s/kubeconfig
+  helm install traefik traefik/traefik \
+    --namespace kube-system \
+    --set deployment.kind=DaemonSet \
+    --set ports.web.port=80 --set ports.web.hostPort=80 \
+    --set ports.websecure.port=443 --set ports.websecure.hostPort=443 \
+    --set ingressClass.enabled=true --set ingressClass.isDefaultClass=true
+'
+```
+
+### 6. Install cert-manager
 
 ```sh
 kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.17.0/cert-manager.yaml
-kubectl wait --for=condition=ready pod -l app.kubernetes.io/instance=cert-manager \
-  -n cert-manager --timeout=120s
 ```
 
-### 4. Create secrets
+### 7. Create secrets and apply manifests
 
 ```sh
-cp k8s/secret.example.yaml k8s/secret.yaml
-# Edit k8s/secret.yaml — fill in BOT_TOKEN, DATABASE_URL, BASE_URL,
-# REPLICATE_API_TOKEN, DEEPL_API_KEY, R2_* vars, etc.
-
-cp k8s/cert-issuer.yaml k8s/cert-issuer.yaml
-# Replace <YOUR_EMAIL> with your Let's Encrypt registration email
-```
-
-### 5. Point DNS to the node
-
-```sh
-kubectl get nodes -o wide   # note EXTERNAL-IP
-# Set an A record: app.yourdomain.com → <EXTERNAL-IP>
-```
-
-### 6. Deploy
-
-```sh
+cp k8s/secret.example.yaml k8s/secret.yaml   # fill in all values
 kubectl apply -f k8s/namespace.yaml
 kubectl apply -f k8s/secret.yaml
-kubectl apply -f k8s/cert-issuer.yaml
-kubectl apply -f k8s/deployment.yaml k8s/service.yaml k8s/ingress.yaml
-./k8s/deploy.sh   # builds image, transfers to node, rolls out
+kubectl apply -f k8s/cert-issuer.yaml         # fill in your email first
+kubectl apply -f k8s/deployment.yaml -f k8s/service.yaml -f k8s/ingress.yaml
+kubectl apply -f k8s/tg-api-secret.yaml -f k8s/tg-api-pvc.yaml \
+              -f k8s/tg-api-deployment.yaml -f k8s/tg-api-service.yaml
+kubectl apply -f k8s/redis.yaml               # Redis in whisper namespace
+kubectl create secret generic redis-secret \
+  --namespace whisper --from-literal=password=<strong-password>
 ```
 
-### 7. Verify
+### 8. Deploy buzz-bot
 
 ```sh
-kubectl get pods -n buzz-bot
-kubectl logs -n buzz-bot deploy/buzz-bot -f   # should show "Webhook registered"
-curl https://app.yourdomain.com/              # should return HTTP 200
+./k8s/deploy.sh   # builds image, transfers to node, rolls out
 ```
 
 ### Day-2 operations
@@ -329,260 +323,76 @@ curl https://app.yourdomain.com/              # should return HTTP 200
 ```sh
 ./k8s/deploy.sh                              # redeploy after code changes
 kubectl logs -n buzz-bot deploy/buzz-bot -f  # live logs
-./k8s/hetzner-k3s.sh delete --config k8s/cluster.yaml  # tear down cluster
+kubectl get pods -A                          # full cluster health
+nix-shell -p k9s --run 'KUBECONFIG=k8s/kubeconfig k9s'  # interactive dashboard
+./k8s/cluster-apply.sh delete               # tear down cluster
 ```
 
-### Monitoring
+---
 
-**Resource usage** (requires metrics-server — see below):
+## dub-pipeline (Mac Mini)
+
+The AI dubbing worker runs on a local Apple Silicon machine (tested on Mac Mini M4). It connects to Redis in the k3s cluster via NodePort 30379.
+
+### Setup
 
 ```sh
-KUBECONFIG=k8s/kubeconfig kubectl top nodes
-KUBECONFIG=k8s/kubeconfig kubectl top pods -A --sort-by=memory
+cd ../dub-pipeline
+python3.11 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+cp .env.example .env   # fill in Redis URL, R2 credentials, DeepL key, HF token
 ```
 
-**Interactive cluster dashboard** (k9s):
+### Run
 
 ```sh
-nix-shell -p k9s --run "KUBECONFIG=k8s/kubeconfig k9s"
+./run-worker.sh
 ```
 
-Inside k9s: `:ns` to switch namespaces, `l` for logs, `d` for describe, `u` to see CPU/memory per pod.
+The worker BRPOPs from `dub:jobs`, runs the full pipeline, posts progress to `/internal/dub_progress`, and posts the final result to `/internal/dub_result`.
 
-**metrics-server** must be installed and imported manually (the node has no internet access):
+### Test
 
 ```sh
-# On your Mac — pull, save, and transfer the image
-echo 'FROM registry.k8s.io/metrics-server/metrics-server:v0.8.1' | \
-  docker build --platform linux/amd64 -t metrics-server:v0.8.1 -
-docker save metrics-server:v0.8.1 | gzip > /tmp/metrics-server.tar.gz
-scp /tmp/metrics-server.tar.gz root@<NODE-IP>:/tmp/
-
-# On the node
-k3s ctr --namespace k8s.io images import /tmp/metrics-server.tar.gz
-k3s ctr --namespace k8s.io images tag \
-  docker.io/library/metrics-server:v0.8.1 \
-  registry.k8s.io/metrics-server/metrics-server:v0.8.1
-
-# Deploy metrics-server (k3s uses self-signed kubelet certs)
-kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml
-kubectl patch deployment metrics-server -n kube-system \
-  --type=json \
-  -p '[{"op":"add","path":"/spec/template/spec/containers/0/args/-","value":"--kubelet-insecure-tls"},
-       {"op":"add","path":"/spec/template/spec/containers/0/imagePullPolicy","value":"Never"}]'
+python test_job.py [audio_url] [language]
+# Pushes a fake job (dub_id=999999) — callback to localhost:9999 will 404 gracefully
+# Output uploaded to R2: dubbed/999999/{language}.mp3
 ```
-
-**Telegram alerts** — a cron job on the node fires every 30 minutes and sends a bot message when:
-
-| Condition | Threshold | Message |
-|---|---|---|
-| RAM usage | > 80% | ⚠️ Consider upgrading |
-| Disk usage | > 70% | ⚠️ Prune images or upgrade |
-| OOM kills | Any in last hour | 🚨 Upgrade NOW |
-
-The script lives at `/usr/local/bin/node-health-alert.sh` on the node, installed via `/etc/cron.d/node-health`.
-
-**When to upgrade** (current node is cpx22: 2 vCPU, 4 GB RAM, 75 GB disk):
-
-- RAM consistently >80% at idle — whisper dubbing jobs push memory up temporarily
-- OOM kills — no swap means the kernel kills pods without warning
-- CPU >80% sustained — audio proxy + dubbing pipeline compete for the 2 cores
-- Disk >70% — containerd image cache grows over time; prune with `k3s ctr images rm` or upgrade to cpx32
 
 ---
 
 ## Self-hosted Telegram Bot API Server
 
-By default bots are limited to 50 MB for file uploads/downloads. Running a local [Telegram Bot API server](https://github.com/tdlib/telegram-bot-api) inside the cluster removes this limit (up to 2 GB).
-
-### Deploy
+Removes the 50 MB file limit (up to 2 GB). Required for sending long dubbed episodes.
 
 ```sh
 cp k8s/tg-api-secret.example.yaml k8s/tg-api-secret.yaml
-# Edit — fill in TELEGRAM_API_ID and TELEGRAM_API_HASH from my.telegram.org
-
-kubectl apply -f k8s/tg-api-secret.yaml
-kubectl apply -f k8s/tg-api-pvc.yaml
-kubectl apply -f k8s/tg-api-deployment.yaml
-kubectl apply -f k8s/tg-api-service.yaml
+# Fill in TELEGRAM_API_ID and TELEGRAM_API_HASH from my.telegram.org
+kubectl apply -f k8s/tg-api-secret.yaml -f k8s/tg-api-pvc.yaml \
+              -f k8s/tg-api-deployment.yaml -f k8s/tg-api-service.yaml
 ```
 
-### One-time migration from api.telegram.org
-
-```sh
-curl "https://api.telegram.org/bot<TOKEN>/logOut"
-# {"ok":true,"result":true}
-```
-
-Then redeploy `buzz-bot` with `TELEGRAM_API_SERVER` set in the secret.
+Log out from api.telegram.org first: `curl "https://api.telegram.org/bot<TOKEN>/logOut"`
 
 ---
 
 ## Local Development with Cloudflare Tunnel
 
-Running the Mini App locally requires a public HTTPS URL for two reasons:
-
-1. **Telegram webhooks** — Telegram pushes updates to `/webhook` over HTTPS from the internet.
-2. **Mini App serving** — Telegram's WebView refuses `http://` URLs.
-
-[Cloudflare Tunnel](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/) (`cloudflared`) handles both without port forwarding or self-signed certificates.
-
-```
-Telegram servers  ──► https://your-tunnel.com/webhook   (bot updates)
-Telegram WebView  ──► https://your-tunnel.com/app        (Mini App)
-                               │ Cloudflare Tunnel
-                               ▼
-                     localhost:3000   (Kemal — all routes)
-```
-
-### Quick tunnel (no account needed)
-
 ```sh
-cloudflared tunnel --url http://localhost:3000
-```
-
-Update `.env` with the printed URL:
-
-```env
-WEBHOOK_URL=https://random-words.trycloudflare.com/webhook
-BASE_URL=https://random-words.trycloudflare.com
-```
-
-> The URL changes on every restart. The app re-registers the webhook on startup automatically, so just restart the app after restarting the tunnel.
-
-### One-command launcher
-
-`devrun.sh` starts the tunnel and the app together, handling URL patching automatically:
-
-```sh
-./devrun.sh           # auto-detects: named tunnel if ~/.cloudflared/config.yml exists
-./devrun.sh --quick   # force quick tunnel (temporary URL, no account needed)
-./devrun.sh --named   # force named tunnel (requires ~/.cloudflared/config.yml)
-```
-
-**Recommended development workflow:**
-
-```sh
-# Terminal 1 — ClojureScript watch build (fast incremental)
+# Terminal 1 — ClojureScript watch build
 npx shadow-cljs watch app
 
 # Terminal 2 — tunnel + Crystal server
-./devrun.sh
-```
-
-The shadow-cljs dev server is not required — Kemal serves `public/js/main.js` directly. Changes to ClojureScript files are picked up by the watch build and a browser refresh loads them.
-
----
-
-## Project Structure
-
-```
-buzz-bot/
-├── k8s/                           # Kubernetes manifests and deploy script
-│   ├── cluster.yaml               # hetzner-k3s cluster config (1× cpx11, nbg1)
-│   ├── deploy.sh                  # build image → transfer to node → kubectl rollout
-│   ├── namespace.yaml
-│   ├── secret.example.yaml        # env-var Secret template
-│   ├── deployment.yaml / service.yaml / ingress.yaml / cert-issuer.yaml
-│   ├── tg-api-*.yaml              # optional self-hosted Bot API server
-│   └── ...
-├── migrations/
-│   ├── 001_initial.sql
-│   ├── 002_feed_refresh.sql
-│   ├── 003_guid_per_feed.sql
-│   ├── 004_subscriptions.sql
-│   ├── 005_user_feed_order.sql
-│   ├── 006_episode_image_url.sql
-│   ├── 007_dubbed_episodes.sql    # dubbed_episodes table
-│   └── 008_dub_text_fields.sql    # episodes.transcript, dubbed_episodes.translation
-├── public/
-│   ├── css/app.css                # Telegram-themed styles (dark/light, CSS variables)
-│   ├── js/
-│   │   ├── main.js                # Compiled ClojureScript SPA (shadow-cljs output)
-│   │   └── telegram-web-app.js    # Vendored Telegram WebApp SDK
-│   └── sw.js                      # Service Worker — offline audio cache + write queue
-├── src/
-│   ├── buzz_bot.cr                # Entry point — starts Kemal + registers webhook
-│   ├── config.cr                  # ENV accessors (incl. admin_user_ids)
-│   ├── db.cr                      # DB pool singleton (AppDB)
-│   ├── feature_flags.cr           # DB-backed runtime feature flags with in-memory cache
-│   ├── feed_refresher.cr          # Background RSS refresh on feed load
-│   ├── bot/
-│   │   ├── audio_sender.cr        # Sends episode audio to user's Telegram chat
-│   │   ├── client.cr              # Tourmaline client + webhook registration
-│   │   └── handlers.cr            # /start, /help, callback handlers
-│   ├── cljs/buzz_bot/             # ClojureScript SPA
-│   │   ├── core.cljs              # App entry point — reads initData, dispatches :init
-│   │   ├── db.cljs                # re-frame initial app-db shape (incl. :flags {})
-│   │   ├── events.cljs            # re-frame event handlers (player, nav, feeds, inbox, flags)
-│   │   ├── events/
-│   │   │   └── dub.cljs           # Dub events: request, SSE stream, send, language picker
-│   │   ├── fx.cljs                # Custom effects: http-fetch, audio-cmd,
-│   │   │                          #   copy-to-clipboard, open-telegram-link, poll-after
-│   │   │                          #   audio-cache-store (SW caching with Range support)
-│   │   ├── subs.cljs              # re-frame subscriptions (incl. ::flag parameterized sub)
-│   │   ├── subs/
-│   │   │   └── dub.cljs           # Dub subscriptions: status, r2-url, translation, etc.
-│   │   ├── audio.cljs             # Singleton <audio> element outside React tree
-│   │   │                          #   stall/error recovery, Media Session API
-│   │   └── views/
-│   │       ├── layout.cljs        # App shell (tab bar, theme init, mini-player slot)
-│   │       ├── inbox.cljs         # Inbox — all unheard episodes, compact mode
-│   │       ├── feeds.cljs         # Feeds list + Apple Podcasts search
-│   │       ├── episodes.cljs      # Episode list for a single feed
-│   │       ├── bookmarks.cljs     # Bookmarked episodes with search
-│   │       ├── player.cljs        # Full-screen player — controls, share, send, dub panel
-│   │       ├── miniplayer.cljs    # Persistent mini-player (shown on all non-player views)
-│   │       ├── utils.cljs         # Shared helpers: img-proxy URL wrapper
-│   │       └── dub.cljs           # Dub panel + language picker component
-│   ├── dub/
-│   │   ├── dub_job.cr             # Async pipeline: download → Whisper → DeepL → XTTS-v2 → R2
-│   │   ├── replicate_client.cr    # Replicate API: submit prediction, poll, return output
-│   │   ├── deepl_client.cr        # DeepL translation API
-│   │   └── r2_storage.cr          # Cloudflare R2 PUT via AWS Signature v4
-│   ├── models/
-│   │   ├── user.cr
-│   │   ├── feed.cr
-│   │   ├── episode.cr             # includes transcript() / save_transcript()
-│   │   ├── user_episode.cr
-│   │   └── dubbed_episode.cr      # status machine + r2_url + translation
-│   ├── rss/
-│   │   └── parser.cr              # RSS and OPML XML parsing
-│   ├── views/                     # ECR templates (HTML shell only)
-│   │   ├── layout.ecr             # <html> wrapper — injects BOT_USERNAME, theme vars
-│   │   └── app.ecr                # SPA mount point (<div id="app">)
-│   └── web/
-│       ├── auth.cr                # initData HMAC-SHA256 validation
-│       ├── assets.cr              # Static file helpers
-│       ├── json_helpers.cr        # JSON serialisation structs
-│       ├── sanitizer.cr           # HTML sanitiser for episode descriptions
-│       ├── server.cr              # Kemal config, CORS, error handlers
-│       └── routes/
-│           ├── webhook.cr         # POST /webhook
-│           ├── app.cr             # GET /app (SPA shell)
-│           ├── feeds.cr           # Feed CRUD + subscribe
-│           ├── episodes.cr        # Episodes, player data, progress, signals, audio proxy
-│           ├── inbox.cr           # GET /inbox
-│           ├── dub.cr             # POST /episodes/:id/dub, GET /episodes/:id/dub/:lang + SSE stream
-│           ├── flags.cr           # GET /flags (admin-only feature flag state)
-│           ├── discover.cr        # GET /bookmarks, GET /bookmarks/search
-│           ├── search.cr          # GET /search, POST /search/subscribe
-│           └── recommendations.cr
-├── shadow-cljs.edn                # ClojureScript build config
-├── package.json                   # Node deps (shadow-cljs, reagent, re-frame)
-├── .env.example
-├── cloudflared.yml.example        # Named tunnel config template
-├── devrun.sh                      # One-command local dev launcher
-├── Dockerfile
-├── docker-compose.yml
-└── shard.yml
+./devrun.sh           # auto-detects named tunnel or quick tunnel
+./devrun.sh --quick   # temporary URL, no account needed
 ```
 
 ---
 
 ## API Routes
 
-All Mini App routes authenticate via the `X-Init-Data` request header (Telegram `initData` HMAC-SHA256).
+All Mini App routes authenticate via `X-Init-Data` (Telegram `initData` HMAC-SHA256).
 
 | Method | Path | Description |
 |---|---|---|
@@ -591,61 +401,27 @@ All Mini App routes authenticate via the `X-Init-Data` request header (Telegram 
 | `GET` | `/inbox` | Unheard episodes across all subscriptions |
 | `GET` | `/feeds` | List subscribed feeds |
 | `POST` | `/feeds` | Subscribe by RSS URL |
-| `POST` | `/feeds/opml` | Bulk-import from OPML file |
-| `POST` | `/feeds/:id/subscribe` | Subscribe to a feed by id (used after search) |
+| `POST` | `/feeds/opml` | Bulk-import from OPML |
 | `DELETE` | `/feeds/:id` | Unsubscribe |
-| `GET` | `/episodes?feed_id=X` | Episode list for a feed (`limit`, `offset`, `order` params) |
-| `GET` | `/episodes/:id/player` | Player data — episode, feed, recs, next episode, preferred dub language |
+| `GET` | `/episodes?feed_id=X` | Episode list (`limit`, `offset`, `order`) |
+| `GET` | `/episodes/:id/player` | Player data — episode, feed, recs, next, preferred dub language |
 | `PUT` | `/episodes/:id/progress` | Save playback position |
 | `PUT` | `/episodes/:id/signal` | Toggle bookmark |
-| `POST` | `/episodes/:id/send` | Send audio file to user's Telegram chat (premium; `dubbed=true&language=es` for dubbed) |
-| `GET` | `/episodes/:id/audio` | Serve cached episode audio (auth-gated, streams from DB-cached blob) |
-| `GET` | `/episodes/:id/audio_proxy` | Auth-gated streaming proxy — follows redirects, flushes headers before CDN connection |
-| `POST` | `/episodes/:id/dub` | Start or retry a dub job `{language: "es"}` — returns status immediately, job runs async |
-| `GET` | `/episodes/:id/dub/:lang` | Poll dub status — returns `{status, r2_url?, translation?}` |
-| `GET` | `/episodes/:id/dub/:lang/stream` | SSE stream for real-time dub progress updates |
-| `PUT` | `/user/dub_language` | Save the user's preferred dub language |
-| `GET` | `/img-proxy?url=` | HTTPS image proxy — routes external artwork through own origin to satisfy Telegram CSP |
-| `GET` | `/flags` | Current feature flag state (admin-only — non-admins get 403 and client defaults all flags to `true`) |
+| `POST` | `/episodes/:id/send` | Send audio to Telegram chat (`dubbed=true&language=ru` for dubbed) |
+| `GET` | `/episodes/:id/audio_proxy` | Auth-gated streaming proxy |
+| `POST` | `/episodes/:id/dub` | Queue a dub job `{language: "ru"}` |
+| `GET` | `/episodes/:id/dub/:lang` | Poll dub status |
+| `GET` | `/episodes/:id/dub/:lang/stream` | SSE stream for real-time progress |
+| `PUT` | `/user/dub_language` | Save preferred dub language |
+| `POST` | `/internal/dub_result` | Callback from Mac Mini on job completion |
+| `POST` | `/internal/dub_progress` | Callback from Mac Mini for step updates |
+| `GET` | `/img-proxy?url=` | HTTPS image proxy |
+| `GET` | `/flags` | Feature flag state (admin-only) |
 | `GET` | `/bookmarks` | Bookmarked episodes |
-| `GET` | `/bookmarks/search?q=X` | Search bookmarked episodes |
+| `GET` | `/bookmarks/search?q=X` | Search bookmarks |
 | `GET` | `/search?q=X` | Search Apple Podcasts directory |
-| `POST` | `/search/subscribe` | Subscribe to a result from podcast search |
-| `GET` | `/recommendations` | Collaboratively filtered episode recommendations |
-
----
-
-## Frontend Architecture
-
-The frontend is a [re-frame](https://github.com/day8/re-frame) single-page app compiled by [shadow-cljs](https://github.com/thheller/shadow-cljs). There is no full-page navigation — all views are rendered client-side by swapping Reagent components.
-
-```
-core.cljs          ← mounts app, reads initData from DOM, dispatches :init
-  └── layout.cljs  ← tab bar, Telegram theme colours, mini-player slot
-        └── router ← dispatches to inbox / feeds / episodes / bookmarks / player
-```
-
-**State management** follows the standard re-frame pattern:
-
-| File | Role |
-|---|---|
-| `db.cljs` | Defines the initial `app-db` shape |
-| `events.cljs` | Pure event handlers (`reg-event-db` / `reg-event-fx`) |
-| `events/dub.cljs` | Dub-specific events: language picker, request, poll, send to Telegram |
-| `fx.cljs` | Side-effecting handlers: `::http-fetch`, `::audio-cmd`, `::copy-to-clipboard`, `::open-telegram-link`, `::poll-after` |
-| `subs.cljs` | Derived data subscriptions |
-| `subs/dub.cljs` | Dub state subscriptions: status, r2-url, translation, error, language |
-| `audio.cljs` | Singleton `<audio>` element outside the React tree — survives view changes |
-
-**Key behaviours:**
-
-- **Audio continuity** — the `<audio>` element is a `defonce` at the module level. Navigating between views never interrupts playback.
-- **Offline write queue** — progress saves that fail offline are queued in IndexedDB by the Service Worker and replayed automatically on reconnect.
-- **Full audio caching** — episode audio is downloaded completely in the background via `fx.cljs`; the Service Worker stores it and handles `Range` requests (returning HTTP 206) so seeking works on cached audio. The player switches to the local copy via `:switch-src` once available.
-- **Stall/error recovery** — `audio.cljs` listens for `waiting` and `error` events; after 5 s of stalling, it reloads from the cached copy (if available) or retries the stream URL, guarded by the `stall_recovery` feature flag.
-- **Dub progress via SSE** — after requesting a dub, the client opens an SSE connection to `GET /episodes/:id/dub/:lang/stream`; the server pushes `step:` and `done:` / `failed:` events via PostgreSQL `NOTIFY` so no polling loop is needed.
-- **Feature flags** — fetched once on startup from `GET /flags`; stored in `[:flags]` in app-db; read via the `::flag` subscription or directly from `@re-frame.db/app-db` in non-reactive contexts (`audio.cljs`). All flags default to `true` when the endpoint is unreachable.
-- **Image proxy** — all external artwork URLs are wrapped through `views/utils/img-proxy` before rendering, routing them through `/img-proxy` to satisfy Telegram's restrictive `img-src` CSP.
+| `POST` | `/search/subscribe` | Subscribe to a search result |
+| `GET` | `/recommendations` | Collaboratively filtered recommendations |
 
 ---
 
@@ -659,31 +435,27 @@ users ──< user_feeds >── feeds ──< episodes ──< user_episodes >�
 
 | Table | Purpose |
 |---|---|
-| `users` | One row per Telegram user; upserted on every `/start` |
-| `feeds` | Shared podcast feed registry; deduplicated by URL |
-| `user_feeds` | M:N join — which users subscribe to which feeds |
-| `episodes` | Podcast episodes; deduplicated by RSS `<guid>` per feed; `transcript` column caches Whisper output |
-| `user_episodes` | Per-user playback state and bookmark signal |
-| `dubbed_episodes` | One row per (episode, language) — status machine, R2 URL, translation text, expiry |
+| `users` | One row per Telegram user |
+| `feeds` | Shared podcast feed registry, deduplicated by URL |
+| `user_feeds` | M:N — which users subscribe to which feeds |
+| `episodes` | Episodes deduplicated by RSS `<guid>` per feed |
+| `user_episodes` | Per-user playback position and bookmark signal |
+| `dubbed_episodes` | One row per (episode, language) — status, R2 URL, speaker samples JSONB |
 
-Key columns:
-- `user_episodes.liked` — `NULL` = no signal, `TRUE` = bookmarked (used for recommendations and the bookmark button)
-- `episodes.transcript` — Whisper output, shared across all dub languages for the same episode
-- `dubbed_episodes.translation` — DeepL output for this specific language
-- `dubbed_episodes.expires_at` — set to `NOW() + 29 days` when status becomes `done`; the UI shows "Dub Episode (expired)" once the R2 file is gone
+`dubbed_episodes.step` tracks pipeline progress (`queued → separating → transcribing → translating → synthesizing → assembling → mixing → uploading → complete / failed`). A PostgreSQL trigger fires `pg_notify('dub_status', ...)` on every step update, fanning out to all SSE subscribers.
 
 ---
 
 ## How Recommendations Work
 
-Item-based collaborative filtering executed entirely in SQL:
+Item-based collaborative filtering in pure SQL:
 
-1. Find all episodes the current user has **bookmarked**
+1. Find all episodes the current user has bookmarked
 2. Find other users who bookmarked at least one of those episodes
-3. Collect episodes those users bookmarked that the current user has not seen
+3. Collect episodes those users bookmarked that the current user hasn't seen
 4. Rank by how many similar users bookmarked each candidate
 
-No ML library required — the query runs in a single PostgreSQL round-trip.
+No ML library required — single PostgreSQL round-trip.
 
 ---
 

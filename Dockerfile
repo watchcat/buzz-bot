@@ -47,18 +47,6 @@ RUN crystal build src/buzz_bot.cr \
     --no-debug \
     -o /app/buzz-bot
 
-FROM deps AS build-transcriber
-RUN crystal build --release --static --no-debug \
-    src/services/dub_transcriber.cr -o /app/dub-transcriber
-
-FROM deps AS build-translator
-RUN crystal build --release --static --no-debug \
-    src/services/dub_translator.cr -o /app/dub-translator
-
-FROM deps AS build-synthesizer
-RUN crystal build --release --static --no-debug \
-    src/services/dub_synthesizer.cr -o /app/dub-synthesizer
-
 # ── Runtime stage ─────────────────────────────────────────────────────────
 FROM alpine:3.19
 
@@ -70,11 +58,8 @@ RUN apk add --no-cache \
 
 WORKDIR /app
 
-COPY --from=build-main        /app/buzz-bot        ./buzz-bot
-COPY --from=build-transcriber /app/dub-transcriber ./dub-transcriber
-COPY --from=build-translator  /app/dub-translator  ./dub-translator
-COPY --from=build-synthesizer /app/dub-synthesizer ./dub-synthesizer
-COPY --from=build-main        /app/public          ./public
+COPY --from=build-main /app/buzz-bot ./buzz-bot
+COPY --from=build-main /app/public   ./public
 
 EXPOSE 3000
 

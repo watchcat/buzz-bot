@@ -38,12 +38,29 @@ module Config
     ENV["ADMIN_USER_IDS"]?.to_s.split(",").compact_map { |s| s.strip.to_i64? }
   end
 
-  def self.replicate_api_token : String
-    ENV["REPLICATE_API_TOKEN"]? || raise "REPLICATE_API_TOKEN not set"
+  def self.whisper_redis_url : String
+    ENV["WHISPER_REDIS_URL"]? || raise "WHISPER_REDIS_URL not set"
   end
 
-  def self.deepl_api_key : String
-    ENV["DEEPL_API_KEY"]? || raise "DEEPL_API_KEY not set"
+  def self.whisper_queue_key : String
+    ENV.fetch("WHISPER_QUEUE_KEY", "whisper:jobs")
+  end
+
+  # Full URL buzz-bot is reachable at for worker callbacks.
+  def self.whisper_callback_base : String
+    ENV.fetch("WHISPER_CALLBACK_BASE", base_url)
+  end
+
+  def self.dub_redis_url : String
+    ENV["DUB_REDIS_URL"]? || raise "DUB_REDIS_URL not set"
+  end
+
+  def self.dub_queue_key : String
+    ENV.fetch("DUB_QUEUE_KEY", "dub:jobs")
+  end
+
+  def self.dub_callback_base : String
+    ENV.fetch("DUB_CALLBACK_BASE", base_url)
   end
 
   def self.r2_account_id : String
