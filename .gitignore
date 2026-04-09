@@ -30,6 +30,7 @@ public/js/
 # Temp files
 *.tmp
 *.log
+.DS_Store
 
 # k8s — secrets and generated kubeconfig are never committed
 k8s/secret.yaml
