@@ -328,6 +328,17 @@ nix-shell -p k9s --run 'KUBECONFIG=k8s/kubeconfig k9s'  # interactive dashboard
 ./k8s/cluster-apply.sh delete               # tear down cluster
 ```
 
+### Monitoring
+
+Node health alerts are sent to your Telegram chat when thresholds are crossed:
+RAM >80%, disk >70%, or OOM kills in the last hour.
+
+```sh
+./k8s/install-monitoring.sh
+```
+
+Reads `BOT_TOKEN` and `ADMIN_USER_IDS` from the `buzz-bot-env` k8s secret, injects them into `k8s/node-health-alert.sh`, installs the script on the k3s node at `/usr/local/bin/node-health-alert.sh`, and registers a cron job (`/etc/cron.d/node-health`) that runs every 30 minutes.
+
 ---
 
 ## dub-pipeline (Mac Mini)
