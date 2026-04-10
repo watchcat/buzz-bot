@@ -1,5 +1,7 @@
 require "json"
 require "../../models/dubbed_episode"
+require "../../models/episode"
+require "../../models/feed"
 
 module Web::Routes::DubResult
   private struct Result
@@ -60,10 +62,22 @@ module Web::Routes::DubResult
   private def self.notify_user(dub_id : Int64, episode_id : Int64,
                                 language : String, requester_tg_id : Int64?)
     return unless requester_tg_id
-    app_url = "#{Config.base_url}/app?episode=#{episode_id}"
+    episode     = Episode.find(episode_id)
+    feed        = episode.try { |ep| Feed.find(ep.feed_id) }
+    ep_title    = episode.try(&.title) || "Episode"
+    feed_title  = feed.try(&.title)
+    app_url     = "#{Config.base_url}/app?episode=#{episode_id}"
+
+    text = if feed_title
+      "🎙 *#{feed_title}*\n#{ep_title}\n\nDubbed to #{language.upcase} and ready to play."
+    else
+      "🎙 *#{ep_title}*\n\nDubbed to #{language.upcase} and ready to play."
+    end
+
     BotClient.client.send_message(
       requester_tg_id,
-      "🎙 Your dubbed episode is ready in #{language.upcase}.",
+      text,
+      parse_mode: "Markdown",
       reply_markup: Tourmaline::InlineKeyboardMarkup.new([[
         Tourmaline::InlineKeyboardButton.new(
           text: "▶️ Open Episode",
