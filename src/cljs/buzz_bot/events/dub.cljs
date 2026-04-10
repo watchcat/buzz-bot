@@ -20,18 +20,24 @@
    {:code "ko" :name "Korean"}])
 
 ;; Load existing dub statuses from the player endpoint response.
-(rf/reg-event-db
+;; Also opens SSE for any in-flight dubs so progress updates arrive on fresh sessions.
+(rf/reg-event-fx
  ::init-statuses
- (fn [db [_ statuses-map]]
-   (assoc-in db [:dub :statuses]
-             (reduce-kv
-               (fn [m lang v]
-                 (assoc m (name lang) {:status      (keyword (:status v))
-                                       :step        (:step v)
-                                       :r2-url      (:r2_url v)
-                                       :translation (:translation v)}))
-               {}
-               statuses-map))))
+ (fn [{:keys [db]} [_ episode-id statuses-map]]
+   (let [statuses (reduce-kv
+                    (fn [m lang v]
+                      (assoc m (name lang) {:status      (keyword (:status v))
+                                            :step        (:step v)
+                                            :r2-url      (:r2_url v)
+                                            :translation (:translation v)}))
+                    {}
+                    statuses-map)
+         in-flight (first (keep (fn [[lang {:keys [status]}]]
+                                  (when (#{:pending :processing} status) lang))
+                                statuses))]
+     (cond-> {:db (assoc-in db [:dub :statuses] statuses)}
+       in-flight
+       (assoc ::fx/open-dub-sse {:episode-id episode-id :lang in-flight})))))
 
 ;; Main entry point: tap a language chip.
 (rf/reg-event-fx

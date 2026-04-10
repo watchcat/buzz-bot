@@ -233,7 +233,7 @@
                          (assoc-in [:audio :artwork] (:feed_image_url episode))))]
      (let [autoplay?    (get-in db [:view-params :autoplay?])
            dub-statuses (:dub_statuses resp)
-           init-dub     (when dub-statuses [[::dub-events/init-statuses dub-statuses]])]
+           init-dub     (when dub-statuses [[::dub-events/init-statuses new-id dub-statuses]])]
        (cond
          (= cur-id new-id)
          {:db         (assoc-in db' [:audio :pending?] false)
