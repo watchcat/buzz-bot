@@ -125,16 +125,16 @@ struct DubbedEpisode
     )
   end
 
-  # Returns a map of language → {status, r2_url?, translation?} for all dubs of an episode.
+  # Returns a map of language → {status, step, r2_url?, translation?} for all dubs of an episode.
   def self.statuses_for_episode(episode_id : Int64)
     rows = AppDB.pool.query_all(
-      "SELECT language, status, r2_url, translation, expires_at FROM dubbed_episodes WHERE episode_id = $1",
-      episode_id, as: {String, String, String?, String?, Time?}
+      "SELECT language, status, step, r2_url, translation, expires_at FROM dubbed_episodes WHERE episode_id = $1",
+      episode_id, as: {String, String, String, String?, String?, Time?}
     )
-    rows.each_with_object({} of String => NamedTuple(status: String, r2_url: String?, translation: String?)) do |row, h|
-      lang, status, r2_url, translation, expires_at = row
+    rows.each_with_object({} of String => NamedTuple(status: String, step: String, r2_url: String?, translation: String?)) do |row, h|
+      lang, status, step, r2_url, translation, expires_at = row
       eff = status == "done" && (expires_at.try { |t| t < Time.utc } || false) ? "expired" : status
-      h[lang] = {status: eff, r2_url: r2_url, translation: translation}
+      h[lang] = {status: eff, step: step, r2_url: r2_url, translation: translation}
     end
   end
 end

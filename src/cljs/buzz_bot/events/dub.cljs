@@ -27,6 +27,7 @@
              (reduce-kv
                (fn [m lang v]
                  (assoc m (name lang) {:status      (keyword (:status v))
+                                       :step        (:step v)
                                        :r2-url      (:r2_url v)
                                        :translation (:translation v)}))
                {}
