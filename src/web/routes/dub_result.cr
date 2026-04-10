@@ -77,7 +77,7 @@ module Web::Routes::DubResult
     BotClient.client.send_message(
       requester_tg_id,
       text,
-      parse_mode: "Markdown",
+      parse_mode: Tourmaline::ParseMode::Markdown,
       reply_markup: Tourmaline::InlineKeyboardMarkup.new([[
         Tourmaline::InlineKeyboardButton.new(
           text: "▶️ Open Episode",
