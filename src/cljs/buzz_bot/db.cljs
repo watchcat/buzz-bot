@@ -18,6 +18,9 @@
    :saved-list  {:view nil :count 0}
 :dub {:statuses   {}    ;; lang-code → {:status :done/:pending/:processing/:failed/:expired :r2-url nil :translation nil :error nil}
          :active-lang nil} ;; currently playing dubbed language (nil = original)
+   :subtitles {:ep-id nil
+               :cues  []
+               :lang  :off}
    :offline {:cached-ids      []   ;; episode IDs, most-recent-first, max 5
              :in-progress     {}   ;; ep-id → {:bytes-downloaded N :bytes-total N}
              :network-online? true}

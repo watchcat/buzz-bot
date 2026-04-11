@@ -34,10 +34,15 @@
                     statuses-map)
          in-flight (first (keep (fn [[lang {:keys [status]}]]
                                   (when (#{:pending :processing} status) lang))
+                                statuses))
+         done-lang (first (keep (fn [[lang {:keys [status]}]]
+                                  (when (= :done status) lang))
                                 statuses))]
      (cond-> {:db (assoc-in db [:dub :statuses] statuses)}
        in-flight
-       (assoc ::fx/open-dub-sse {:episode-id episode-id :lang in-flight})))))
+       (assoc ::fx/open-dub-sse {:episode-id episode-id :lang in-flight})
+       done-lang
+       (assoc :dispatch [:buzz-bot.events/fetch-subtitles episode-id done-lang])))))
 
 ;; Main entry point: tap a language chip.
 (rf/reg-event-fx
@@ -126,8 +131,8 @@
                               (assoc-in [:dub :statuses lang :translation] (:translation data))))
                         (cond-> (= status :failed)
                           (assoc-in [:dub :statuses lang :error] (:error data))))}
-         ;; SSE stream closes itself when done/failed; nothing to do on our end.
-         )))))
+         (= status :done)
+         (assoc :dispatch [:buzz-bot.events/fetch-subtitles episode-id lang]))))))
 
 (rf/reg-event-fx
  ::send-telegram

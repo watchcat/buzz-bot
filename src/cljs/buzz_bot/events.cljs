@@ -54,7 +54,9 @@
                           (assoc-in [:episodes :restore-to-id] restore-id)))}
          fetch-event (assoc :dispatch-n (cond-> [fetch-event]
                                            (= view :player)
-                                           (conj [::dub-events/reset]))))))))
+                                           (conj [::dub-events/reset])))
+         (= cur-view :player)
+         (update :dispatch-n (fnil conj []) [::clear-subtitles]))))))
 
 ;; ── Inbox ────────────────────────────────────────────────────────────────────
 
@@ -301,6 +303,49 @@
    {::buzz-bot.fx/http-fetch {:method :get
                               :url    (str "/bookmarks/search?q=" (js/encodeURIComponent query))
                               :on-ok  [::bookmarks-loaded] :on-err [::fetch-error]}}))
+
+;; ── Subtitles ─────────────────────────────────────────────────────────────
+
+(rf/reg-event-fx
+ ::fetch-subtitles
+ (fn [_ [_ ep-id language]]
+   (let [url (if language
+               (str "/episodes/" ep-id "/subtitles?language=" language)
+               (str "/episodes/" ep-id "/subtitles"))]
+     {::buzz-bot.fx/http-fetch {:method :get :url url
+                                :on-ok  [::subtitles-loaded ep-id]
+                                :on-err [::noop]}})))
+
+(rf/reg-event-db
+ ::subtitles-loaded
+ (fn [db [_ ep-id resp]]
+   (let [cues (mapv (fn [c]
+                      {:idx         (:idx c)
+                       :start       (:start c)
+                       :end         (:end c)
+                       :text        (:text c)
+                       :translation (:translation c)})
+                    (:cues resp []))]
+     (-> db
+         (assoc-in [:subtitles :ep-id] ep-id)
+         (assoc-in [:subtitles :cues]  cues)))))
+
+(rf/reg-event-db
+ ::cycle-subtitle-lang
+ (fn [db _]
+   (let [lang             (get-in db [:subtitles :lang])
+         has-translation? (boolean (some :translation (get-in db [:subtitles :cues])))]
+     (assoc-in db [:subtitles :lang]
+               (case lang
+                 :off        :original
+                 :original   (if has-translation? :translated :off)
+                 :translated :off
+                 :off)))))
+
+(rf/reg-event-db
+ ::clear-subtitles
+ (fn [db _]
+   (assoc db :subtitles {:ep-id nil :cues [] :lang :off})))
 
 ;; ── Audio state ──────────────────────────────────────────────────────────────
 

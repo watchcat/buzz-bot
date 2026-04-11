@@ -90,3 +90,24 @@
 
 (rf/reg-sub ::cached-episode-metas
   (fn [db _] (get-in db [:offline :episode-metas] {})))
+
+;; Subtitles
+(rf/reg-sub ::subtitles          (fn [db _] (:subtitles db)))
+(rf/reg-sub ::subtitle-cues      :<- [::subtitles] (fn [s _] (:cues s)))
+(rf/reg-sub ::subtitle-lang      :<- [::subtitles] (fn [s _] (:lang s)))
+(rf/reg-sub ::subtitles-available?
+  :<- [::subtitle-cues]
+  (fn [cues _] (pos? (count cues))))
+(rf/reg-sub ::translation-available?
+  :<- [::subtitle-cues]
+  (fn [cues _] (boolean (some :translation cues))))
+(rf/reg-sub ::current-subtitle-cue
+  :<- [::subtitle-cues]
+  :<- [::subtitle-lang]
+  :<- [::audio-current-time]
+  (fn [[cues lang t] _]
+    (when (and (not= lang :off) (pos? (count cues)))
+      (some (fn [c]
+              (when (and (<= (:start c) t) (< t (:end c)))
+                c))
+            cues))))
