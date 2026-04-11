@@ -20,6 +20,13 @@ module Web::Routes::DubProgress
       DubbedEpisode.set_step(payload.dub_id, payload.step)
       Log.info { "DubProgress[#{payload.dub_id}]: step=#{payload.step}#{payload.pct ? " (#{payload.pct}%)" : ""}" }
 
+      # Fan out to any open SSE connections directly — don't rely on PG NOTIFY
+      # which is unreliable on Neon serverless across connections.
+      if (dub = DubbedEpisode.find_by_id(payload.dub_id))
+        key = "#{dub.episode_id}:#{dub.language}"
+        DubHub.instance.publish(key, "#{dub.episode_id}:#{dub.language}:#{payload.step}:processing")
+      end
+
       env.response.content_type = "application/json"
       {ok: true}.to_json
     rescue ex : JSON::ParseException

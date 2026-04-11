@@ -30,6 +30,10 @@ module Web::Routes::DubResult
       unless result.success
         Log.error { "DubResult[#{result.dub_id}]: job #{result.job_id} failed at step=#{result.step} — #{result.error}" }
         DubbedEpisode.set_failed(result.dub_id, result.error || "Pipeline failed")
+        if (dub = DubbedEpisode.find_by_id(result.dub_id))
+          key = "#{dub.episode_id}:#{dub.language}"
+          DubHub.instance.publish(key, "#{dub.episode_id}:#{dub.language}:#{result.step || ""}:failed")
+        end
         env.response.content_type = "application/json"
         next({ok: true}.to_json)
       end
@@ -38,6 +42,10 @@ module Web::Routes::DubResult
       DubbedEpisode.set_complete(result.dub_id, result.r2_url, result.speaker_samples)
 
       if (dub = DubbedEpisode.find_by_id(result.dub_id))
+        # Fan out done status to any open SSE connections directly.
+        key = "#{dub.episode_id}:#{dub.language}"
+        DubHub.instance.publish(key, "#{dub.episode_id}:#{dub.language}::done")
+
         notify_user(
           dub_id:          result.dub_id,
           episode_id:      result.episode_id || dub.episode_id,
