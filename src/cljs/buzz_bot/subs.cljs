@@ -95,6 +95,7 @@
 (rf/reg-sub ::subtitles          (fn [db _] (:subtitles db)))
 (rf/reg-sub ::subtitle-cues      :<- [::subtitles] (fn [s _] (:cues s)))
 (rf/reg-sub ::subtitle-lang      :<- [::subtitles] (fn [s _] (:lang s)))
+(rf/reg-sub ::subtitle-ep-id     :<- [::subtitles] (fn [s _] (:ep-id s)))
 (rf/reg-sub ::subtitles-available?
   :<- [::subtitle-cues]
   (fn [cues _] (pos? (count cues))))
@@ -102,12 +103,18 @@
   :<- [::subtitle-cues]
   (fn [cues _] (boolean (some :translation cues))))
 (rf/reg-sub ::current-subtitle-cue
-  :<- [::subtitle-cues]
-  :<- [::subtitle-lang]
+  :<- [::subtitles]
   :<- [::audio-current-time]
-  (fn [[cues lang t] _]
-    (when (and (not= lang :off) (pos? (count cues)))
-      (some (fn [c]
-              (when (and (<= (:start c) t) (< t (:end c)))
-                c))
-            cues))))
+  :<- [::audio-episode-id]
+  (fn [[subs t audio-ep-id] _]
+    (let [lang   (:lang subs)
+          cues   (:cues subs)
+          sub-ep (:ep-id subs)]
+      (when (and (not= lang :off)
+                 (number? t)
+                 (= (str sub-ep) (str audio-ep-id))
+                 (pos? (count cues)))
+        (some (fn [c]
+                (when (and (<= (:start c) t) (< t (:end c)))
+                  c))
+              cues)))))
