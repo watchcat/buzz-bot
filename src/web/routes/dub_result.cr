@@ -49,7 +49,7 @@ module Web::Routes::DubResult
           DubSegment.bulk_upsert(ep_id, lang, segs)
           Log.info { "DubResult[#{result.dub_id}]: persisted #{segs.size} segments (lang=#{lang})" }
         rescue ex
-          Log.warn { "DubResult[#{result.dub_id}]: segment persist failed — #{ex.message}" }
+          Log.warn { "DubResult[#{result.dub_id}]: segment persist failed (ep=#{ep_id} lang=#{lang}) — #{ex.message}" }
         end
       end
 
