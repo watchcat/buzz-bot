@@ -1,5 +1,6 @@
 require "json"
 require "../../models/dubbed_episode"
+require "../../models/dub_segment"
 require "../../models/episode"
 require "../../models/feed"
 
@@ -16,6 +17,7 @@ module Web::Routes::DubResult
     getter segment_count   : Int32?
     getter speaker_count   : Int32?
     getter speaker_samples : String?
+    getter segments        : Array(JSON::Any)?
     getter step            : String?
     getter error           : String?
   end
@@ -40,6 +42,16 @@ module Web::Routes::DubResult
 
       Log.info { "DubResult[#{result.dub_id}]: job #{result.job_id} done — #{result.r2_url}" }
       DubbedEpisode.set_complete(result.dub_id, result.r2_url, result.speaker_samples)
+
+      if (segs = result.segments) && !segs.empty? &&
+         (ep_id = result.episode_id) && (lang = result.language)
+        begin
+          DubSegment.bulk_upsert(ep_id, lang, segs)
+          Log.info { "DubResult[#{result.dub_id}]: persisted #{segs.size} segments (lang=#{lang})" }
+        rescue ex
+          Log.warn { "DubResult[#{result.dub_id}]: segment persist failed — #{ex.message}" }
+        end
+      end
 
       if (dub = DubbedEpisode.find_by_id(result.dub_id))
         # Fan out done status to any open SSE connections directly.
