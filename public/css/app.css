@@ -1681,3 +1681,45 @@ body:has(.now-playing-bar) main {
 
 /* ── Player download progress bar ───────────────────────────────────────── */
 
+/* ── Subtitles ──────────────────────────────────────────────────────────── */
+
+.subtitle-cue {
+  margin: 10px 0 4px;
+  padding: 6px 12px;
+  background: color-mix(in srgb, var(--text-color) 8%, transparent);
+  border-radius: 8px;
+  font-size: 14px;
+  line-height: 1.5;
+  text-align: center;
+  color: var(--text-color);
+  min-height: 42px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.btn-cc {
+  padding: 5px 10px;
+  background: none;
+  border: 1.5px solid rgba(128,128,128,0.35);
+  border-radius: 20px;
+  color: var(--hint-color);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: color 0.2s, border-color 0.2s;
+}
+
+.btn-cc--active {
+  border-color: var(--button-color);
+  color: var(--button-color);
+}
+
+.btn-cc:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+.btn-cc:active:not(:disabled) { opacity: 0.7; }

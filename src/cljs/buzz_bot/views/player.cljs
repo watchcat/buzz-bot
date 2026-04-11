@@ -73,6 +73,9 @@
             audio-duration @(rf/subscribe [::subs/audio-duration])
             rate           @(rf/subscribe [::subs/audio-rate])
             send-status    @(rf/subscribe [::subs/player-send-status])
+            subtitle-lang   @(rf/subscribe [::subs/subtitle-lang])
+            subtitle-avail? @(rf/subscribe [::subs/subtitles-available?])
+            subtitle-cue    @(rf/subscribe [::subs/current-subtitle-cue])
             params         @(rf/subscribe [:buzz-bot.subs/view-params])
             ep-id          (str (get-in data [:episode :id] ""))
             cache-progress @(rf/subscribe [::subs/cache-progress ep-id])
@@ -170,6 +173,13 @@
                                             (share-url (:id episode) @share-msg)])}
                   "📤 Share"]])
 
+              ;; Subtitle cue — shown when CC is active and a cue is in range
+              (when (and (not= subtitle-lang :off) subtitle-cue)
+                [:div.subtitle-cue
+                 (if (= subtitle-lang :original)
+                   (:text subtitle-cue)
+                   (or (:translation subtitle-cue) (:text subtitle-cue)))])
+
               [:div.player-controls
                [:div.player-progress-row
                 [:span#player-current-time.player-time (fmt-time cur-time)]
@@ -192,6 +202,16 @@
                  {:class    (when (not= rate 1) "btn-speed--active")
                   :on-click #(rf/dispatch [::events/cycle-speed])}
                  (if (= rate 1) "1×" (str rate "×"))]
+                [:button.btn-cc
+                 {:class    (when (not= subtitle-lang :off) "btn-cc--active")
+                  :disabled (not subtitle-avail?)
+                  :title    (case subtitle-lang
+                              :off        "Turn on subtitles"
+                              :original   "Showing original text"
+                              :translated "Showing translation"
+                              "Subtitles")
+                  :on-click #(rf/dispatch [::events/cycle-subtitle-lang])}
+                 "CC"]
                 [:button.btn-bookmark
                  {:class    (when liked? "active")
                   :title    (if liked? "Remove bookmark" "Bookmark")
