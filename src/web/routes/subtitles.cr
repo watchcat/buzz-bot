@@ -7,13 +7,15 @@ module Web::Routes::Subtitles
       user = Auth.current_user(env)
       halt env, status_code: 401, response: "Unauthorized" unless user
 
-      episode_id = env.params.url["id"].to_i64
+      episode_id_raw = env.params.url["id"].to_i64?
+      halt env, status_code: 400, response: %({"error":"invalid_id"}) unless episode_id_raw
+      episode_id = episode_id_raw
       language   = env.params.query["language"]?
 
       cues = DubSegment.for_episode(episode_id, language)
 
       env.response.content_type = "application/json"
-      JSON.build do |j|
+      next JSON.build do |j|
         j.object do
           j.field "cues" do
             j.array do
