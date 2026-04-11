@@ -1,0 +1,39 @@
+require "json"
+require "../../models/dub_segment"
+
+module Web::Routes::Subtitles
+  def self.register
+    get "/episodes/:id/subtitles" do |env|
+      user = Auth.current_user(env)
+      halt env, status_code: 401, response: "Unauthorized" unless user
+
+      episode_id = env.params.url["id"].to_i64
+      language   = env.params.query["language"]?
+
+      cues = DubSegment.for_episode(episode_id, language)
+
+      env.response.content_type = "application/json"
+      JSON.build do |j|
+        j.object do
+          j.field "cues" do
+            j.array do
+              cues.each do |c|
+                j.object do
+                  j.field "idx",   c.idx
+                  j.field "start", c.start_sec
+                  j.field "end",   c.end_sec
+                  j.field "text",  c.text
+                  j.field "translation", c.translated_text if c.translated_text
+                end
+              end
+            end
+          end
+        end
+      end
+    rescue ex
+      Log.error { "Subtitles: #{ex.message}" }
+      env.response.status_code = 500
+      %({"error":"Internal error"})
+    end
+  end
+end

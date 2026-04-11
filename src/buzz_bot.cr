@@ -32,6 +32,7 @@ require "./web/routes/inbox"
 require "./web/routes/search"
 require "./web/routes/discover"
 require "./web/routes/dub"
+require "./web/routes/subtitles"
 require "./web/routes/flags"
 require "./feature_flags"
 

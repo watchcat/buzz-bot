@@ -39,6 +39,7 @@ module WebServer
     Web::Routes::Search.register
     Web::Routes::Discover.register
     Web::Routes::Dub.register
+    Web::Routes::Subtitles.register
     Web::Routes::Flags.register
     Web::Routes::DubResult.register
     Web::Routes::DubProgress.register
