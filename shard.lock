@@ -40,10 +40,6 @@ shards:
     git: https://github.com/luislavena/radix.git
     version: 0.4.1
 
-  redis:
-    git: https://github.com/jgaskins/redis.git
-    version: 0.7.1
-
   tourmaline:
     git: https://github.com/protoncr/tourmaline.git
     version: 0.28.0
