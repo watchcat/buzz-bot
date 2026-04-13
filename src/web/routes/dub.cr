@@ -1,5 +1,5 @@
 require "json"
-require "redis"
+require "http/client"
 
 module Web::Routes::Dub
   def self.register
@@ -68,9 +68,17 @@ module Web::Routes::Dub
           bg_volume:    bg_volume,
           callback_url: "#{callback_base}/internal/dub_result",
         }.to_json
-        r = Redis::Client.new(URI.parse(Config.dub_redis_url))
-        r.run({"RPUSH", Config.dub_queue_key, payload})
-        Log.info { "Dub[#{dub_id}]: job #{job_id} enqueued → dub pipeline (episode #{episode_id} → #{language})" }
+        runpod_payload = {input: JSON.parse(payload)}.to_json
+        response = HTTP::Client.post(
+          "https://api.runpod.io/v2/#{Config.runpod_endpoint_id}/run",
+          headers: HTTP::Headers{
+            "Authorization" => "Bearer #{Config.runpod_api_key}",
+            "Content-Type"  => "application/json"
+          },
+          body: runpod_payload
+        )
+        raise "RunPod API error: #{response.status_code} #{response.body}" unless response.success?
+        Log.info { "Dub[#{dub_id}]: job #{job_id} submitted to RunPod (episode #{episode_id} → #{language})" }
       rescue ex
         Log.error { "Dub[#{dub_id}]: failed to enqueue — #{ex.message}" }
         DubbedEpisode.set_failed(dub_id, "Failed to enqueue job: #{ex.message}")

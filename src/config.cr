@@ -51,12 +51,12 @@ module Config
     ENV.fetch("WHISPER_CALLBACK_BASE", base_url)
   end
 
-  def self.dub_redis_url : String
-    ENV["DUB_REDIS_URL"]? || raise "DUB_REDIS_URL not set"
+  def self.runpod_api_key : String
+    ENV["RUNPOD_API_KEY"]? || raise "RUNPOD_API_KEY not set"
   end
 
-  def self.dub_queue_key : String
-    ENV.fetch("DUB_QUEUE_KEY", "dub:jobs")
+  def self.runpod_endpoint_id : String
+    ENV["RUNPOD_ENDPOINT_ID"]? || raise "RUNPOD_ENDPOINT_ID not set"
   end
 
   def self.dub_callback_base : String
