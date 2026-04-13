@@ -70,7 +70,7 @@ module Web::Routes::Dub
           callback_url: "#{callback_base}/internal/dub_result",
         }.to_json
         runpod_payload = {input: JSON.parse(payload)}.to_json
-        runpod_client = HTTP::Client.new(URI.parse("https://api.runpod.io"))
+        runpod_client = HTTP::Client.new(URI.parse("https://api.runpod.ai"))
         runpod_client.connect_timeout = 5.seconds
         runpod_client.read_timeout = 10.seconds
         response = runpod_client.post(
