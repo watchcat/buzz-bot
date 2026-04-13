@@ -1,5 +1,6 @@
 require "json"
 require "http/client"
+require "uri"
 
 module Web::Routes::Dub
   def self.register
@@ -69,8 +70,11 @@ module Web::Routes::Dub
           callback_url: "#{callback_base}/internal/dub_result",
         }.to_json
         runpod_payload = {input: JSON.parse(payload)}.to_json
-        response = HTTP::Client.post(
-          "https://api.runpod.io/v2/#{Config.runpod_endpoint_id}/run",
+        runpod_client = HTTP::Client.new(URI.parse("https://api.runpod.io"))
+        runpod_client.connect_timeout = 5.seconds
+        runpod_client.read_timeout = 10.seconds
+        response = runpod_client.post(
+          "/v2/#{Config.runpod_endpoint_id}/run",
           headers: HTTP::Headers{
             "Authorization" => "Bearer #{Config.runpod_api_key}",
             "Content-Type"  => "application/json"
