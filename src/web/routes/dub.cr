@@ -34,7 +34,7 @@ module Web::Routes::Dub
         next %({"error":"already_original_language"})
       end
 
-      if (dur = episode.duration_sec) && dur > 3600
+      if (dur = episode.duration_sec) && dur > 14400
         env.response.content_type = "application/json"
         env.response.status_code = 400
         next %({"error":"episode_too_long"})
