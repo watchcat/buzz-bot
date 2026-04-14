@@ -1,5 +1,6 @@
 require "json"
 require "../../models/dub_segment"
+require "../../models/episode"
 
 module Web::Routes::Subtitles
   def self.register
@@ -14,9 +15,12 @@ module Web::Routes::Subtitles
 
       cues = DubSegment.for_episode(episode_id, language)
 
+      source_lang = Episode.original_language(episode_id)
+
       env.response.content_type = "application/json"
       next JSON.build do |j|
         j.object do
+          j.field "source_lang", source_lang
           j.field "cues" do
             j.array do
               cues.each do |c|

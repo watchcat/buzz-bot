@@ -1747,6 +1747,32 @@ body:has(.now-playing-bar) main {
 
 .sub-lang-chip:active { opacity: 0.7; }
 
+.subtitle-panel__cues--transcript {
+  min-height: unset;
+  max-height: 220px;
+  overflow-y: auto;
+  padding-bottom: 6px;
+  scroll-behavior: smooth;
+}
+
+.subtitle-lang-chips {
+  align-items: center;
+}
+
+.sub-transcript-btn {
+  margin-left: auto;
+  padding: 4px 8px;
+  border: none;
+  background: transparent;
+  color: var(--hint-color);
+  font-size: 11px;
+  cursor: pointer;
+  white-space: nowrap;
+  opacity: 0.8;
+}
+
+.sub-transcript-btn:active { opacity: 0.5; }
+
 .btn-cc {
   padding: 5px 10px;
   background: none;

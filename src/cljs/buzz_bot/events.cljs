@@ -313,12 +313,12 @@
                (str "/episodes/" ep-id "/subtitles?language=" language)
                (str "/episodes/" ep-id "/subtitles"))]
      {::buzz-bot.fx/http-fetch {:method :get :url url
-                                :on-ok  [::subtitles-loaded ep-id]
+                                :on-ok  [::subtitles-loaded ep-id language]
                                 :on-err [::noop]}})))
 
 (rf/reg-event-db
  ::subtitles-loaded
- (fn [db [_ ep-id resp]]
+ (fn [db [_ ep-id language resp]]
    (let [cues (mapv (fn [c]
                       {:idx         (:idx c)
                        :start       (:start c)
@@ -327,8 +327,10 @@
                        :translation (:translation c)})
                     (:cues resp []))]
      (-> db
-         (assoc-in [:subtitles :ep-id] ep-id)
-         (assoc-in [:subtitles :cues]  cues)))))
+         (assoc-in [:subtitles :ep-id]        ep-id)
+         (assoc-in [:subtitles :cues]          cues)
+         (assoc-in [:subtitles :source-lang]   (:source_lang resp))
+         (assoc-in [:subtitles :loaded-lang]   language)))))
 
 (rf/reg-event-db
  ::cycle-subtitle-lang
@@ -336,15 +338,26 @@
    (assoc-in db [:subtitles :lang]
              (if (= :off (get-in db [:subtitles :lang])) :original :off))))
 
-(rf/reg-event-db
+(rf/reg-event-fx
  ::set-subtitle-lang
- (fn [db [_ lang]]
-   (assoc-in db [:subtitles :lang] lang)))
+ (fn [{:keys [db]} [_ episode-id lang]]
+   (if (= lang :original)
+     {:db (assoc-in db [:subtitles :lang] :original)}
+     (let [loaded (get-in db [:subtitles :loaded-lang])]
+       (cond-> {:db (assoc-in db [:subtitles :lang] lang)}
+         (not= loaded lang)
+         (assoc :dispatch [::fetch-subtitles episode-id lang]))))))
+
+(rf/reg-event-db
+ ::toggle-transcript
+ (fn [db _]
+   (update-in db [:subtitles :transcript?] not)))
 
 (rf/reg-event-db
  ::clear-subtitles
  (fn [db _]
-   (assoc db :subtitles {:ep-id nil :cues [] :lang :off})))
+   (assoc db :subtitles {:ep-id nil :cues [] :lang :off
+                         :loaded-lang nil :source-lang nil :transcript? false})))
 
 ;; ── Audio state ──────────────────────────────────────────────────────────────
 

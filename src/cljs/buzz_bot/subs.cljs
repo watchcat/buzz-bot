@@ -96,12 +96,21 @@
 (rf/reg-sub ::subtitle-cues      :<- [::subtitles] (fn [s _] (:cues s)))
 (rf/reg-sub ::subtitle-lang      :<- [::subtitles] (fn [s _] (:lang s)))
 (rf/reg-sub ::subtitle-ep-id     :<- [::subtitles] (fn [s _] (:ep-id s)))
+(rf/reg-sub ::subtitle-source-lang :<- [::subtitles] (fn [s _] (:source-lang s)))
+(rf/reg-sub ::subtitle-transcript? :<- [::subtitles] (fn [s _] (:transcript? s)))
 (rf/reg-sub ::subtitles-available?
   :<- [::subtitle-cues]
   (fn [cues _] (pos? (count cues))))
 (rf/reg-sub ::translation-available?
   :<- [::subtitle-cues]
   (fn [cues _] (boolean (some :translation cues))))
+
+;; Done dubbed languages for the current episode (for subtitle lang chips)
+(rf/reg-sub ::dub-done-langs
+  (fn [db _]
+    (keep (fn [[code {:keys [status]}]]
+            (when (= :done status) code))
+          (get-in db [:dub :statuses]))))
 (rf/reg-sub ::current-subtitle-cue
   :<- [::subtitles]
   :<- [::audio-current-time]
@@ -128,6 +137,20 @@
           (and (<= start t) (< t end)) i
           (< end t)                    (recur (inc i) i)
           :else                        (or last-past 0))))))
+
+(rf/reg-sub
+ ::subtitle-current-idx
+ :<- [::subtitles]
+ :<- [::audio-current-time]
+ :<- [::audio-episode-id]
+ (fn [[subs t audio-ep-id] _]
+   (let [cues   (:cues subs)
+         sub-ep (:ep-id subs)]
+     (when (and (not= :off (:lang subs))
+                (seq cues)
+                (number? t)
+                (= (str sub-ep) (str audio-ep-id)))
+       (find-current-idx cues t)))))
 
 (rf/reg-sub
  ::subtitle-window

@@ -59,31 +59,52 @@
     (str "https://t.me/share/url?url=" (js/encodeURIComponent deep-link)
          "&text=" (js/encodeURIComponent (.trim message)))))
 
-(defn- subtitle-panel []
-  (let [window @(rf/subscribe [::subs/subtitle-window])
-        lang   @(rf/subscribe [::subs/subtitle-lang])
-        trans? @(rf/subscribe [::subs/translation-available?])]
+(defn- cue-text [cue lang]
+  (if (= lang :original)
+    (:text cue)
+    (or (:translation cue) (:text cue))))
+
+(defn- subtitle-panel [episode-id]
+  (let [window      @(rf/subscribe [::subs/subtitle-window])
+        all-cues    @(rf/subscribe [::subs/subtitle-cues])
+        lang        @(rf/subscribe [::subs/subtitle-lang])
+        source-lang @(rf/subscribe [::subs/subtitle-source-lang])
+        done-langs  @(rf/subscribe [::subs/dub-done-langs])
+        transcript? @(rf/subscribe [::subs/subtitle-transcript?])
+        current-idx @(rf/subscribe [::subs/subtitle-current-idx])]
     [:div.subtitle-panel
      [:div.subtitle-panel__cues
-      (if (seq window)
-        (for [{:keys [cue role]} window]
-          ^{:key (:idx cue)}
-          [:div.subtitle-cue-line
-           {:class (name role)}
-           (if (= lang :translated)
-             (or (:translation cue) (:text cue))
-             (:text cue))])
-        [:div.subtitle-cue-line.no-cue "…"])]
+      {:class (when transcript? "subtitle-panel__cues--transcript")}
+      (if transcript?
+        (map-indexed
+         (fn [i cue]
+           ^{:key (:idx cue)}
+           [:div.subtitle-cue-line
+            {:class (when (= i current-idx) "current")}
+            (cue-text cue lang)])
+         all-cues)
+        (if (seq window)
+          (for [{:keys [cue role]} window]
+            ^{:key (:idx cue)}
+            [:div.subtitle-cue-line
+             {:class (name role)}
+             (cue-text cue lang)])
+          [:div.subtitle-cue-line.no-cue "…"]))]
      [:div.subtitle-lang-chips
-      [:button.sub-lang-chip
-       {:class    (when (= lang :original) "sub-lang-chip--active")
-        :on-click #(rf/dispatch [::events/set-subtitle-lang :original])}
-       "Original"]
-      (when trans?
+      (when source-lang
         [:button.sub-lang-chip
-         {:class    (when (= lang :translated) "sub-lang-chip--active")
-          :on-click #(rf/dispatch [::events/set-subtitle-lang :translated])}
-         "Translation"])]]))
+         {:class    (when (= lang :original) "sub-lang-chip--active")
+          :on-click #(rf/dispatch [::events/set-subtitle-lang episode-id :original])}
+         (str/upper-case source-lang)])
+      (for [code done-langs]
+        ^{:key code}
+        [:button.sub-lang-chip
+         {:class    (when (= lang code) "sub-lang-chip--active")
+          :on-click #(rf/dispatch [::events/set-subtitle-lang episode-id code])}
+         (str/upper-case code)])
+      [:button.sub-transcript-btn
+       {:on-click #(rf/dispatch [::events/toggle-transcript])}
+       (if transcript? "↑ Karaoke" "Transcript ↓")]]]))
 
 (defn view []
   (let [share-open?    (r/atom false)
@@ -173,7 +194,7 @@
 
               ;; Subtitle panel replaces cover + description when CC is active
               (if (not= subtitle-lang :off)
-                [subtitle-panel]
+                [subtitle-panel ep-id]
                 [:<>
                  ;; Cover image floats left at 30%; description fills alongside + 2 lines below
                  (when-let [img (get-in data [:episode :episode_image_url])]
