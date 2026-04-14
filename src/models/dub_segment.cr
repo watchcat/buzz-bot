@@ -43,31 +43,46 @@ module DubSegment
       next if translated.empty?
       idx    = seg["idx"]?.try(&.as_i?) || next
       seg_id = id_map[idx]? || next
-      synth_duration = seg["synth_duration"]?.try(&.as_f?)
-      synth_r2_key   = seg["synth_r2_key"]?.try(&.as_s?)
+      synth_duration  = seg["synth_duration"]?.try(&.as_f?)
+      synth_r2_key    = seg["synth_r2_key"]?.try(&.as_s?)
+      synth_start_sec = seg["synth_start_sec"]?.try(&.as_f?)
 
       AppDB.pool.exec(
-        "INSERT INTO dub_segment_translations (segment_id, language, translated_text, synth_r2_key, synth_duration)
-         VALUES ($1, $2, $3, $4, $5)
+        "INSERT INTO dub_segment_translations (segment_id, language, translated_text, synth_r2_key, synth_duration, synth_start_sec)
+         VALUES ($1, $2, $3, $4, $5, $6)
          ON CONFLICT (segment_id, language) DO NOTHING",
-        seg_id, language, translated, synth_r2_key, synth_duration
+        seg_id, language, translated, synth_r2_key, synth_duration, synth_start_sec
       )
     end
   end
 
   # Fetch cues for an episode, optionally with translations for a language.
-  # When language is nil or empty, translated_text will always be nil.
+  # When a language is requested, uses synth_start_sec/synth_duration for timing
+  # (the dubbed audio has shifted timestamps due to TTS length differences).
+  # Falls back to original start_sec/end_sec when synth timing is unavailable.
   def self.for_episode(episode_id : Int64, language : String?) : Array(DubSegmentCue)
     lang = language.presence || ""
     rows = AppDB.pool.query_all(
-      "SELECT ds.idx, ds.start_sec, ds.end_sec, ds.text, dst.translated_text
+      "SELECT ds.idx, ds.start_sec, ds.end_sec, ds.text, dst.translated_text,
+              dst.synth_start_sec, dst.synth_duration
        FROM dub_segments ds
        LEFT JOIN dub_segment_translations dst
          ON dst.segment_id = ds.id AND dst.language = $2
        WHERE ds.episode_id = $1
        ORDER BY ds.idx",
-      episode_id, lang, as: {Int32, Float64, Float64, String, String?}
+      episode_id, lang, as: {Int32, Float64, Float64, String, String?, Float64?, Float64?}
     )
-    rows.map { |row| DubSegmentCue.new(idx: row[0], start_sec: row[1], end_sec: row[2], text: row[3], translated_text: row[4]) }
+    rows.map do |row|
+      idx, orig_start, orig_end, text, translation, synth_start, synth_dur = row
+      # Use actual dubbed-audio timestamps when available
+      start_sec, end_sec =
+        if synth_start && synth_dur
+          {synth_start, synth_start + synth_dur}
+        else
+          {orig_start, orig_end}
+        end
+      DubSegmentCue.new(idx: idx, start_sec: start_sec, end_sec: end_sec,
+                        text: text, translated_text: translation)
+    end
   end
 end
