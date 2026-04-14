@@ -171,25 +171,25 @@
               ;; Dub section: chips + add-chips + active controls — premium users only
               (when is_premium [dub-view/dub-section ep-id])
 
-              ;; Subtitle panel: karaoke-style scrolling cues, shown when CC is active
-              (when (not= subtitle-lang :off)
-                [subtitle-panel])
-
-              ;; Cover image floats left at 30%; description fills alongside + 2 lines below
-              (when-let [img (get-in data [:episode :episode_image_url])]
-                [:img.player-cover {:src (img-proxy img) :alt ""}])
-
-              (when-let [desc (and episode (not (str/blank? (:description episode)))
-                                   (:description episode))]
+              ;; Subtitle panel replaces cover + description when CC is active
+              (if (not= subtitle-lang :off)
+                [subtitle-panel]
                 [:<>
-                 [:div.player-description
-                  {:class                   (when-not @desc-expanded? "player-description--collapsed")
-                   :dangerouslySetInnerHTML {:__html desc}}]
-                 [:button.player-desc-toggle
-                  {:on-click #(swap! desc-expanded? not)}
-                  (if @desc-expanded? "Show less" "Read more")]])
+                 ;; Cover image floats left at 30%; description fills alongside + 2 lines below
+                 (when-let [img (get-in data [:episode :episode_image_url])]
+                   [:img.player-cover {:src (img-proxy img) :alt ""}])
 
-              [:div.player-cover-clearfix]
+                 (when-let [desc (and episode (not (str/blank? (:description episode)))
+                                      (:description episode))]
+                   [:<>
+                    [:div.player-description
+                     {:class                   (when-not @desc-expanded? "player-description--collapsed")
+                      :dangerouslySetInnerHTML {:__html desc}}]
+                    [:button.player-desc-toggle
+                     {:on-click #(swap! desc-expanded? not)}
+                     (if @desc-expanded? "Show less" "Read more")]])
+
+                 [:div.player-cover-clearfix]])
 
               (when @share-open?
                 [:div.share-panel
