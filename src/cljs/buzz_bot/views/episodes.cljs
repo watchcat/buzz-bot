@@ -45,13 +45,16 @@
         order      @(rf/subscribe [::subs/episodes-order])
         playing-id @(rf/subscribe [::subs/audio-episode-id])
         cached-ids @(rf/subscribe [::subs/cached-ids])
-        {:keys [feed-id feed-url]} @(rf/subscribe [:buzz-bot.subs/view-params])]
+        {:keys [feed-id feed-url feed-title]} @(rf/subscribe [:buzz-bot.subs/view-params])]
     [:div.episodes-container
      [:div.section-header
       [:div.section-header-row
        [:button.btn-back
         {:on-click #(rf/dispatch [::events/navigate :feeds])}
         "← Feeds"]
+       (when feed-title
+         [:span.section-feed-title feed-title])]
+      [:div.section-header-row
        (when feed-url
          [:button.btn-rss-copy
           {:title    "Copy RSS URL"

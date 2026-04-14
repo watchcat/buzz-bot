@@ -108,6 +108,16 @@ main {
   letter-spacing: -0.02em;
 }
 
+.section-feed-title {
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* Right-side control group */
 .section-controls {
   display: flex;

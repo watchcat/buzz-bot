@@ -154,8 +154,9 @@
                (when (contains? #{"inbox" "bookmarks"} (get params :from))
                  [:button.btn-feed-link
                   {:on-click #(rf/dispatch [::events/navigate :episodes
-                                            {:feed-id (:feed_id episode)
-                                             :feed-url (:url feed)}])}
+                                            {:feed-id   (:feed_id episode)
+                                             :feed-url  (:url feed)
+                                             :feed-title (:title feed)}])}
                   (str (or (:title feed) "Feed") " →")])]]
              [:div.player-card
               [:div.player-title-row
