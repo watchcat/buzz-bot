@@ -59,6 +59,32 @@
     (str "https://t.me/share/url?url=" (js/encodeURIComponent deep-link)
          "&text=" (js/encodeURIComponent (.trim message)))))
 
+(defn- subtitle-panel []
+  (let [window @(rf/subscribe [::subs/subtitle-window])
+        lang   @(rf/subscribe [::subs/subtitle-lang])
+        trans? @(rf/subscribe [::subs/translation-available?])]
+    [:div.subtitle-panel
+     [:div.subtitle-panel__cues
+      (if (seq window)
+        (for [{:keys [cue role]} window]
+          ^{:key (:idx cue)}
+          [:div.subtitle-cue-line
+           {:class (name role)}
+           (if (= lang :translated)
+             (or (:translation cue) (:text cue))
+             (:text cue))])
+        [:div.subtitle-cue-line.no-cue "…"])]
+     [:div.subtitle-lang-chips
+      [:button.sub-lang-chip
+       {:class    (when (= lang :original) "sub-lang-chip--active")
+        :on-click #(rf/dispatch [::events/set-subtitle-lang :original])}
+       "Original"]
+      (when trans?
+        [:button.sub-lang-chip
+         {:class    (when (= lang :translated) "sub-lang-chip--active")
+          :on-click #(rf/dispatch [::events/set-subtitle-lang :translated])}
+         "Translation"])]]))
+
 (defn view []
   (let [share-open?    (r/atom false)
         share-msg      (r/atom "")
@@ -75,7 +101,6 @@
             send-status    @(rf/subscribe [::subs/player-send-status])
             subtitle-lang   @(rf/subscribe [::subs/subtitle-lang])
             subtitle-avail? @(rf/subscribe [::subs/subtitles-available?])
-            subtitle-cue    @(rf/subscribe [::subs/current-subtitle-cue])
             params         @(rf/subscribe [:buzz-bot.subs/view-params])
             ep-id          (str (get-in data [:episode :id] ""))
             cache-progress @(rf/subscribe [::subs/cache-progress ep-id])
@@ -146,6 +171,10 @@
               ;; Dub section: chips + add-chips + active controls — premium users only
               (when is_premium [dub-view/dub-section ep-id])
 
+              ;; Subtitle panel: karaoke-style scrolling cues, shown when CC is active
+              (when (not= subtitle-lang :off)
+                [subtitle-panel])
+
               ;; Cover image floats left at 30%; description fills alongside + 2 lines below
               (when-let [img (get-in data [:episode :episode_image_url])]
                 [:img.player-cover {:src (img-proxy img) :alt ""}])
@@ -172,13 +201,6 @@
                   {:on-click #(rf/dispatch [::events/open-telegram-link
                                             (share-url (:id episode) @share-msg)])}
                   "📤 Share"]])
-
-              ;; Subtitle cue — shown when CC is active and a cue is in range
-              (when (and (not= subtitle-lang :off) subtitle-cue)
-                [:div.subtitle-cue
-                 (if (= subtitle-lang :original)
-                   (:text subtitle-cue)
-                   (or (:translation subtitle-cue) (:text subtitle-cue)))])
 
               [:div.player-controls
                [:div.player-progress-row

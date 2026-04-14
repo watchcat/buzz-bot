@@ -333,14 +333,13 @@
 (rf/reg-event-db
  ::cycle-subtitle-lang
  (fn [db _]
-   (let [lang             (get-in db [:subtitles :lang])
-         has-translation? (boolean (some :translation (get-in db [:subtitles :cues])))]
-     (assoc-in db [:subtitles :lang]
-               (case lang
-                 :off        :original
-                 :original   (if has-translation? :translated :off)
-                 :translated :off
-                 :off)))))
+   (assoc-in db [:subtitles :lang]
+             (if (= :off (get-in db [:subtitles :lang])) :original :off))))
+
+(rf/reg-event-db
+ ::set-subtitle-lang
+ (fn [db [_ lang]]
+   (assoc-in db [:subtitles :lang] lang)))
 
 (rf/reg-event-db
  ::clear-subtitles

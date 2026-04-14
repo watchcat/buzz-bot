@@ -118,3 +118,38 @@
                 (when (and (<= (:start c) t) (< t (:end c)))
                   c))
               cues)))))
+
+(defn- find-current-idx [cues t]
+  (loop [i 0 last-past nil]
+    (if (>= i (count cues))
+      (or last-past 0)
+      (let [{:keys [start end]} (nth cues i)]
+        (cond
+          (and (<= start t) (< t end)) i
+          (< end t)                    (recur (inc i) i)
+          :else                        (or last-past 0))))))
+
+(rf/reg-sub
+ ::subtitle-window
+ :<- [::subtitles]
+ :<- [::audio-current-time]
+ :<- [::audio-episode-id]
+ (fn [[subs t audio-ep-id] _]
+   (let [lang   (:lang subs)
+         cues   (:cues subs)
+         sub-ep (:ep-id subs)]
+     (when (and (not= lang :off)
+                (seq cues)
+                (number? t)
+                (= (str sub-ep) (str audio-ep-id)))
+       (let [n    (count cues)
+             idx  (find-current-idx cues t)
+             from (max 0 (- idx 2))
+             to   (min n (+ idx 3))]
+         (mapv (fn [i c]
+                 {:cue  c
+                  :role (cond (= (+ from i) idx) :current
+                              (< (+ from i) idx) :prev
+                              :else              :next)})
+               (range (- to from))
+               (subvec cues from to)))))))

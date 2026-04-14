@@ -38,19 +38,6 @@ module Config
     ENV["ADMIN_USER_IDS"]?.to_s.split(",").compact_map { |s| s.strip.to_i64? }
   end
 
-  def self.whisper_redis_url : String
-    ENV["WHISPER_REDIS_URL"]? || raise "WHISPER_REDIS_URL not set"
-  end
-
-  def self.whisper_queue_key : String
-    ENV.fetch("WHISPER_QUEUE_KEY", "whisper:jobs")
-  end
-
-  # Full URL buzz-bot is reachable at for worker callbacks.
-  def self.whisper_callback_base : String
-    ENV.fetch("WHISPER_CALLBACK_BASE", base_url)
-  end
-
   def self.runpod_api_key : String
     ENV["RUNPOD_API_KEY"]? || raise "RUNPOD_API_KEY not set"
   end
