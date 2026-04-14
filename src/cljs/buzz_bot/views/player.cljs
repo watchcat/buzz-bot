@@ -91,11 +91,10 @@
              (cue-text cue lang)])
           [:div.subtitle-cue-line.no-cue "…"]))]
      [:div.subtitle-lang-chips
-      (when source-lang
-        [:button.sub-lang-chip
-         {:class    (when (= lang :original) "sub-lang-chip--active")
-          :on-click #(rf/dispatch [::events/set-subtitle-lang episode-id :original])}
-         (str/upper-case source-lang)])
+      [:button.sub-lang-chip
+       {:class    (when (= lang :original) "sub-lang-chip--active")
+        :on-click #(rf/dispatch [::events/set-subtitle-lang episode-id :original])}
+       (if (seq source-lang) (str/upper-case source-lang) "Orig")]
       (for [code done-langs]
         ^{:key code}
         [:button.sub-lang-chip

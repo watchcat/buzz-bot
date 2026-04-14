@@ -18,6 +18,7 @@ module Web::Routes::DubResult
     getter speaker_count   : Int32?
     getter speaker_samples : String?
     getter segments        : Array(JSON::Any)?
+    getter source_lang     : String?
     getter step            : String?
     getter error           : String?
   end
@@ -42,6 +43,10 @@ module Web::Routes::DubResult
 
       Log.info { "DubResult[#{result.dub_id}]: job #{result.job_id} done — #{result.r2_url}" }
       DubbedEpisode.set_complete(result.dub_id, result.r2_url, result.speaker_samples)
+
+      if (ep_id = result.episode_id) && (src = result.source_lang.presence)
+        Episode.save_original_language(ep_id, src)
+      end
 
       if (segs = result.segments) && !segs.empty? &&
          (ep_id = result.episode_id) && (lang = result.language)
