@@ -72,14 +72,19 @@ module DubSegment
        ORDER BY ds.idx",
       episode_id, lang, as: {Int32, Float64, Float64, String, String?, Float64?, Float64?}
     )
-    rows.map do |row|
+    rows.compact_map do |row|
       idx, orig_start, orig_end, text, translation, synth_start, synth_dur = row
-      # Use actual dubbed-audio timestamps when available
+      # Use actual dubbed-audio timestamps when available.
+      # For a dubbed language: skip segments without synth timing — they were
+      # not included in the dubbed audio (synthesis failed) so their original
+      # timestamps would cause drift if left in the cue list.
       start_sec, end_sec =
         if synth_start && synth_dur
           {synth_start, synth_start + synth_dur}
-        else
+        elsif lang.empty?
           {orig_start, orig_end}
+        else
+          next  # dubbed language, no synth timing → omit from cue list
         end
       DubSegmentCue.new(idx: idx, start_sec: start_sec, end_sec: end_sec,
                         text: text, translated_text: translation)
