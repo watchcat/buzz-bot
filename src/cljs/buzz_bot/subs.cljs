@@ -129,14 +129,17 @@
               cues)))))
 
 (defn- find-current-idx [cues t]
+  ;; Returns the index of the active cue (start ≤ t < end), or the index of the
+  ;; last cue whose end has already passed, or nil if t is before every cue.
+  ;; nil = "nothing spoken yet" — callers must treat nil as "no current cue".
   (loop [i 0 last-past nil]
     (if (>= i (count cues))
-      (or last-past 0)
+      last-past
       (let [{:keys [start end]} (nth cues i)]
         (cond
-          (and (<= start t) (< t end)) i
-          (< end t)                    (recur (inc i) i)
-          :else                        (or last-past 0))))))
+          (and (<= start t) (< t end)) i          ; active
+          (< end t)                    (recur (inc i) i)  ; past, keep going
+          :else                        last-past)))))      ; future, stop
 
 (rf/reg-sub
  ::subtitle-current-idx
@@ -165,14 +168,18 @@
                 (seq cues)
                 (number? t)
                 (= (str sub-ep) (str audio-ep-id)))
-       (let [n    (count cues)
-             idx  (find-current-idx cues t)
-             from (max 0 (- idx 2))
-             to   (min n (+ idx 3))]
+       ;; nil idx means audio hasn't reached the first cue yet — show the
+       ;; first 3 upcoming cues as :next so the user knows what's coming.
+       (let [n        (count cues)
+             idx      (find-current-idx cues t)
+             anchor   (or idx 0)
+             from     (max 0 (- anchor 2))
+             to       (min n (+ anchor 3))]
          (mapv (fn [i c]
                  {:cue  c
-                  :role (cond (= (+ from i) idx) :current
-                              (< (+ from i) idx) :prev
-                              :else              :next)})
+                  :role (cond (nil? idx)              :next     ; before first cue
+                              (= (+ from i) idx)      :current
+                              (< (+ from i) idx)      :prev
+                              :else                   :next)})
                (range (- to from))
                (subvec cues from to)))))))

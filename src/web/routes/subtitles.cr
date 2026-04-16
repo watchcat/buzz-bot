@@ -12,8 +12,9 @@ module Web::Routes::Subtitles
       halt env, status_code: 400, response: %({"error":"invalid_id"}) unless episode_id_raw
       episode_id = episode_id_raw
       language   = env.params.query["language"]?
+      audio_lang = env.params.query["audio_lang"]?
 
-      cues = DubSegment.for_episode(episode_id, language)
+      cues = DubSegment.for_episode(episode_id, language, audio_lang)
 
       source_lang = Episode.original_language(episode_id)
 

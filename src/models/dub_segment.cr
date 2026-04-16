@@ -56,35 +56,45 @@ module DubSegment
     end
   end
 
-  # Fetch cues for an episode, optionally with translations for a language.
-  # When a language is requested, uses synth_start_sec/synth_duration for timing
-  # (the dubbed audio has shifted timestamps due to TTS length differences).
-  # Falls back to original start_sec/end_sec when synth timing is unavailable.
-  def self.for_episode(episode_id : Int64, language : String?) : Array(DubSegmentCue)
-    lang = language.presence || ""
+  # Fetch cues for an episode.
+  #
+  # text_lang  — which language's translation to include in each cue
+  #              (nil/empty = include no translation, show original text only)
+  # audio_lang — which language's synth timestamps to use for timing
+  #              (nil/empty = use original timestamps, for original audio playback)
+  #
+  # Separating these allows e.g. playing original audio while showing a
+  # translation, or playing Russian dubbed audio while showing English subs.
+  def self.for_episode(episode_id : Int64, text_lang : String?, audio_lang : String?) : Array(DubSegmentCue)
+    tl = text_lang.presence || ""
+    al = audio_lang.presence || ""
     rows = AppDB.pool.query_all(
-      "SELECT ds.idx, ds.start_sec, ds.end_sec, ds.text, dst.translated_text,
-              dst.synth_start_sec, dst.synth_duration
+      "SELECT ds.idx, ds.start_sec, ds.end_sec, ds.text,
+              text_t.translated_text,
+              time_t.synth_start_sec, time_t.synth_duration
        FROM dub_segments ds
-       LEFT JOIN dub_segment_translations dst
-         ON dst.segment_id = ds.id AND dst.language = $2
+       LEFT JOIN dub_segment_translations text_t
+         ON text_t.segment_id = ds.id AND text_t.language = $2
+       LEFT JOIN dub_segment_translations time_t
+         ON time_t.segment_id = ds.id AND time_t.language = $3
        WHERE ds.episode_id = $1
        ORDER BY ds.idx",
-      episode_id, lang, as: {Int32, Float64, Float64, String, String?, Float64?, Float64?}
+      episode_id, tl, al,
+      as: {Int32, Float64, Float64, String, String?, Float64?, Float64?}
     )
     rows.compact_map do |row|
       idx, orig_start, orig_end, text, translation, synth_start, synth_dur = row
-      # Use actual dubbed-audio timestamps when available.
-      # For a dubbed language: skip segments without synth timing — they were
-      # not included in the dubbed audio (synthesis failed) so their original
-      # timestamps would cause drift if left in the cue list.
       start_sec, end_sec =
         if synth_start && synth_dur
+          # Dubbed audio requested and synth timing available — use it.
           {synth_start, synth_start + synth_dur}
-        elsif lang.empty?
+        elsif al.empty?
+          # Original audio — original timestamps are always correct.
           {orig_start, orig_end}
         else
-          next  # dubbed language, no synth timing → omit from cue list
+          # Dubbed audio requested but this segment has no synth timing
+          # (synthesis failed) — omit to prevent timestamp drift.
+          next
         end
       DubSegmentCue.new(idx: idx, start_sec: start_sec, end_sec: end_sec,
                         text: text, translated_text: translation)

@@ -253,7 +253,7 @@
                               :original   "Showing original text"
                               :translated "Showing translation"
                               "Subtitles")
-                  :on-click #(rf/dispatch [::events/cycle-subtitle-lang])}
+                  :on-click #(rf/dispatch [::events/cycle-subtitle-lang ep-id])}
                  "CC"]
                 [:button.btn-bookmark
                  {:class    (when liked? "active")

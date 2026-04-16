@@ -41,6 +41,8 @@
      (cond-> {:db (assoc-in db [:dub :statuses] statuses)}
        in-flight
        (assoc ::fx/open-dub-sse {:episode-id episode-id :lang in-flight})
+       ;; Preload translation text with original-audio timing (audio_lang=nil).
+       ;; User starts on original audio; timing will be refetched if they switch to dubbed.
        done-lang
        (assoc :dispatch [:buzz-bot.events/fetch-subtitles episode-id done-lang])))))
 
@@ -52,29 +54,41 @@
          status       (:status lang-state)
          active       (get-in db [:dub :active-lang])
          episode      (get-in db [:player :data :episode])
-         start        (max 0 (- (get-in db [:audio :current-time] 0) 5))]
+         start        (max 0 (- (get-in db [:audio :current-time] 0) 5))
+         sub-lang     (get-in db [:subtitles :lang])
+         ;; text-lang for subtitle refresh: nil when showing original text
+         sub-text-lang (when (not= sub-lang :original) sub-lang)
+         subs-active? (not= sub-lang :off)]
      (cond
-       ;; Tapping the active dubbed language → switch back to original
+       ;; Tapping the active dubbed language → switch back to original audio.
+       ;; [:dub :active-lang] becomes nil; if subs are visible, refetch with
+       ;; audio_lang=nil (original timestamps).
        (and (= status :done) (= active lang))
-       {:db (assoc-in db [:dub :active-lang] nil)
-        ::fx/audio-cmd {:op        :load
-                        :src       (:audio_url episode)
-                        :start     start
-                        :autoplay? true
-                        :title     (:title episode)
-                        :artist    (:feed_title episode)
-                        :artwork   (:feed_image_url episode)}}
+       (cond-> {:db (assoc-in db [:dub :active-lang] nil)
+                ::fx/audio-cmd {:op        :load
+                                :src       (:audio_url episode)
+                                :start     start
+                                :autoplay? true
+                                :title     (:title episode)
+                                :artist    (:feed_title episode)
+                                :artwork   (:feed_image_url episode)}}
+         subs-active?
+         (assoc :dispatch [:buzz-bot.events/fetch-subtitles episode-id sub-text-lang]))
 
-       ;; Done and not active → switch to dubbed audio
+       ;; Done and not active → switch to dubbed audio.
+       ;; [:dub :active-lang] becomes lang; if subs are visible, refetch with
+       ;; audio_lang=lang (synth timestamps for this dub).
        (= status :done)
-       {:db (assoc-in db [:dub :active-lang] lang)
-        ::fx/audio-cmd {:op        :load
-                        :src       (:r2-url lang-state)
-                        :start     start
-                        :autoplay? true
-                        :title     (str (:title episode) " [" (clojure.string/upper-case lang) "]")
-                        :artist    (:feed_title episode)
-                        :artwork   (:feed_image_url episode)}}
+       (cond-> {:db (assoc-in db [:dub :active-lang] lang)
+                ::fx/audio-cmd {:op        :load
+                                :src       (:r2-url lang-state)
+                                :start     start
+                                :autoplay? true
+                                :title     (str (:title episode) " [" (clojure.string/upper-case lang) "]")
+                                :artist    (:feed_title episode)
+                                :artwork   (:feed_image_url episode)}}
+         subs-active?
+         (assoc :dispatch [:buzz-bot.events/fetch-subtitles episode-id sub-text-lang]))
 
        ;; In-flight — open SSE if not already open (re-tapping idempotent)
        (#{:pending :processing} status)

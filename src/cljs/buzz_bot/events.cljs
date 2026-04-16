@@ -305,20 +305,37 @@
                               :on-ok  [::bookmarks-loaded] :on-err [::fetch-error]}}))
 
 ;; ── Subtitles ─────────────────────────────────────────────────────────────
+;;
+;; Timing and text are independent concerns:
+;;   audio-lang  — which language's synth timestamps to use (nil = original audio)
+;;                 always derived from [:dub :active-lang] at fetch time
+;;   text-lang   — which language's translation to display (nil = original text)
+;;                 set by the user's subtitle chip selection
+;;
+;; This is why both are separate params on the backend endpoint.
+
+(defn- subtitle-url [ep-id text-lang audio-lang]
+  (let [params (cond-> []
+                 text-lang  (conj (str "language=" text-lang))
+                 audio-lang (conj (str "audio_lang=" audio-lang)))]
+    (str "/episodes/" ep-id "/subtitles"
+         (when (seq params) (str "?" (str/join "&" params))))))
 
 (rf/reg-event-fx
  ::fetch-subtitles
- (fn [_ [_ ep-id language]]
-   (let [url (if language
-               (str "/episodes/" ep-id "/subtitles?language=" language)
-               (str "/episodes/" ep-id "/subtitles"))]
+ ;; text-lang: the translation language to show (nil = original text).
+ ;; audio-lang is read from db at dispatch time so it always matches the
+ ;; audio currently playing, regardless of when the event was enqueued.
+ (fn [{:keys [db]} [_ ep-id text-lang]]
+   (let [audio-lang (get-in db [:dub :active-lang])
+         url        (subtitle-url ep-id text-lang audio-lang)]
      {::buzz-bot.fx/http-fetch {:method :get :url url
-                                :on-ok  [::subtitles-loaded ep-id language]
+                                :on-ok  [::subtitles-loaded ep-id text-lang audio-lang]
                                 :on-err [::noop]}})))
 
 (rf/reg-event-db
  ::subtitles-loaded
- (fn [db [_ ep-id language resp]]
+ (fn [db [_ ep-id text-lang audio-lang resp]]
    (let [cues (mapv (fn [c]
                       {:idx         (:idx c)
                        :start       (:start c)
@@ -327,26 +344,42 @@
                        :translation (:translation c)})
                     (:cues resp []))]
      (-> db
-         (assoc-in [:subtitles :ep-id]        ep-id)
-         (assoc-in [:subtitles :cues]          cues)
-         (assoc-in [:subtitles :source-lang]   (:source_lang resp))
-         (assoc-in [:subtitles :loaded-lang]   language)))))
+         (assoc-in [:subtitles :ep-id]              ep-id)
+         (assoc-in [:subtitles :cues]                cues)
+         (assoc-in [:subtitles :source-lang]         (:source_lang resp))
+         (assoc-in [:subtitles :loaded-text-lang]    text-lang)
+         (assoc-in [:subtitles :loaded-audio-lang]   audio-lang)))))
 
-(rf/reg-event-db
+(rf/reg-event-fx
  ::cycle-subtitle-lang
- (fn [db _]
-   (assoc-in db [:subtitles :lang]
-             (if (= :off (get-in db [:subtitles :lang])) :original :off))))
+ ;; Turning ON: refetch if timing is stale (audio changed since last fetch).
+ ;; Turning OFF: just hide the panel.
+ (fn [{:keys [db]} [_ episode-id]]
+   (let [currently-off? (= :off (get-in db [:subtitles :lang]))
+         new-lang       (if currently-off? :original :off)
+         audio-lang     (get-in db [:dub :active-lang])
+         loaded-audio   (get-in db [:subtitles :loaded-audio-lang])
+         timing-stale?  (not= audio-lang loaded-audio)]
+     (cond-> {:db (assoc-in db [:subtitles :lang] new-lang)}
+       (and currently-off? timing-stale?)
+       (assoc :dispatch [::fetch-subtitles episode-id nil])))))
 
 (rf/reg-event-fx
  ::set-subtitle-lang
+ ;; Refetch when: the requested translation language wasn't loaded yet,
+ ;; OR the audio language changed since the last fetch (timing is stale).
+ ;; Switching to :original never needs a text refetch (orig text is always
+ ;; present in cues), but DOES need a timing refetch if audio changed.
  (fn [{:keys [db]} [_ episode-id lang]]
-   (if (= lang :original)
-     {:db (assoc-in db [:subtitles :lang] :original)}
-     (let [loaded (get-in db [:subtitles :loaded-lang])]
-       (cond-> {:db (assoc-in db [:subtitles :lang] lang)}
-         (not= loaded lang)
-         (assoc :dispatch [::fetch-subtitles episode-id lang]))))))
+   (let [text-lang     (when (not= lang :original) lang)
+         audio-lang    (get-in db [:dub :active-lang])
+         loaded-text   (get-in db [:subtitles :loaded-text-lang])
+         loaded-audio  (get-in db [:subtitles :loaded-audio-lang])
+         timing-stale? (not= audio-lang loaded-audio)
+         text-stale?   (and (some? text-lang) (not= text-lang loaded-text))]
+     (cond-> {:db (assoc-in db [:subtitles :lang] lang)}
+       (or timing-stale? text-stale?)
+       (assoc :dispatch [::fetch-subtitles episode-id text-lang])))))
 
 (rf/reg-event-db
  ::toggle-transcript
@@ -357,7 +390,8 @@
  ::clear-subtitles
  (fn [db _]
    (assoc db :subtitles {:ep-id nil :cues [] :lang :off
-                         :loaded-lang nil :source-lang nil :transcript? false})))
+                         :loaded-text-lang nil :loaded-audio-lang nil
+                         :source-lang nil :transcript? false})))
 
 ;; ── Audio state ──────────────────────────────────────────────────────────────
 
