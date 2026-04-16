@@ -64,46 +64,73 @@
     (:text cue)
     (or (:translation cue) (:text cue))))
 
-(defn- subtitle-panel [episode-id]
-  (let [window      @(rf/subscribe [::subs/subtitle-window])
-        all-cues    @(rf/subscribe [::subs/subtitle-cues])
-        lang        @(rf/subscribe [::subs/subtitle-lang])
-        source-lang @(rf/subscribe [::subs/subtitle-source-lang])
-        done-langs  @(rf/subscribe [::subs/dub-done-langs])
-        transcript? @(rf/subscribe [::subs/subtitle-transcript?])
-        current-idx @(rf/subscribe [::subs/subtitle-current-idx])]
-    [:div.subtitle-panel
-     [:div.subtitle-panel__cues
-      {:class (when transcript? "subtitle-panel__cues--transcript")}
-      (if transcript?
+(defn- transcript-modal [episode-id]
+  (r/with-let
+    [_ (js/setTimeout
+         (fn []
+           (when-let [el (.querySelector js/document ".transcript-cue--current")]
+             (.scrollIntoView el #js {:block "center"})))
+         80)]
+    (let [all-cues    @(rf/subscribe [::subs/subtitle-cues])
+          current-idx @(rf/subscribe [::subs/subtitle-current-idx])
+          lang        @(rf/subscribe [::subs/subtitle-lang])
+          source-lang @(rf/subscribe [::subs/subtitle-source-lang])
+          done-langs  @(rf/subscribe [::subs/dub-done-langs])]
+      [:div.transcript-modal
+       [:div.transcript-modal__header
+        [:div.transcript-modal__chips
+         [:button.sub-lang-chip
+          {:class    (when (= lang :original) "sub-lang-chip--active")
+           :on-click #(rf/dispatch [::events/set-subtitle-lang episode-id :original])}
+          (if (seq source-lang) (str/upper-case source-lang) "Orig")]
+         (for [code done-langs]
+           ^{:key code}
+           [:button.sub-lang-chip
+            {:class    (when (= lang code) "sub-lang-chip--active")
+             :on-click #(rf/dispatch [::events/set-subtitle-lang episode-id code])}
+            (str/upper-case code)])]
+        [:button.transcript-modal__close
+         {:on-click #(rf/dispatch [::events/toggle-transcript])}
+         "✕"]]
+       [:div.transcript-modal__body
         (map-indexed
          (fn [i cue]
            ^{:key (:idx cue)}
-           [:div.subtitle-cue-line
-            {:class (when (= i current-idx) "current")}
+           [:p.transcript-cue
+            {:class    (when (= i current-idx) "transcript-cue--current")
+             :on-click #(rf/dispatch [::events/audio-seek (:start cue)])}
             (cue-text cue lang)])
-         all-cues)
-        (if (seq window)
-          (for [{:keys [cue role]} window]
-            ^{:key (:idx cue)}
-            [:div.subtitle-cue-line
-             {:class (name role)}
-             (cue-text cue lang)])
-          [:div.subtitle-cue-line.no-cue "…"]))]
-     [:div.subtitle-lang-chips
-      [:button.sub-lang-chip
-       {:class    (when (= lang :original) "sub-lang-chip--active")
-        :on-click #(rf/dispatch [::events/set-subtitle-lang episode-id :original])}
-       (if (seq source-lang) (str/upper-case source-lang) "Orig")]
-      (for [code done-langs]
-        ^{:key code}
-        [:button.sub-lang-chip
-         {:class    (when (= lang code) "sub-lang-chip--active")
-          :on-click #(rf/dispatch [::events/set-subtitle-lang episode-id code])}
-         (str/upper-case code)])
-      [:button.sub-transcript-btn
-       {:on-click #(rf/dispatch [::events/toggle-transcript])}
-       (if transcript? "↑ Karaoke" "Transcript ↓")]]]))
+         all-cues)]])))
+
+(defn- subtitle-panel [episode-id]
+  (let [window      @(rf/subscribe [::subs/subtitle-window])
+        lang        @(rf/subscribe [::subs/subtitle-lang])
+        source-lang @(rf/subscribe [::subs/subtitle-source-lang])
+        done-langs  @(rf/subscribe [::subs/dub-done-langs])
+        transcript? @(rf/subscribe [::subs/subtitle-transcript?])]
+    [:<>
+     [:div.subtitle-panel
+      [:div.subtitle-panel__cues
+       (if (seq window)
+         (for [{:keys [cue role]} window]
+           ^{:key (:idx cue)}
+           [:div.subtitle-cue-line {:class (name role)} (cue-text cue lang)])
+         [:div.subtitle-cue-line.no-cue "…"])]
+      [:div.subtitle-lang-chips
+       [:button.sub-lang-chip
+        {:class    (when (= lang :original) "sub-lang-chip--active")
+         :on-click #(rf/dispatch [::events/set-subtitle-lang episode-id :original])}
+        (if (seq source-lang) (str/upper-case source-lang) "Orig")]
+       (for [code done-langs]
+         ^{:key code}
+         [:button.sub-lang-chip
+          {:class    (when (= lang code) "sub-lang-chip--active")
+           :on-click #(rf/dispatch [::events/set-subtitle-lang episode-id code])}
+          (str/upper-case code)])
+       [:button.sub-transcript-btn
+        {:on-click #(rf/dispatch [::events/toggle-transcript])}
+        "Transcript ↓"]]]
+     (when transcript? [transcript-modal episode-id])]))
 
 (defn view []
   (let [share-open?    (r/atom false)
