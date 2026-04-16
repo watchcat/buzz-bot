@@ -4,7 +4,7 @@
 
 ![Buzz-Bot](./docs/pics/Image.png)
 
-Listen to any podcast, then tap one button and hear it in your language — same voices, different words. Buzz-Bot runs inside Telegram as a Mini App and uses a local AI pipeline (Apple Silicon, no cloud GPU bills) to transcribe, translate, and re-synthesize every speaker's voice with sub-minute latency per segment.
+Listen to any podcast, then tap one button and hear it in your language — same voices, different words. Buzz-Bot runs inside Telegram as a Mini App and uses a cloud GPU pipeline (RunPod Serverless) to transcribe, translate, and re-synthesize every speaker's voice.
 
 ## Features
 
@@ -19,6 +19,7 @@ Listen to any podcast, then tap one button and hear it in your language — same
 - **Collaborative filtering recommendations** — surface episodes liked by users with similar taste
 - **Share & send** — share any episode via Telegram's share sheet, or send the audio file directly to your own chat
 - **AI dubbing** — hear any podcast in your language with the original speaker's voice cloned (see below)
+- **Karaoke subtitles** — CC button reveals a live subtitle panel with karaoke-style cue highlighting; tap "Transcript ↓" for a fullscreen scrollable transcript; tap any line to seek
 
 ## AI Dubbing
 
@@ -36,14 +37,14 @@ User taps "🎙 Dub in…" → picks language
          ▼
 POST /episodes/:id/dub
   Creates dubbed_episodes row (status: queued)
-  RPUSHes job to Redis queue (dub:jobs)
+  POST /v2/{endpoint_id}/run  →  RunPod Serverless API
          │
-         ▼  (Mac Mini — dub-pipeline worker)
+         ▼  (RunPod GPU worker — dub-pipeline)
          │
   1. Separate stems — Demucs htdemucs_ft
-     → vocals.wav + background.wav (cached in R2, reused)
+     → vocals.wav + background.wav (cached in R2, reused across languages)
          │
-  2. Transcribe — mlx-whisper large-v3 (Metal/MPS)
+  2. Transcribe — WhisperX large-v3 (CUDA)
      + pyannote speaker diarization
      → segments with speaker IDs, timestamps, word confidences
          │
@@ -51,16 +52,18 @@ POST /episodes/:id/dub
          │
   4. Split long segments at sentence boundaries / pauses
          │
-  5. Translate — DeepL Pro
-     → translated_text per segment (same-language = no-op)
+  5. Translate — Gemini Flash (batch with context)
+     → translated_text per segment (same-language = copy verbatim)
          │
-  6. Synthesize — XTTS-v2 (Coqui TTS, local GPU)
+  6. Synthesize — VoxCPM2
      voice cloning: each speaker's sample → target language TTS
+     output: 48 kHz mono WAV per segment
          │
   7. Assemble — cursor-based placement
      synth audio placed at original timestamps;
      over-runs consume gaps, under-runs add 50% silence;
-     110% duration cap
+     actual_cursor tracks real ffmpeg position for subtitle sync;
+     150% duration cap
          │
   8. Mix — ffmpeg amix
      dubbed vocals + background at configurable volume
@@ -68,8 +71,9 @@ POST /episodes/:id/dub
   9. Upload → R2 dubbed/{episode_id}/{lang}.mp3
          │
          ▼
-POST /internal/dub_result  (callback from Mac Mini to buzz-bot)
+POST /internal/dub_result  (callback from RunPod to buzz-bot)
   Updates dubbed_episodes: status=done, r2_url, speaker_count
+  Stores segments + translations in dub_segments (for subtitle sync)
   Sends Telegram notification to user
 
 Progress updates via POST /internal/dub_progress → pg_notify → SSE
@@ -117,12 +121,12 @@ Vocal separation (Demucs, ~2 min) and its outputs are stored in R2 under `dub-st
 | Frontend | ClojureScript · [re-frame](https://github.com/day8/re-frame) · [Reagent](https://reagent-project.github.io/) |
 | Frontend build | [shadow-cljs](https://github.com/thheller/shadow-cljs) |
 | Service Worker | Offline audio cache (Range-aware) + offline write queue |
-| Job queue | Redis (k8s `whisper` namespace, NodePort 30379) |
-| Stem separation | [Demucs](https://github.com/facebookresearch/demucs) `htdemucs_ft` (local, Apple Silicon) |
-| Speech-to-text | [mlx-whisper](https://github.com/ml-explore/mlx-examples) large-v3 (Metal/MPS, Apple Silicon) |
-| Speaker diarization | [pyannote.audio](https://github.com/pyannote/pyannote-audio) 3.x (MPS) |
-| Translation | [DeepL Pro API](https://www.deepl.com/pro-api) |
-| Text-to-speech | [XTTS-v2](https://github.com/coqui-ai/TTS) (Coqui, local, Apple Silicon) |
+| Job dispatch | [RunPod Serverless](https://www.runpod.io/serverless-gpu) API v2 |
+| Stem separation | [Demucs](https://github.com/facebookresearch/demucs) `htdemucs_ft` (CUDA) |
+| Speech-to-text | [WhisperX](https://github.com/m-bain/whisperX) large-v3 (CUDA) |
+| Speaker diarization | [pyannote.audio](https://github.com/pyannote/pyannote-audio) 3.x (CUDA) |
+| Translation | [Gemini Flash](https://ai.google.dev/) (Google AI) |
+| Text-to-speech | [VoxCPM2](https://huggingface.co/openbmb/VoxCPM2) (voice cloning) |
 | Audio processing | ffmpeg (Demucs stem output, final mix) |
 | Dubbed audio storage | [Cloudflare R2](https://developers.cloudflare.com/r2/) |
 | Deployment | Docker · k3s on Hetzner (via [hetzner-k3s](https://github.com/vitobotta/hetzner-k3s)) |
@@ -144,25 +148,24 @@ Vocal separation (Demucs, ~2 min) and its outputs are stored in R2 under `dub-st
 | `BASE_URL` | Public base URL — used for the Mini App button |
 | `TELEGRAM_API_SERVER` | *(optional)* Self-hosted Bot API URL (enables >50 MB file transfers) |
 | `ADMIN_USER_IDS` | Comma-separated Telegram user IDs for `/flag` command |
-| `DUB_REDIS_URL` | Redis URL for the dub job queue (e.g. `redis://default:pass@redis.whisper.svc.cluster.local:6379`) |
-| `DUB_QUEUE_KEY` | Redis list key (default: `dub:jobs`) |
-| `DUB_CALLBACK_BASE` | Base URL the Mac Mini posts results back to (e.g. `https://app.buzz-bot.top`) |
+| `RUNPOD_API_KEY` | RunPod API key for dispatching dub jobs |
+| `RUNPOD_ENDPOINT_ID` | RunPod Serverless endpoint ID (dub-pipeline) |
+| `DUB_CALLBACK_BASE` | Base URL RunPod posts results back to (e.g. `https://app.buzz-bot.top`) |
 
-### dub-pipeline (Mac Mini `.env`)
+### dub-pipeline (RunPod environment variables)
+
+Set these in the RunPod serverless endpoint configuration.
 
 | Variable | Description |
 |---|---|
-| `REDIS_URL` | Redis URL (NodePort: `redis://default:pass@<NODE_IP>:30379`) |
-| `QUEUE_KEY` | Redis list key (default: `dub:jobs`) |
 | `PROGRESS_URL` | `https://app.buzz-bot.top/internal/dub_progress` |
 | `R2_ENDPOINT` | Cloudflare R2 S3-compatible endpoint |
 | `R2_ACCESS_KEY_ID` | R2 API token key ID |
 | `R2_SECRET_ACCESS_KEY` | R2 API token secret |
 | `R2_BUCKET` | R2 bucket name |
 | `R2_PUBLIC_URL` | Public R2 URL (e.g. `https://pub-xxx.r2.dev`) |
-| `DEEPL_API_KEY` | DeepL Pro API key |
+| `GEMINI_API_KEY` | Google Gemini API key (translation) |
 | `HF_TOKEN` | HuggingFace token — required for pyannote models |
-| `TTS_DEVICE` | `cpu` (MPS has a 65536-channel limit incompatible with XTTS-v2) |
 | `DEMUCS_MODEL` | `htdemucs_ft` |
 | `WHISPER_MODEL` | `large-v3` |
 | `BG_VOLUME_DEFAULT` | Background music volume (default: `0.15`) |
@@ -343,33 +346,27 @@ Reads `BOT_TOKEN` and `ADMIN_USER_IDS` from the `buzz-bot-env` k8s secret, injec
 
 ---
 
-## dub-pipeline (Mac Mini)
+## dub-pipeline (RunPod Serverless)
 
-The AI dubbing worker runs on a local Apple Silicon machine (tested on Mac Mini M4). It connects to Redis in the k3s cluster via NodePort 30379.
+The AI dubbing worker runs as a RunPod Serverless endpoint (GPU cloud). buzz-bot dispatches jobs via the RunPod API; workers spin up on demand, process the job, and post results back via HTTP callbacks.
 
-### Setup
+See [dub-pipeline/README.md](../dub-pipeline/README.md) for full deployment instructions.
+
+### Build and push
 
 ```sh
 cd ../dub-pipeline
-python3.11 -m venv .venv
-source .venv/bin/activate
+docker buildx build --platform linux/amd64 \
+  -t watchcat/dub-pipeline:latest --push .
+```
+
+### Local testing
+
+```sh
+cd ../dub-pipeline
+python3.11 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-cp .env.example .env   # fill in Redis URL, R2 credentials, DeepL key, HF token
-```
-
-### Run
-
-```sh
-./run-worker.sh
-```
-
-The worker BRPOPs from `dub:jobs`, runs the full pipeline, posts progress to `/internal/dub_progress`, and posts the final result to `/internal/dub_result`.
-
-### Test
-
-```sh
 python test_job.py [audio_url] [language]
-# Pushes a fake job (dub_id=999999) — callback to localhost:9999 will 404 gracefully
 # Output uploaded to R2: dubbed/999999/{language}.mp3
 ```
 
@@ -425,6 +422,7 @@ All Mini App routes authenticate via `X-Init-Data` (Telegram `initData` HMAC-SHA
 | `POST` | `/episodes/:id/dub` | Queue a dub job `{language: "ru"}` |
 | `GET` | `/episodes/:id/dub/:lang` | Poll dub status |
 | `GET` | `/episodes/:id/dub/:lang/stream` | SSE stream for real-time progress |
+| `GET` | `/episodes/:id/subtitles` | Subtitle cues (`?language=ru&audio_lang=ru` — text and timing are independent params) |
 | `PUT` | `/user/dub_language` | Save preferred dub language |
 | `POST` | `/internal/dub_result` | Callback from Mac Mini on job completion |
 | `POST` | `/internal/dub_progress` | Callback from Mac Mini for step updates |
@@ -443,7 +441,8 @@ All Mini App routes authenticate via `X-Init-Data` (Telegram `initData` HMAC-SHA
 ```
 users ──< user_feeds >── feeds ──< episodes ──< user_episodes >── users
                                        │
-                                       └──< dubbed_episodes
+                                       ├──< dubbed_episodes
+                                       └──< dub_segments ──< dub_segment_translations
 ```
 
 | Table | Purpose |
@@ -454,8 +453,12 @@ users ──< user_feeds >── feeds ──< episodes ──< user_episodes >�
 | `episodes` | Episodes deduplicated by RSS `<guid>` per feed |
 | `user_episodes` | Per-user playback position and bookmark signal |
 | `dubbed_episodes` | One row per (episode, language) — status, R2 URL, speaker samples JSONB |
+| `dub_segments` | Transcript segments with original timestamps, speaker ID, word-level alignment |
+| `dub_segment_translations` | One row per (segment, language) — translated text, synthesized audio key, `synth_start_sec`, `synth_duration` |
 
 `dubbed_episodes.step` tracks pipeline progress (`queued → separating → transcribing → translating → synthesizing → assembling → mixing → uploading → complete / failed`). A PostgreSQL trigger fires `pg_notify('dub_status', ...)` on every step update, fanning out to all SSE subscribers.
+
+`dub_segment_translations.synth_start_sec` is the actual position of each segment in the dubbed audio file (not the ideal/original timestamp). The subtitle API joins these to serve karaoke cues with correct timing for dubbed playback.
 
 ---
 
