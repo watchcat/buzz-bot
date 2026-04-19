@@ -24,7 +24,7 @@ module Web::Routes::DubProgress
       # which is unreliable on Neon serverless across connections.
       if (dub = DubbedEpisode.find_by_id(payload.dub_id))
         key      = "#{dub.episode_id}:#{dub.language}"
-        pct_part = payload.pct ? ":#{payload.pct.to_i}" : ""
+        pct_part = payload.pct.try { |p| ":#{p.to_i}" } || ""
         DubHub.instance.publish(key, "#{dub.episode_id}:#{dub.language}:#{payload.step}:processing#{pct_part}")
       end
 
