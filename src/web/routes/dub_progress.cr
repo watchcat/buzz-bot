@@ -23,8 +23,9 @@ module Web::Routes::DubProgress
       # Fan out to any open SSE connections directly — don't rely on PG NOTIFY
       # which is unreliable on Neon serverless across connections.
       if (dub = DubbedEpisode.find_by_id(payload.dub_id))
-        key = "#{dub.episode_id}:#{dub.language}"
-        DubHub.instance.publish(key, "#{dub.episode_id}:#{dub.language}:#{payload.step}:processing")
+        key      = "#{dub.episode_id}:#{dub.language}"
+        pct_part = payload.pct ? ":#{payload.pct.to_i}" : ""
+        DubHub.instance.publish(key, "#{dub.episode_id}:#{dub.language}:#{payload.step}:processing#{pct_part}")
       end
 
       env.response.content_type = "application/json"

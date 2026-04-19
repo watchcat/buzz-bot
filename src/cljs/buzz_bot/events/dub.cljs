@@ -138,8 +138,9 @@
    (when (= (str episode-id) (str (get-in db [:player :data :episode :id])))
      (let [status (keyword (:status data))]
        (cond-> {:db (-> db
-                        (assoc-in [:dub :statuses lang :status] status)
-                        (assoc-in [:dub :statuses lang :step]   (:step data))
+                        (assoc-in [:dub :statuses lang :status]    status)
+                        (assoc-in [:dub :statuses lang :step]      (:step data))
+                        (assoc-in [:dub :statuses lang :synth-pct] (:pct data))
                         (cond-> (= status :done)
                           (-> (assoc-in [:dub :statuses lang :r2-url]      (:r2_url data))
                               (assoc-in [:dub :statuses lang :translation] (:translation data))))

@@ -84,13 +84,17 @@
 
        ;; Progress bar — shown for each in-flight dub
        (for [{:keys [code name]} in-flight]
-         (let [step (:step (get statuses code))]
+         (let [lang-state (get statuses code)
+               step       (:step lang-state)
+               synth-pct  (:synth-pct lang-state)
+               label      (str (str/upper-case code) " — " (step->label step)
+                               (when (and (= step "synthesizing") synth-pct)
+                                 (str " " synth-pct "%")))]
            [:div.dub-progress
             {:key code}
             [:div.dub-progress-track
              [:div.dub-progress-fill {:style {:width (step->pct step)}}]]
-            [:span.dub-progress-label
-             (str (str/upper-case code) " — " (step->label step))]]))
+            [:span.dub-progress-label label]]))
 
        ;; Active-dub controls shown below the chips row
        (when active

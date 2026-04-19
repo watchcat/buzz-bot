@@ -173,9 +173,10 @@ module Web::Routes::Dub
       until done
         select
         when payload = ch.receive
-          parts  = payload.split(":", 4)
+          parts  = payload.split(":", 5)
           step   = parts[2]? || ""
           status = parts[3]? || ""
+          pct    = parts[4]?.try(&.to_i?)
           case status
           when "done"
             row = DubbedEpisode.find(episode_id, lang)
@@ -191,7 +192,8 @@ module Web::Routes::Dub
             env.response.print "data: {\"status\":\"failed\",\"error\":#{err.to_json}}\n\n"
             done = true
           else
-            env.response.print "data: {\"status\":#{status.to_json},\"step\":#{step.to_json}}\n\n"
+            pct_field = pct ? ",\"pct\":#{pct}" : ""
+            env.response.print "data: {\"status\":#{status.to_json},\"step\":#{step.to_json}#{pct_field}}\n\n"
           end
           env.response.flush
         when timeout(25.seconds)
