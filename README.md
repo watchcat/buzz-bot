@@ -5,7 +5,7 @@
 ![Buzz-Bot](./docs/pics/Image.png)
 
 Listen to any podcast, then tap one button and hear it in your language — same voices, different words. Buzz-Bot runs inside Telegram as a Mini App and uses a cloud GPU pipeline (RunPod Serverless) to transcribe, translate, and re-synthesize every speaker's voice.
-
+To view AI pipeline for AI podcast dubbing workflow check this [repository](https://github.com/watchcat/dub-pipeline)
 ## Features
 
 - **RSS subscriptions** — add any podcast by RSS URL; bulk-import via OPML
