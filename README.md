@@ -1,37 +1,37 @@
-# Buzz-Bot
+dub-pipeline){:target="_blank" rel="noopener noreferrer"}
+</p>
 
-**Podcast player for the AI epoch.** (Click image to view youtube demo)
+<br clear="left"/>
 
-<a href="https://youtu.be/RsF0nrvOC88" target="_blank">
-   <img width="30%" src="./docs/pics/Image.png"/>
-</a>
+---
 
-
-
-Listen to any podcast, then tap one button and hear it in your language — same voices, different words. Buzz-Bot runs inside Telegram as a Mini App and uses a cloud GPU pipeline (RunPod Serverless) to transcribe, translate, and re-synthesize every speaker's voice.
-To view AI pipeline for podcast dubbing workflow check this [repository](https://github.com/watchcat/dub-pipeline)
 ## Features
 
-- **RSS subscriptions** — add any podcast by RSS URL; bulk-import via OPML
-- **Podcast search** — search the Apple Podcasts directory and subscribe in one tap
-- **Episode inbox** — unified feed of unheard episodes across all subscriptions, with "hide listened" and compact grouping filters
-- **Episode player** — native audio playback inside Telegram with resume-from-position, variable speed (1×/1.5×/2×), ±15/30 s skip, and a persistent mini-player visible on every screen
-- **Autoplay** — automatically advance to the next episode when one finishes
-- **Progress tracking** — listening position saved every 5 seconds; offline saves queued and replayed on reconnect
-- **Offline caching** — episode audio is downloaded in the background; player seamlessly switches to the local copy on network loss; progress bar shows cached vs. listened portion in two colours
-- **Bookmarks** — bookmark episodes with a single tap; search saved episodes
-- **Collaborative filtering recommendations** — surface episodes liked by users with similar taste
-- **Share & send** — share any episode via Telegram's share sheet, or send the audio file directly to your own chat
-- **AI dubbing** — hear any podcast in your language with the original speaker's voice cloned (see below)
-- **Karaoke subtitles** — CC button reveals a live subtitle panel with karaoke-style cue highlighting; tap "Transcript ↓" for a fullscreen scrollable transcript; tap any line to seek
+| Feature | Description |
+|---------|-------------|
+| 📡 **RSS subscriptions** | Add any podcast by RSS URL; bulk-import via OPML |
+| 🔍 **Podcast search** | Search Apple Podcasts directory and subscribe in one tap |
+| 📥 **Episode inbox** | Unified feed of unheard episodes across all subscriptions, with "hide listened" and compact grouping filters |
+| ▶️ **Episode player** | Native audio playback inside Telegram with resume-from-position, variable speed (1×/1.5×/2×), ±15/30 s skip, and a persistent mini-player |
+| 🔁 **Autoplay** | Automatically advance to the next episode when one finishes |
+| 💾 **Progress tracking** | Listening position saved every 5 seconds; offline saves queued and replayed on reconnect |
+| 📴 **Offline caching** | Episode audio downloaded in background; seamless switch to local copy on network loss; progress bar shows cached vs. listened portions |
+| 🔖 **Bookmarks** | Bookmark episodes with a single tap; search saved episodes |
+| 🤝 **Collaborative filtering** | Surface episodes liked by users with similar taste |
+| 📤 **Share & send** | Share any episode via Telegram's share sheet, or send the audio file directly to your own chat |
+| 🎙️ **AI dubbing** | Hear any podcast in your language with the original speaker's voice cloned (see below) |
+| 🎤 **Karaoke subtitles** | CC button reveals a live subtitle panel with karaoke-style cue highlighting; tap "Transcript ↓" for fullscreen scrollable transcript; tap any line to seek |
+
+---
 
 ## AI Dubbing
 
-The centrepiece feature. Tap **🎙 Dub in…**, pick a language, and Buzz-Bot re-records the episode with every speaker's voice cloned into the target language. The dubbed MP3 is stored on Cloudflare R2 and playable directly in the player or sendable to Telegram chat.
+The centrepiece feature. Tap **🎙 Dub** in…, pick a language, and Buzz-Bot re-records the episode with every speaker's voice cloned into the target language. The dubbed MP3 is stored on Cloudflare R2 and playable directly in the player or sendable to Telegram chat.
 
 ### Supported Languages
 
-English · Spanish · French · German · Italian · Portuguese · Polish · Turkish · Russian · Dutch · Czech · Chinese · Japanese · Hungarian · Korean
+🇺🇸 English · 🇪🇸 Spanish · 🇫🇷 French · 🇩🇪 German · 🇮🇹 Italian · 🇵🇹 Portuguese · 🇵🇱 Polish · 🇹🇷 Turkish · 🇷🇺 Russian · 🇳🇱 Dutch · 🇨🇿 Czech · 🇨🇳 Chinese · 🇯🇵 Japanese · 🇭🇺 Hungarian · 🇰🇷 Korean
+
 
 ### How It Works
 
