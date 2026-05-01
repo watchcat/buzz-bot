@@ -26,16 +26,18 @@
                      "--secondary-bg"      (get p "secondary_bg_color")}]
         (when v (.setProperty root k v))))))
 
-(defn- check-deep-link []
+(defn- extract-episode-id []
   (let [unsafe (some-> (tg) (.-initDataUnsafe))
         start  (when unsafe (.-start_param unsafe))
-        url-ep (-> js/window .-location .-search js/URLSearchParams. (.get "episode"))
-        ep-id  (or url-ep
-                   (when (and start (str/starts-with? start "ep_"))
-                     (subs start 3)))]
-    (if ep-id
-      (rf/dispatch [::events/navigate :player {:episode-id ep-id}])
-      (rf/dispatch [::events/navigate :inbox]))))
+        url-ep (-> js/window .-location .-search js/URLSearchParams. (.get "episode"))]
+    (or url-ep
+        (when (and start (str/starts-with? start "ep_"))
+          (subs start 3)))))
+
+(defn- check-deep-link []
+  (if-let [ep-id (extract-episode-id)]
+    (rf/dispatch [::events/navigate :player {:episode-id ep-id}])
+    (rf/dispatch [::events/navigate :inbox])))
 
 (defn- restore-audio-state! []
   (let [ep-id (js/localStorage.getItem "buzz-last-episode-id")
@@ -49,16 +51,24 @@
     (when ep-id
       (rf/dispatch-sync [::events/init-audio-meta ep-id meta rate auto?]))))
 
-(defn- show-already-open! []
-  (let [div (js/document.createElement "div")]
-    (set! (.-className div) "single-instance-overlay")
-    (set! (.-innerHTML div)
-      (str "<div class=\"single-instance-msg\">"
-           "<div class=\"single-instance-icon\">📻</div>"
-           "<strong>Already open</strong>"
-           "<p>Buzz-Bot is already running in another window.</p>"
-           "</div>"))
-    (.appendChild js/document.body div)))
+(defn- forward-deep-link!
+  "Send deep link to the running instance via BroadcastChannel, then close."
+  []
+  (when-let [ep-id (extract-episode-id)]
+    (let [ch (js/BroadcastChannel. "buzz-bot")]
+      (.postMessage ch #js{:type "navigate" :episodeId ep-id})
+      (.close ch)))
+  (.close (tg)))
+
+(defn- listen-deep-links!
+  "Listen for navigation requests from new instances that couldn't acquire the lock."
+  []
+  (let [ch (js/BroadcastChannel. "buzz-bot")]
+    (set! (.-onmessage ch)
+      (fn [e]
+        (let [data (js->clj (.-data e) :keywordize-keys true)]
+          (when (and (= (:type data) "navigate") (:episodeId data))
+            (rf/dispatch [::events/navigate :player {:episode-id (:episodeId data)}])))))))
 
 (defn- error-boundary []
   (let [err (r/atom nil)]
@@ -111,6 +121,7 @@
   (register-sw!)
   (restore-audio-state!)
   (audio/init!)
+  (listen-deep-links!)
   (check-deep-link)
   (rdom/render [error-boundary [layout/root]] (js/document.getElementById "app")))
 
@@ -122,5 +133,5 @@
       (fn [lock]
         (if lock
           (do (mount!) (js/Promise. (fn [_ _])))
-          (show-already-open!))))
+          (forward-deep-link!))))
     (mount!)))

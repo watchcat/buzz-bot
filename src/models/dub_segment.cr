@@ -50,7 +50,11 @@ module DubSegment
       AppDB.pool.exec(
         "INSERT INTO dub_segment_translations (segment_id, language, translated_text, synth_r2_key, synth_duration, synth_start_sec)
          VALUES ($1, $2, $3, $4, $5, $6)
-         ON CONFLICT (segment_id, language) DO NOTHING",
+         ON CONFLICT (segment_id, language) DO UPDATE SET
+           translated_text = EXCLUDED.translated_text,
+           synth_r2_key    = EXCLUDED.synth_r2_key,
+           synth_duration  = EXCLUDED.synth_duration,
+           synth_start_sec = EXCLUDED.synth_start_sec",
         seg_id, language, translated, synth_r2_key, synth_duration, synth_start_sec
       )
     end
