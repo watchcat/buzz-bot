@@ -2,8 +2,8 @@
 
 **Podcast player for the AI epoch.** (Click image to view youtube demo)
 
-<a href="https://youtu.be/RsF0nrvOC88">
-   <img width="50%" src="./docs/pics/Image.png"/>
+<a href="https://youtu.be/RsF0nrvOC88" target="_blank">
+   <img width="30%" src="./docs/pics/Image.png"/>
 </a>
 
 
