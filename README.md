@@ -1,6 +1,6 @@
 # Buzz-Bot
 
-**[Podcast player for the AI epoch.](https://youtu.be/RsF0nrvOC88){:target="_blank"}**
+**[Podcast player for the AI epoch.](https://youtu.be/RsF0nrvOC88)**
 
 <p float="left">
   <a href="https://youtu.be/RsF0nrvOC88" target="_blank" rel="noopener noreferrer">
