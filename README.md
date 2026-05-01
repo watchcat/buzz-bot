@@ -1,4 +1,17 @@
-dub-pipeline){:target="_blank" rel="noopener noreferrer"}
+# Buzz-Bot
+
+**Podcast player for the AI epoch.**
+
+<p float="left">
+  <a href="https://youtu.be/RsF0nrvOC88" target="_blank" rel="noopener noreferrer">
+    <img width="280" src="./docs/pics/Image.png" style="float: left; margin-right: 20px; border-radius: 10px; box-shadow: 0 4px 12px rgba(0,0,0,0.15);"/>
+  </a>
+
+  Listen to any podcast, then tap one button and hear it in your language — same voices, different words. 
+  
+  Buzz-Bot runs inside Telegram as a Mini App and uses a cloud GPU pipeline (RunPod Serverless) to transcribe, translate, and re-synthesize every speaker's voice.
+  
+  To view AI pipeline for podcast dubbing workflow check this [repository](https://github.com/watchcat/dub-pipeline){:target="_blank" rel="noopener noreferrer"}
 </p>
 
 <br clear="left"/>
@@ -32,9 +45,9 @@ The centrepiece feature. Tap **🎙 Dub** in…, pick a language, and Buzz-Bot r
 
 🇺🇸 English · 🇪🇸 Spanish · 🇫🇷 French · 🇩🇪 German · 🇮🇹 Italian · 🇵🇹 Portuguese · 🇵🇱 Polish · 🇹🇷 Turkish · 🇷🇺 Russian · 🇳🇱 Dutch · 🇨🇿 Czech · 🇨🇳 Chinese · 🇯🇵 Japanese · 🇭🇺 Hungarian · 🇰🇷 Korean
 
-
 ### How It Works
 
+*(Add your workflow explanation here)*
 ```
 User taps "🎙 Dub in…" → picks language
          │
