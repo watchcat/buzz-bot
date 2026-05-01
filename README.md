@@ -1,9 +1,9 @@
 # Buzz-Bot
 
-**[Podcast player for the AI epoch.](https://youtu.be/RsF0nrvOC88)**
+**[Podcast player for the AI epoch.](https://youtu.be/7-CBlhAPGYs)**
 
 <p float="left">
-  <a href="https://youtu.be/RsF0nrvOC88" target="_blank" rel="noopener noreferrer">
+  <a href="https://youtu.be/7-CBlhAPGYs" target="_blank" rel="noopener noreferrer">
     <img width="280" src="./docs/pics/Image.png" style="float: left; margin-right: 20px; border-radius: 10px; box-shadow: 0 4px 12px rgba(0,0,0,0.15);"/>
   </a>
 
