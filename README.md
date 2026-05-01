@@ -1,12 +1,12 @@
 # Buzz-Bot
 
-**Podcast player for the AI epoch.**
-
-Click image to view youtube demo:
+**Podcast player for the AI epoch.** (Click image to view youtube demo)
 
 <a href="https://youtu.be/RsF0nrvOC88">
    <img width="50%" src="./docs/pics/Image.png"/>
 </a>
+
+
 
 Listen to any podcast, then tap one button and hear it in your language — same voices, different words. Buzz-Bot runs inside Telegram as a Mini App and uses a cloud GPU pipeline (RunPod Serverless) to transcribe, translate, and re-synthesize every speaker's voice.
 To view AI pipeline for podcast dubbing workflow check this [repository](https://github.com/watchcat/dub-pipeline)
