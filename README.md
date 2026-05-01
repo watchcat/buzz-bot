@@ -1,6 +1,6 @@
 # Buzz-Bot
 
-**Podcast player for the AI epoch.**
+**Podcast player for the AI epoch.** __click image to view youtube review__
 
 <p float="left">
   <a href="https://youtu.be/RsF0nrvOC88" target="_blank" rel="noopener noreferrer">
@@ -130,26 +130,77 @@ Vocal separation (Demucs, ~2 min) and its outputs are stored in R2 under `dub-st
 ## Tech Stack
 
 | Layer | Technology |
-|---|---|
-| Language | [Crystal](https://crystal-lang.org/) >= 1.9 |
-| Web server | [Kemal](https://kemalcr.com/) |
-| Telegram bot | [Tourmaline](https://github.com/protoncr/tourmaline) |
-| Database | PostgreSQL ([Neon](https://neon.tech)) via crystal-pg |
-| Frontend | ClojureScript · [re-frame](https://github.com/day8/re-frame) · [Reagent](https://reagent-project.github.io/) |
-| Frontend build | [shadow-cljs](https://github.com/thheller/shadow-cljs) |
-| Service Worker | Offline audio cache (Range-aware) + offline write queue |
-| Job dispatch | [RunPod Serverless](https://www.runpod.io/serverless-gpu) API v2 |
-| Stem separation | [Demucs](https://github.com/facebookresearch/demucs) `htdemucs_ft` (CUDA) |
-| Speech-to-text | [WhisperX](https://github.com/m-bain/whisperX) large-v3 (CUDA) |
-| Speaker diarization | [pyannote.audio](https://github.com/pyannote/pyannote-audio) 3.x (CUDA) |
-| Translation | [Gemini Flash](https://ai.google.dev/) (Google AI) |
-| Text-to-speech | [VoxCPM2](https://huggingface.co/openbmb/VoxCPM2) (voice cloning) |
-| Audio processing | ffmpeg (Demucs stem output, final mix) |
-| Dubbed audio storage | [Cloudflare R2](https://developers.cloudflare.com/r2/) |
-| Deployment | Docker · k3s on Hetzner (via [hetzner-k3s](https://github.com/vitobotta/hetzner-k3s)) |
-| Ingress | Traefik v3 (Helm, DaemonSet, hostPorts 80/443) |
-| TLS | cert-manager + Let's Encrypt |
+|-------|------------|
+| 🌐 **Language** | [Crystal](https://crystal-lang.org/) >= 1.9 |
+| ⚡ **Web server** | [Kemal](https://kemalcr.com/) |
+| 💬 **Telegram bot** | [Tourmaline](https://github.com/protoncr/tourmaline) |
+| 🗄️ **Database** | PostgreSQL ([Neon](https://neon.tech)) via crystal-pg |
+| 🎨 **Frontend** | ClojureScript · [re-frame](https://github.com/day8/re-frame) · [Reagent](https://reagent-project.github.io/) |
+| 🔨 **Frontend build** | [shadow-cljs](https://github.com/thheller/shadow-cljs) |
+| 📱 **Service Worker** | Offline audio cache (Range-aware) + offline write queue |
+| 🚀 **Job dispatch** | [RunPod Serverless](https://www.runpod.io/serverless-gpu) API v2 |
+| 🎤 **Stem separation** | [Demucs](https://github.com/facebookresearch/demucs) htdemucs_ft (CUDA) |
+| 🎧 **Speech-to-text** | [WhisperX](https://github.com/m-bain/whisperX) large-v3 (CUDA) |
+| 🔊 **Speaker diarization** | [pyannote.audio](https://github.com/pyannote/pyannote-audio) 3.x (CUDA) |
+| 🌏 **Translation** | [Gemini Flash](https://ai.google.dev/) (Google AI) |
+| 🗣️ **Text-to-speech** | [VoxCPM2](https://huggingface.co/openbmb/VoxCPM2) (voice cloning) |
+| 🎛️ **Audio processing** | ffmpeg (stem output, final mix) |
+| 📦 **Dubbed audio storage** | [Cloudflare R2](https://developers.cloudflare.com/r2/) |
+| 🐳 **Deployment** | Docker · k3s on Hetzner (via [hetzner-k3s](https://github.com/vitobotta/hetzner-k3s)) |
+| 🌊 **Ingress** | Traefik v3 (Helm, DaemonSet, hostPorts 80/443) |
+| 🔒 **TLS** | cert-manager + Let's Encrypt |
 
+---
+
+## Environment Variables
+
+### buzz-bot (k8s secret `buzz-bot-env`)
+
+| Variable | Description |
+|----------|-------------|
+| `BOT_TOKEN` | Token from [@BotFather](https://t.me/BotFather) |
+| `WEBHOOK_URL` | Full public URL to `/webhook` |
+| `DATABASE_URL` | PostgreSQL connection string |
+| `PORT` | Port Kemal listens on (default: `3000`) |
+| `BASE_URL` | Public base URL — used for the Mini App button |
+| `TELEGRAM_API_SERVER` | *(optional)* Self-hosted Bot API URL (enables >50 MB file transfers) |
+| `ADMIN_USER_IDS` | Comma-separated Telegram user IDs for `/flag` command |
+| `RUNPOD_API_KEY` | RunPod API key for dispatching dub jobs |
+| `RUNPOD_ENDPOINT_ID` | RunPod Serverless endpoint ID (dub-pipeline) |
+| `DUB_CALLBACK_BASE` | Base URL RunPod posts results back to (e.g. `https://app.buzz-bot.top`) |
+
+### dub-pipeline (RunPod environment variables)
+
+| Variable | Description |
+|----------|-------------|
+| `PROGRESS_URL` | `https://app.buzz-bot.top/internal/dub_progress` |
+| `R2_ENDPOINT` | Cloudflare R2 S3-compatible endpoint |
+| `R2_ACCESS_KEY_ID` | R2 API token key ID |
+| `R2_SECRET_ACCESS_KEY` | R2 API token secret |
+| `R2_BUCKET` | R2 bucket name |
+| `R2_PUBLIC_URL` | Public R2 URL (e.g. `https://pub-xxx.r2.dev`) |
+| `GEMINI_API_KEY` | Google Gemini API key (translation) |
+| `HF_TOKEN` | HuggingFace token — required for pyannote models |
+| `DEMUCS_MODEL` | `htdemucs_ft` |
+| `WHISPER_MODEL` | `large-v3` |
+| `BG_VOLUME_DEFAULT` | Background music volume (default: `0.15`) |
+
+---
+
+## Feature Flags
+
+Runtime toggleable switches stored in PostgreSQL; toggled via the bot `/flag` command (admin only).
+
+| Flag | Default | Description |
+|------|--------|-------------|
+| `offline_caching` | ✅ true | Download and cache episode audio for offline playback |
+| `stall_recovery` | ✅ true | Auto-recover from network stalls and audio errors |
+| `img_proxy` | ✅ true | Route external artwork through `/img-proxy` |
+
+```bash
+/flag list                        # Show all flags & current values
+/flag offline_caching off         # Disable a flag
+/flag stall_recovery on           # Enable a flag
 ---
 
 ## Environment Variables
