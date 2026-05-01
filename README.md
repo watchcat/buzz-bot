@@ -2,7 +2,7 @@
 
 **Podcast player for the AI epoch.**
 
-[Check video:]((https://youtu.be/RsF0nrvOC88) 
+![Check video:]((https://youtu.be/RsF0nrvOC88) 
 ![Buzz-Bot](./docs/pics/Image.png)
 
 Listen to any podcast, then tap one button and hear it in your language — same voices, different words. Buzz-Bot runs inside Telegram as a Mini App and uses a cloud GPU pipeline (RunPod Serverless) to transcribe, translate, and re-synthesize every speaker's voice.
