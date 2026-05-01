@@ -11,7 +11,7 @@
 
   Buzz-Bot runs inside Telegram as a Mini App and uses a cloud GPU pipeline (RunPod Serverless) to transcribe, translate, and re-synthesize every speaker's voice.
 
-  To view AI pipeline for podcast dubbing workflow check this [repository](https://github.com/watchcat/dub-pipeline){:target="_blank" rel="noopener noreferrer"}
+  To view AI pipeline for podcast dubbing workflow check this [repository](https://github.com/watchcat/dub-pipeline)
 </p>
 
 <br clear="left"/>
