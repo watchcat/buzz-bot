@@ -115,6 +115,19 @@ LIMIT $2
 - Cold start solved: episodes with no likes still get vector-based recs
 - Graceful fallback: no embedding = no vector recs, no likes = no collab recs
 
+## Error Handling
+
+### RunPod failure to embed
+
+If RunPod returns an error or times out for a batch:
+
+- **Batch job:** Log the failure, skip those episodes. They'll be retried on the next hourly run since they still have no row in `episode_embeddings`.
+- **Transcript upgrade (post-dub):** Log and leave the existing baseline embedding in place. The episode still gets vector recommendations from its title+description embedding — just lower quality. No user-facing error.
+- **Malformed text (empty title+description, unparseable HTML):** Skip the episode, log a warning. Don't insert a zero-vector.
+- **Partial batch failure:** RunPod returns results for episodes it could embed. Upsert those, skip the rest. Missing ones get retried next cycle.
+
+The system is never worse than today — if embedding fails entirely, the recommendation query falls back to collaborative filtering only (the `FULL OUTER JOIN` handles missing vector_recs gracefully).
+
 ## Internal Endpoints
 
 ### `POST /internal/embed`
@@ -124,6 +137,19 @@ Triggered by k8s CronJob (hourly). Finds un-embedded episodes, batches them, dis
 ### `POST /internal/embeddings_result`
 
 Callback from RunPod. Receives batch of (episode_id, vector) pairs, upserts into `episode_embeddings`.
+
+### Authentication
+
+Existing `/internal/*` endpoints (dub_result, dub_progress) have no auth — they rely on cluster-network isolation. However, RunPod callbacks originate from outside the cluster.
+
+For the new endpoints, add a shared secret token:
+
+- New env var `INTERNAL_WEBHOOK_SECRET` in `buzz-bot-env`
+- RunPod embedding worker sends it as `Authorization: Bearer <token>` header in callbacks
+- `POST /internal/embeddings_result` validates the token; rejects with 401 if missing/wrong
+- `POST /internal/embed` is only called by the in-cluster CronJob — no auth needed (same as existing pattern)
+
+This same pattern should be backported to `/internal/dub_result` and `/internal/dub_progress` in a follow-up, but that's out of scope for this spec.
 
 ## What Doesn't Change
 
