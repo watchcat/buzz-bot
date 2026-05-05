@@ -1,6 +1,7 @@
 require "kemal"
 require "./routes/dub_result"
 require "./routes/dub_progress"
+require "./routes/embeddings"
 
 module WebServer
   def self.setup
@@ -43,6 +44,7 @@ module WebServer
     Web::Routes::Flags.register
     Web::Routes::DubResult.register
     Web::Routes::DubProgress.register
+    Web::Routes::Embeddings.register
   end
 
   def self.run(port : Int32)
