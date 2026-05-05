@@ -2,6 +2,7 @@ require "json"
 require "../../models/dubbed_episode"
 require "../../models/dub_segment"
 require "../../models/episode"
+require "../../models/episode_embedding"
 require "../../models/feed"
 
 module Web::Routes::DubResult
@@ -55,6 +56,44 @@ module Web::Routes::DubResult
           Log.info { "DubResult[#{result.dub_id}]: persisted #{segs.size} segments (lang=#{lang})" }
         rescue ex
           Log.warn { "DubResult[#{result.dub_id}]: segment persist failed (ep=#{ep_id} lang=#{lang}) — #{ex.message}" }
+        end
+      end
+
+      # Upgrade embedding with transcript if embed endpoint is configured.
+      if (embed_eid = Config.embed_endpoint_id) && (ep_id = result.episode_id) &&
+         (segs = result.segments) && !segs.empty?
+        if (ep = Episode.find(ep_id))
+          transcript_text = segs.map { |s| s["text"]?.try(&.as_s?) || "" }.join(" ").strip
+          unless transcript_text.empty?
+            spawn do
+              begin
+                text = "#{ep.title}\n\n#{transcript_text}"
+                callback_url = "#{Config.dub_callback_base}/internal/embeddings_result"
+                secret = Config.internal_webhook_secret
+                runpod_input = {
+                  episodes:     [{id: ep_id, text: text}],
+                  callback_url: callback_url,
+                  secret:       secret,
+                  source:       "transcript",
+                }.to_json
+                runpod_payload = {input: JSON.parse(runpod_input)}.to_json
+                runpod_client = HTTP::Client.new(URI.parse("https://api.runpod.ai"))
+                runpod_client.connect_timeout = 5.seconds
+                runpod_client.read_timeout = 10.seconds
+                runpod_client.post(
+                  "/v2/#{embed_eid}/run",
+                  headers: HTTP::Headers{
+                    "Authorization" => "Bearer #{Config.runpod_api_key}",
+                    "Content-Type"  => "application/json",
+                  },
+                  body: runpod_payload
+                )
+                Log.info { "DubResult[#{result.dub_id}]: dispatched transcript embedding upgrade for ep=#{ep_id}" }
+              rescue ex
+                Log.warn { "DubResult[#{result.dub_id}]: embed upgrade failed — #{ex.message}" }
+              end
+            end
+          end
         end
       end
 
