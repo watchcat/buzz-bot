@@ -69,4 +69,12 @@ module Config
   def self.r2_public_url : String
     ENV["R2_PUBLIC_URL"]? || raise "R2_PUBLIC_URL not set"
   end
+
+  def self.embed_endpoint_id : String?
+    ENV["EMBED_ENDPOINT_ID"]?.presence
+  end
+
+  def self.internal_webhook_secret : String?
+    ENV["INTERNAL_WEBHOOK_SECRET"]?.presence
+  end
 end
