@@ -45,8 +45,16 @@ A new RunPod Serverless endpoint, separate from dub-pipeline.
 - Supports batches up to ~100 episodes per request
 
 **Input text construction:**
-- Baseline: `"{title}\n\n{description}"` (HTML-stripped)
-- Transcript upgrade: `"{title}\n\n{transcript}"` (truncated to model's 512 token window)
+- Baseline: `"{title}\n\n{description}"` (HTML-stripped, fits in single 512-token pass)
+- Transcript upgrade: `"{title}\n\n{transcript}"` — chunked and mean-pooled (see below)
+
+**Long transcript handling (chunk and mean-pool):**
+- Split transcript into 512-token chunks with ~50-token overlap
+- Prepend episode title to each chunk for context grounding
+- Embed each chunk independently
+- Average (mean-pool) all chunk vectors into a single 384-dim embedding
+- This handles any episode length (1-hour podcast ≈ 8,000–12,000 words ≈ 25–35 chunks)
+- Mean-pooling preserves document-level topic signal well empirically
 
 ## Embedding Generation Triggers
 
