@@ -1,0 +1,4 @@
+runpod==1.6.2
+sentence-transformers==3.0.1
+torch==2.3.1
+requests==2.32.3
