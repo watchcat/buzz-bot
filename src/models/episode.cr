@@ -172,24 +172,41 @@ struct Episode
     episodes = [] of Episode
     AppDB.pool.query_each(
       <<-SQL,
-        WITH liked_users AS (
-          SELECT user_id
-          FROM user_episodes
-          WHERE episode_id = $1 AND liked = TRUE
+        WITH vector_recs AS (
+          SELECT e.id, 1 - (ee.embedding <=> target.embedding) AS sim_score
+          FROM episode_embeddings ee
+          JOIN episodes e ON e.id = ee.episode_id
+          CROSS JOIN episode_embeddings target
+          WHERE target.episode_id = $1
+            AND ee.episode_id != $1
+          ORDER BY ee.embedding <=> target.embedding
+          LIMIT 20
         ),
-        candidates AS (
-          SELECT ue.episode_id, COUNT(*) AS score
+        collab_recs AS (
+          SELECT ue.episode_id AS id, COUNT(*)::float AS collab_score
           FROM user_episodes ue
-          JOIN liked_users lu ON ue.user_id = lu.user_id
-          WHERE ue.liked = TRUE AND ue.episode_id != $1
+          WHERE ue.liked = TRUE
+            AND ue.user_id IN (
+              SELECT user_id FROM user_episodes
+              WHERE episode_id = $1 AND liked = TRUE
+            )
+            AND ue.episode_id != $1
           GROUP BY ue.episode_id
-          ORDER BY score DESC
-          LIMIT $2
+        ),
+        combined AS (
+          SELECT
+            COALESCE(v.id, c.id) AS id,
+            COALESCE(v.sim_score, 0) * 0.7
+              + COALESCE(c.collab_score, 0) / GREATEST((SELECT MAX(collab_score) FROM collab_recs), 1) * 0.3
+              AS score
+          FROM vector_recs v
+          FULL OUTER JOIN collab_recs c ON v.id = c.id
         )
         SELECT e.id, e.feed_id, e.guid, e.title, e.description, e.audio_url, e.duration_sec, e.published_at, e.image_url
         FROM episodes e
-        JOIN candidates c ON e.id = c.episode_id
-        ORDER BY c.score DESC
+        JOIN combined cb ON e.id = cb.id
+        ORDER BY cb.score DESC
+        LIMIT $2
       SQL
       episode_id, limit
     ) { |rs| episodes << from_rs(rs) }
