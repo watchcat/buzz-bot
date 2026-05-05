@@ -1,0 +1,26 @@
+# k8s/embed-cronjob.yaml
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: embed-trigger
+  namespace: buzz-bot
+spec:
+  schedule: "0 * * * *"  # Every hour
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+          - name: trigger
+            image: curlimages/curl:8.7.1
+            command:
+            - /bin/sh
+            - -c
+            - |
+              curl -s -X POST http://buzz-bot.buzz-bot.svc.cluster.local:3000/internal/embed \
+                -H "Content-Type: application/json" \
+                -w "\nHTTP %{http_code}\n"
+          restartPolicy: OnFailure
