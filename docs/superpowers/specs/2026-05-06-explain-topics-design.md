@@ -30,6 +30,10 @@ The RunPod worker (`embed-worker/handler.py`) already loads `all-MiniLM-L6-v2`.
 3. KeyBERT params: `keyphrase_ngram_range=(1, 2)`, `top_n=10`, `use_mmr=True`, `diversity=0.3` — MMR (Maximal Marginal Relevance) ensures diverse topics rather than near-duplicates
 4. Callback payload changes from `{episode_id, embedding}` to `{episode_id, embedding, topics}`
 
+### Image Versioning
+
+Add a `VERSION` file to `embed-worker/` (e.g., `1.1`). The Docker image is tagged with this version (`embed-worker:1.1`) instead of `:latest`. To deploy a new version to RunPod: bump `VERSION`, build, push, and select the new tag in the RunPod endpoint settings. No more ambiguous `:latest` overwrites.
+
 ### Backfill
 
 Episodes already embedded without topics: extend the hourly embed CronJob to also re-process episodes that have embeddings but empty topics array. One-time backfill, then goes idle.
