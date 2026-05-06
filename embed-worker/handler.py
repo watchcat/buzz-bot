@@ -4,12 +4,21 @@ import runpod
 import requests
 import numpy as np
 from sentence_transformers import SentenceTransformer
+from keybert import KeyBERT
 
 MODEL_NAME = os.environ.get("MODEL_NAME", "sentence-transformers/all-MiniLM-L6-v2")
 MAX_TOKENS = 512
 OVERLAP_TOKENS = 50
 
 model = None
+kw_model = None
+
+def get_kw_model():
+    global kw_model
+    if kw_model is None:
+        kw_model = KeyBERT(model=get_model())
+    return kw_model
+
 
 def get_model():
     global model
@@ -55,6 +64,19 @@ def embed_episode(episode: dict, title_prefix: str = "") -> list[float]:
     return mean_vec.tolist()
 
 
+def extract_topics(text: str, top_n: int = 10) -> list[str]:
+    """Extract diverse keyphrases from text using KeyBERT + MMR."""
+    km = get_kw_model()
+    keywords = km.extract_keywords(
+        text,
+        keyphrase_ngram_range=(1, 2),
+        top_n=top_n,
+        use_mmr=True,
+        diversity=0.3,
+    )
+    return [kw for kw, _score in keywords]
+
+
 def handler(job):
     input_data = job["input"]
     episodes = input_data["episodes"]
@@ -66,7 +88,8 @@ def handler(job):
     for ep in episodes:
         try:
             vector = embed_episode(ep)
-            results.append({"id": ep["id"], "vector": vector})
+            topics = extract_topics(ep["text"])
+            results.append({"id": ep["id"], "vector": vector, "topics": topics})
         except Exception as e:
             print(f"Failed to embed episode {ep.get('id')}: {e}")
             continue
