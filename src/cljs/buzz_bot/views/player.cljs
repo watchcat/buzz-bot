@@ -132,6 +132,33 @@
         "Transcript ↓"]]]
      (when transcript? [transcript-modal episode-id])]))
 
+(defn- recs-section [recs]
+  (let [show-scores? (r/atom false)]
+    (fn [recs]
+      [:div.recs-section
+       [:div.recs-header
+        {:style {:display "flex" :justify-content "space-between" :align-items "center"}}
+        [:h3.recs-title "Listeners also liked"]
+        [:span.recs-scores-toggle
+         {:on-click #(swap! show-scores? not)
+          :style {:cursor "pointer" :font-size "0.75rem" :opacity 0.5}}
+         (if @show-scores? "Hide scores" "Show scores")]]
+       [:ul.recs-list
+        (for [rec recs]
+          ^{:key (:id rec)}
+          [:li.rec-item
+           {:on-click #(rf/dispatch [::events/navigate :player {:episode-id (:id rec)}])}
+           [:div.rec-info
+            [:span.rec-feed  (:feed_title rec)]
+            [:span.rec-title (:title rec)]
+            (when @show-scores?
+              [:span.rec-scores
+               {:style {:font-size "0.65rem" :opacity 0.5 :font-family "monospace"}}
+               (str "vector: " (.toFixed (or (:vector_score rec) 0) 2)
+                    " | collab: " (.toFixed (or (:collab_score rec) 0) 2)
+                    " | combined: " (.toFixed (or (:score rec) 0) 2))])]
+           [:span.rec-play "▶"]])]])))
+
 (defn view []
   (let [share-open?    (r/atom false)
         share-msg      (r/atom "")
@@ -328,27 +355,4 @@
                  [:div.send-result.error "Something went wrong. Please try again."])]
 
               (when (seq recs)
-                (let [show-scores? (r/atom false)]
-                  (fn []
-                    [:div.recs-section
-                     [:div.recs-header
-                      [:h3.recs-title "Listeners also liked"]
-                      [:span.recs-scores-toggle
-                       {:on-click #(swap! show-scores? not)
-                        :style {:cursor "pointer" :font-size "0.75rem" :opacity 0.5}}
-                       (if @show-scores? "Hide scores" "Show scores")]]
-                     [:ul.recs-list
-                      (for [rec recs]
-                        ^{:key (:id rec)}
-                        [:li.rec-item
-                         {:on-click #(rf/dispatch [::events/navigate :player {:episode-id (:id rec)}])}
-                         [:div.rec-info
-                          [:span.rec-feed  (:feed_title rec)]
-                          [:span.rec-title (:title rec)]
-                          (when @show-scores?
-                            [:span.rec-scores
-                             {:style {:font-size "0.65rem" :opacity 0.5 :font-family "monospace"}}
-                             (str "vector: " (.toFixed (:vector_score rec) 2)
-                                  " | collab: " (.toFixed (:collab_score rec) 2)
-                                  " | combined: " (.toFixed (:score rec) 2))])]
-                         [:span.rec-play "▶"]])]])))]]))))))
+                [recs-section recs])]]))))))
