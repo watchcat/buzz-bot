@@ -13,18 +13,18 @@ OVERLAP_TOKENS = 50
 model = None
 kw_model = None
 
-def get_kw_model():
-    global kw_model
-    if kw_model is None:
-        kw_model = KeyBERT(model=get_model())
-    return kw_model
-
-
 def get_model():
     global model
     if model is None:
         model = SentenceTransformer(MODEL_NAME)
     return model
+
+
+def get_kw_model():
+    global kw_model
+    if kw_model is None:
+        kw_model = KeyBERT(model=get_model())
+    return kw_model
 
 
 def chunk_text(text: str, max_tokens: int = MAX_TOKENS, overlap: int = OVERLAP_TOKENS) -> list[str]:
@@ -66,6 +66,8 @@ def embed_episode(episode: dict, title_prefix: str = "") -> list[float]:
 
 def extract_topics(text: str, top_n: int = 10) -> list[str]:
     """Extract diverse keyphrases from text using KeyBERT + MMR."""
+    if not text or not text.strip():
+        return []
     km = get_kw_model()
     keywords = km.extract_keywords(
         text,
