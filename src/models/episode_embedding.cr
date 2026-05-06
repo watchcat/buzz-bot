@@ -4,7 +4,7 @@ require "../db"
 module EpisodeEmbedding
   def self.upsert(episode_id : Int64, embedding : Array(Float64), source : String, topics : Array(String) = [] of String)
     vector_str = "[#{embedding.join(",")}]"
-    topics_literal = "{#{topics.map { |t| "\"#{t.gsub("\"", "\\\"")}\"" }.join(",")}}"
+    topics_literal = "{#{topics.map { |t| "\"#{t.gsub("\\", "\\\\").gsub("\"", "\\\"")}\"" }.join(",")}}"
     AppDB.pool.exec(
       <<-SQL,
         INSERT INTO episode_embeddings (episode_id, embedding, source, topics, updated_at)
