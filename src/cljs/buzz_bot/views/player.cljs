@@ -328,14 +328,27 @@
                  [:div.send-result.error "Something went wrong. Please try again."])]
 
               (when (seq recs)
-                [:div.recs-section
-                 [:h3.recs-title "Listeners also liked"]
-                 [:ul.recs-list
-                  (for [rec recs]
-                    ^{:key (:id rec)}
-                    [:li.rec-item
-                     {:on-click #(rf/dispatch [::events/navigate :player {:episode-id (:id rec)}])}
-                     [:div.rec-info
-                      [:span.rec-feed  (:feed_title rec)]
-                      [:span.rec-title (:title rec)]]
-                     [:span.rec-play "▶"]])]])]]))))))
+                (let [show-scores? (r/atom false)]
+                  (fn []
+                    [:div.recs-section
+                     [:div.recs-header
+                      [:h3.recs-title "Listeners also liked"]
+                      [:span.recs-scores-toggle
+                       {:on-click #(swap! show-scores? not)
+                        :style {:cursor "pointer" :font-size "0.75rem" :opacity 0.5}}
+                       (if @show-scores? "Hide scores" "Show scores")]]
+                     [:ul.recs-list
+                      (for [rec recs]
+                        ^{:key (:id rec)}
+                        [:li.rec-item
+                         {:on-click #(rf/dispatch [::events/navigate :player {:episode-id (:id rec)}])}
+                         [:div.rec-info
+                          [:span.rec-feed  (:feed_title rec)]
+                          [:span.rec-title (:title rec)]
+                          (when @show-scores?
+                            [:span.rec-scores
+                             {:style {:font-size "0.65rem" :opacity 0.5 :font-family "monospace"}}
+                             (str "vector: " (.toFixed (:vector_score rec) 2)
+                                  " | collab: " (.toFixed (:collab_score rec) 2)
+                                  " | combined: " (.toFixed (:score rec) 2))])]
+                         [:span.rec-play "▶"]])]])))]]))))))

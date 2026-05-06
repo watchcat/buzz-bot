@@ -99,10 +99,10 @@ module Web::Routes::Episodes
       is_premium = user.subscribed?
       recs_raw = Episode.recommended_for_episode(episode_id)
 
-      rec_feeds_map = recs_raw.map(&.feed_id).uniq.each_with_object({} of Int64 => String) do |fid, h|
+      rec_feeds_map = recs_raw.map(&.episode.feed_id).uniq.each_with_object({} of Int64 => String) do |fid, h|
         h[fid] = Feed.find(fid).try(&.title) || ""
       end
-      recs = recs_raw.map { |r| Web::RecJson.new(r, rec_feeds_map[r.feed_id]? || "") }
+      recs = recs_raw.map { |r| Web::RecJson.new(r, rec_feeds_map[r.episode.feed_id]? || "") }
 
       ep_json = Web::EpisodeJson.new(
         episode,

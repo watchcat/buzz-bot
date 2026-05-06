@@ -168,8 +168,10 @@ struct Episode
     episodes
   end
 
-  def self.recommended_for_episode(episode_id : Int64, limit : Int32 = 5) : Array(Episode)
-    episodes = [] of Episode
+  record ScoredEpisode, episode : Episode, vector_score : Float64, collab_score : Float64, score : Float64
+
+  def self.recommended_for_episode(episode_id : Int64, limit : Int32 = 5) : Array(ScoredEpisode)
+    results = [] of ScoredEpisode
     AppDB.pool.query_each(
       <<-SQL,
         WITH vector_recs AS (
@@ -196,21 +198,27 @@ struct Episode
         combined AS (
           SELECT
             COALESCE(v.id, c.id) AS id,
+            COALESCE(v.sim_score, 0) AS vector_score,
+            COALESCE(c.collab_score, 0) / GREATEST((SELECT MAX(collab_score) FROM collab_recs), 1) AS collab_score,
             COALESCE(v.sim_score, 0) * 0.7
               + COALESCE(c.collab_score, 0) / GREATEST((SELECT MAX(collab_score) FROM collab_recs), 1) * 0.3
               AS score
           FROM vector_recs v
           FULL OUTER JOIN collab_recs c ON v.id = c.id
         )
-        SELECT e.id, e.feed_id, e.guid, e.title, e.description, e.audio_url, e.duration_sec, e.published_at, e.image_url
+        SELECT e.id, e.feed_id, e.guid, e.title, e.description, e.audio_url, e.duration_sec, e.published_at, e.image_url,
+               cb.vector_score, cb.collab_score, cb.score
         FROM episodes e
         JOIN combined cb ON e.id = cb.id
         ORDER BY cb.score DESC
         LIMIT $2
       SQL
       episode_id, limit
-    ) { |rs| episodes << from_rs(rs) }
-    episodes
+    ) do |rs|
+      ep = from_rs(rs)
+      results << ScoredEpisode.new(ep, rs.read(Float64), rs.read(Float64), rs.read(Float64))
+    end
+    results
   end
 
   def self.next_in_feed(feed_id : Int64, current_id : Int64, order : String = "desc") : Int64?
