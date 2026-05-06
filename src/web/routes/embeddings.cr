@@ -11,6 +11,7 @@ module Web::Routes::Embeddings
     include JSON::Serializable
     getter id : Int64
     getter vector : Array(Float64)
+    getter topics : Array(String) = [] of String
   end
 
   private struct CallbackPayload
@@ -30,9 +31,14 @@ module Web::Routes::Embeddings
       end
 
       episodes = EpisodeEmbedding.unembedded_episode_ids(100)
+
+      # If no new episodes to embed, backfill topics for existing embeddings
       if episodes.empty?
-        env.response.content_type = "application/json"
-        next({ok: true, dispatched: 0}.to_json)
+        episodes = EpisodeEmbedding.untopicked_episode_ids(100)
+        if episodes.empty?
+          env.response.content_type = "application/json"
+          next({ok: true, dispatched: 0}.to_json)
+        end
       end
 
       payload = episodes.map do |ep|
@@ -98,7 +104,7 @@ module Web::Routes::Embeddings
       count = 0
       payload.embeddings.each do |item|
         next if item.vector.size != 384
-        EpisodeEmbedding.upsert(item.id, item.vector, payload.source)
+        EpisodeEmbedding.upsert(item.id, item.vector, payload.source, item.topics)
         count += 1
       end
 
