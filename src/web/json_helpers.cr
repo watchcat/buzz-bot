@@ -48,22 +48,26 @@ module Web
   # Rec item (flat struct for recommendations in player response)
   struct RecJson
     include JSON::Serializable
-    property id           : Int64
-    property title        : String
-    property feed_id      : Int64
-    property feed_title   : String
-    property vector_score : Float64
-    property collab_score : Float64
-    property score        : Float64
+    property id              : Int64
+    property title           : String
+    property feed_id         : Int64
+    property feed_title      : String
+    property vector_score    : Float64
+    property collab_score    : Float64
+    property score           : Float64
+    property matching_topics : Array(String)
+    property total_matching  : Int32
 
     def initialize(scored : Episode::ScoredEpisode, feed_title : String)
-      @id           = scored.episode.id
-      @title        = scored.episode.title
-      @feed_id      = scored.episode.feed_id
-      @feed_title   = feed_title
-      @vector_score = scored.vector_score
-      @collab_score = scored.collab_score
-      @score        = scored.score
+      @id              = scored.episode.id
+      @title           = scored.episode.title
+      @feed_id         = scored.episode.feed_id
+      @feed_title      = feed_title
+      @vector_score    = scored.vector_score
+      @collab_score    = scored.collab_score
+      @score           = scored.score
+      @matching_topics = scored.matching_topics
+      @total_matching  = scored.total_matching
     end
   end
 

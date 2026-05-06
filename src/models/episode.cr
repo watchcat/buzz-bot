@@ -168,7 +168,7 @@ struct Episode
     episodes
   end
 
-  record ScoredEpisode, episode : Episode, vector_score : Float64, collab_score : Float64, score : Float64
+  record ScoredEpisode, episode : Episode, vector_score : Float64, collab_score : Float64, score : Float64, matching_topics : Array(String), total_matching : Int32
 
   def self.recommended_for_episode(episode_id : Int64, limit : Int32 = 5) : Array(ScoredEpisode)
     results = [] of ScoredEpisode
@@ -207,16 +207,25 @@ struct Episode
           FULL OUTER JOIN collab_recs c ON v.id = c.id
         )
         SELECT e.id, e.feed_id, e.guid, e.title, e.description, e.audio_url, e.duration_sec, e.published_at, e.image_url,
-               cb.vector_score, cb.collab_score, cb.score
+               cb.vector_score, cb.collab_score, cb.score,
+               COALESCE((src_ee.topics & rec_ee.topics)[:3], '{}') AS matching_topics,
+               COALESCE(array_length(src_ee.topics & rec_ee.topics, 1), 0)::int AS total_matching
         FROM episodes e
         JOIN combined cb ON e.id = cb.id
+        LEFT JOIN episode_embeddings rec_ee ON rec_ee.episode_id = e.id
+        LEFT JOIN episode_embeddings src_ee ON src_ee.episode_id = $1
         ORDER BY cb.score DESC
         LIMIT $2
       SQL
       episode_id, limit
     ) do |rs|
       ep = from_rs(rs)
-      results << ScoredEpisode.new(ep, rs.read(Float64), rs.read(Float64), rs.read(Float64))
+      vector_score = rs.read(Float64)
+      collab_score = rs.read(Float64)
+      score = rs.read(Float64)
+      matching_topics_raw = rs.read(Array(String))
+      total_matching = rs.read(Int32)
+      results << ScoredEpisode.new(ep, vector_score, collab_score, score, matching_topics_raw, total_matching)
     end
     results
   end
