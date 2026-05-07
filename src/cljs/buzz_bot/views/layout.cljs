@@ -7,7 +7,8 @@
             [buzz-bot.views.feeds :as feeds]
             [buzz-bot.views.episodes :as episodes]
             [buzz-bot.views.player :as player]
-            [buzz-bot.views.bookmarks :as bookmarks]))
+            [buzz-bot.views.bookmarks :as bookmarks]
+            [buzz-bot.views.topics :as topics]))
 
 (defn- tab-btn [label view-kw current-view]
   [:button.tab-btn
@@ -22,7 +23,8 @@
       [:nav.tab-bar
        [tab-btn "📥 Inbox"     :inbox     view]
        [tab-btn "📻 Feeds"     :feeds     view]
-       [tab-btn "🔖 Bookmarks" :bookmarks view]]
+       [tab-btn "🔖 Bookmarks" :bookmarks view]
+       [tab-btn "🏷 Topics"    :topics    view]]
       [:main#content
        (case view
          :inbox     [inbox/view]
@@ -30,5 +32,6 @@
          :episodes  [episodes/view]
          :player    [player/view]
          :bookmarks [bookmarks/view]
+         :topics    [topics/view]
          [:div.loading "Loading..."])]]
      [miniplayer/bar]]))
