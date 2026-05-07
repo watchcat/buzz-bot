@@ -152,11 +152,18 @@
             [:span.rec-feed  (:feed_title rec)]
             [:span.rec-title (:title rec)]
             (when @show-scores?
-              [:span.rec-scores
-               {:style {:font-size "0.65rem" :opacity 0.5 :font-family "monospace"}}
-               (str "vector: " (.toFixed (or (:vector_score rec) 0) 2)
-                    " | collab: " (.toFixed (or (:collab_score rec) 0) 2)
-                    " | combined: " (.toFixed (or (:score rec) 0) 2))])]
+              (let [topics (seq (:matching_topics rec))
+                    total  (or (:total_matching rec) 0)]
+                [:span.rec-scores
+                 {:style {:font-size "0.65rem" :opacity 0.5 :font-family "monospace"}}
+                 (if topics
+                   (str (str/join ", " (:matching_topics rec))
+                        (when (> total 3) (str " +" (- total 3) " more"))
+                        " | collab: " (.toFixed (or (:collab_score rec) 0) 2)
+                        " | combined: " (.toFixed (or (:score rec) 0) 2))
+                   (str "vector: " (.toFixed (or (:vector_score rec) 0) 2)
+                        " | collab: " (.toFixed (or (:collab_score rec) 0) 2)
+                        " | combined: " (.toFixed (or (:score rec) 0) 2)))]))]
            [:span.rec-play "▶"]])]])))
 
 (defn view []
