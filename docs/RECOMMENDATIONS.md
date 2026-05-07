@@ -48,7 +48,10 @@ episode_embeddings
 
 Alongside embeddings, [KeyBERT](https://github.com/MaartenGr/KeyBERT) extracts up to 10 keyphrases per episode using the same loaded sentence-transformer model. KeyBERT uses Maximal Marginal Relevance (MMR) to ensure diverse topics rather than near-duplicates.
 
-Topics enable explainable recommendations — the player can show which keywords two episodes share in common.
+Topics serve two purposes:
+
+1. **Explainable recommendations** — the player shows which keywords two episodes share in common
+2. **Tag cloud browsing** — the Topics tab aggregates all topics across a user's subscriptions into a visual tag cloud; tapping a tag filters the episode list to only matching episodes
 
 ## Explainability
 
@@ -73,9 +76,18 @@ The final SELECT joins episode metadata, computes topic overlap, and returns the
 
 When an episode is dubbed, the full transcript becomes available. The dub result callback automatically dispatches a re-embedding request with `source: "transcript"`, upgrading the episode's vector from title+description to the richer full transcript.
 
+## Semantic Inbox Search
+
+The inbox search box re-ranks episodes by vector similarity to a text query. A lightweight Python FastAPI sidecar (`embed-sidecar/`) loads the same all-MiniLM-L6-v2 model and embeds the query in real time (<50ms). The Crystal server queries pgvector to order inbox episodes by cosine similarity to the query vector.
+
+- Sidecar runs as a k8s Deployment in the `buzz-bot` namespace (`embed-sidecar:8000`)
+- Episodes without embeddings sort to the bottom (`NULLS LAST`)
+- 300ms debounced input; clearing restores chronological order
+
 ## Environment Variables
 
 | Variable | Purpose |
 |----------|---------|
 | `EMBED_ENDPOINT_ID` | RunPod serverless endpoint ID |
+| `EMBED_SIDECAR_URL` | Embed sidecar URL (default: `http://embed-sidecar.buzz-bot.svc.cluster.local:8000`) |
 | `INTERNAL_WEBHOOK_SECRET` | Bearer token for callback authentication |

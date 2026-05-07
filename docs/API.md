@@ -30,6 +30,8 @@ All Mini App routes authenticate via `X-Init-Data` (Telegram `initData` HMAC-SHA
 | `GET` | `/flags` | Feature flag state (admin-only) |
 | `GET` | `/bookmarks` | Bookmarked episodes |
 | `GET` | `/bookmarks/search?q=X` | Search bookmarks |
+| `GET` | `/topics` | Tag cloud + episode list (`?tag=X` to filter) |
+| `GET` | `/inbox/search?q=X` | Semantic inbox search (re-rank by vector similarity) |
 | `GET` | `/search?q=X` | Search Apple Podcasts directory |
 | `POST` | `/search/subscribe` | Subscribe to a search result |
 | `GET` | `/recommendations` | Hybrid vector + collaborative recommendations |
