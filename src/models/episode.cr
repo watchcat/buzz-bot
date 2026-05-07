@@ -208,7 +208,7 @@ struct Episode
         )
         SELECT e.id, e.feed_id, e.guid, e.title, e.description, e.audio_url, e.duration_sec, e.published_at, e.image_url,
                cb.vector_score, cb.collab_score, cb.score,
-               COALESCE((SELECT array_agg(t) FROM (SELECT unnest(src_ee.topics) INTERSECT SELECT unnest(rec_ee.topics)) x(t)), '{}')[:3] AS matching_topics,
+               COALESCE((SELECT array_agg(t) FROM (SELECT unnest(src_ee.topics) INTERSECT SELECT unnest(rec_ee.topics) LIMIT 3) x(t)), '{}') AS matching_topics,
                COALESCE((SELECT count(*)::int FROM (SELECT unnest(src_ee.topics) INTERSECT SELECT unnest(rec_ee.topics)) x(t)), 0) AS total_matching
         FROM episodes e
         JOIN combined cb ON e.id = cb.id
