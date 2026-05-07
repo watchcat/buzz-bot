@@ -103,6 +103,24 @@ struct Episode
     episodes
   end
 
+  def self.for_inbox_semantic(user_id : Int64, query_vec : Array(Float64), limit : Int32 = 100, offset : Int32 = 0) : Array(Episode)
+    vector_str = "[#{query_vec.join(",")}]"
+    episodes = [] of Episode
+    AppDB.pool.query_each(
+      <<-SQL,
+        SELECT e.id, e.feed_id, e.guid, e.title, e.description, e.audio_url, e.duration_sec, e.published_at, e.image_url
+        FROM episodes e
+        JOIN user_feeds uf ON uf.feed_id = e.feed_id
+        LEFT JOIN episode_embeddings ee ON ee.episode_id = e.id
+        WHERE uf.user_id = $1
+        ORDER BY (1 - (ee.embedding <=> $2::vector)) DESC NULLS LAST
+        LIMIT $3 OFFSET $4
+      SQL
+      user_id, vector_str, limit, offset
+    ) { |rs| episodes << from_rs(rs) }
+    episodes
+  end
+
   def self.completed_ids_for_user(user_id : Int64) : Set(Int64)
     ids = Set(Int64).new
     AppDB.pool.query_each(

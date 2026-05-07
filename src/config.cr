@@ -77,4 +77,8 @@ module Config
   def self.internal_webhook_secret : String?
     ENV["INTERNAL_WEBHOOK_SECRET"]?.presence
   end
+
+  def self.embed_sidecar_url : String
+    ENV.fetch("EMBED_SIDECAR_URL", "http://embed-sidecar.buzz-bot.svc.cluster.local:8000")
+  end
 end
