@@ -50,6 +50,21 @@
 (rf/reg-sub ::bookmarks-list     (fn [db _] (get-in db [:bookmarks :list])))
 (rf/reg-sub ::bookmarks-loading? (fn [db _] (get-in db [:bookmarks :loading?])))
 
+;; Topics
+(rf/reg-sub ::topics        (fn [db _] (:topics db)))
+(rf/reg-sub ::topics-tags
+  :<- [::topics]
+  (fn [t _] (:tags t)))
+(rf/reg-sub ::topics-episodes
+  :<- [::topics]
+  (fn [t _] (:episodes t)))
+(rf/reg-sub ::topics-loading?
+  :<- [::topics]
+  (fn [t _] (:loading? t)))
+(rf/reg-sub ::topics-selected-tag
+  :<- [::topics]
+  (fn [t _] (:selected-tag t)))
+
 ;; Search
 (rf/reg-sub ::search-results        (fn [db _] (get-in db [:search :results])))
 (rf/reg-sub ::search-loading?       (fn [db _] (get-in db [:search :loading?])))

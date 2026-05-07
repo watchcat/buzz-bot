@@ -42,6 +42,7 @@
                        :feeds     [::fetch-feeds]
                        :player    [::fetch-player (:episode-id params)]
                        :bookmarks [::fetch-bookmarks]
+                       :topics    [::fetch-topics]
                        :episodes  [::fetch-episodes (:feed-id params)]
                        nil)]
      (let [restore-id (when (and (= view :episodes) (= cur-view :player))
@@ -94,6 +95,44 @@
     ::buzz-bot.fx/http-fetch {:method :get
                               :url    (str "/inbox/search?q=" (js/encodeURIComponent query))
                               :on-ok  [::inbox-loaded] :on-err [::fetch-error]}}))
+
+;; ── Topics ──────────────────────────────────────────────────────────────────
+
+(rf/reg-event-fx
+ ::fetch-topics
+ (fn [{:keys [db]} _]
+   (let [tag (get-in db [:topics :selected-tag])
+         url (if tag (str "/topics?tag=" (js/encodeURIComponent tag)) "/topics")]
+     {:db (assoc-in db [:topics :loading?] true)
+      ::buzz-bot.fx/http-fetch {:method :get :url url
+                                :on-ok  [::topics-loaded] :on-err [::fetch-error]}})))
+
+(rf/reg-event-db
+ ::topics-loaded
+ (fn [db [_ resp]]
+   (-> db
+       (assoc-in [:topics :tags]     (:tags resp))
+       (assoc-in [:topics :episodes] (:episodes resp))
+       (assoc-in [:topics :loading?] false))))
+
+(rf/reg-event-fx
+ ::select-tag
+ (fn [{:keys [db]} [_ tag]]
+   {:db       (-> db
+                  (assoc-in [:topics :selected-tag] tag)
+                  (assoc-in [:topics :loading?] true))
+    ::buzz-bot.fx/http-fetch {:method :get
+                              :url    (str "/topics?tag=" (js/encodeURIComponent tag))
+                              :on-ok  [::topics-loaded] :on-err [::fetch-error]}}))
+
+(rf/reg-event-fx
+ ::clear-tag
+ (fn [{:keys [db]} _]
+   {:db       (-> db
+                  (assoc-in [:topics :selected-tag] nil)
+                  (assoc-in [:topics :loading?] true))
+    ::buzz-bot.fx/http-fetch {:method :get :url "/topics"
+                              :on-ok  [::topics-loaded] :on-err [::fetch-error]}}))
 
 ;; ── Feeds ────────────────────────────────────────────────────────────────────
 
