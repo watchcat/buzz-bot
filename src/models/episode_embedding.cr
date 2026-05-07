@@ -66,4 +66,27 @@ module EpisodeEmbedding
     end
     results
   end
+
+  record TagCount, tag : String, count : Int32
+
+  def self.top_tags_for_user(user_id : Int64, limit : Int32 = 100) : Array(TagCount)
+    results = [] of TagCount
+    AppDB.pool.query_each(
+      <<-SQL,
+        SELECT t AS tag, COUNT(*)::int AS count
+        FROM episodes e
+        JOIN user_feeds uf ON uf.feed_id = e.feed_id
+        JOIN episode_embeddings ee ON ee.episode_id = e.id,
+             unnest(ee.topics) AS t
+        WHERE uf.user_id = $1
+        GROUP BY t
+        ORDER BY count DESC
+        LIMIT $2
+      SQL
+      user_id, limit
+    ) do |rs|
+      results << TagCount.new(rs.read(String), rs.read(Int32))
+    end
+    results
+  end
 end

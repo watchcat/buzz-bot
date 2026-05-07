@@ -121,6 +121,24 @@ struct Episode
     episodes
   end
 
+  def self.for_topic(user_id : Int64, tag : String, limit : Int32 = 100, offset : Int32 = 0) : Array(Episode)
+    episodes = [] of Episode
+    AppDB.pool.query_each(
+      <<-SQL,
+        SELECT e.id, e.feed_id, e.guid, e.title, e.description, e.audio_url, e.duration_sec, e.published_at, e.image_url
+        FROM episodes e
+        JOIN user_feeds uf ON uf.feed_id = e.feed_id
+        JOIN episode_embeddings ee ON ee.episode_id = e.id
+        WHERE uf.user_id = $1
+          AND $2 = ANY(ee.topics)
+        ORDER BY COALESCE(e.published_at, e.created_at) DESC
+        LIMIT $3 OFFSET $4
+      SQL
+      user_id, tag, limit, offset
+    ) { |rs| episodes << from_rs(rs) }
+    episodes
+  end
+
   def self.completed_ids_for_user(user_id : Int64) : Set(Int64)
     ids = Set(Int64).new
     AppDB.pool.query_each(
