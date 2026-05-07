@@ -32,22 +32,34 @@ module Web::Routes::Embeddings
 
       episodes = EpisodeEmbedding.unembedded_episode_ids(100)
 
-      # If no new episodes to embed, backfill topics for existing embeddings
+      # If no new episodes, backfill topics for existing embeddings
       if episodes.empty?
         episodes = EpisodeEmbedding.untopicked_episode_ids(100)
-        if episodes.empty?
-          env.response.content_type = "application/json"
-          next({ok: true, dispatched: 0}.to_json)
-        end
+      end
+
+      # If no untopicked, re-embed stale "description"-source episodes with new title-only logic
+      if episodes.empty?
+        episodes = EpisodeEmbedding.stale_source_episode_ids(100)
+      end
+
+      if episodes.empty?
+        env.response.content_type = "application/json"
+        next({ok: true, dispatched: 0}.to_json)
       end
 
       payload = episodes.map do |ep|
         text = String.build do |s|
           s << ep[:title]
           if desc = ep[:description]
-            # Strip HTML tags
-            stripped = desc.gsub(/<[^>]*>/, " ").gsub(/\s+/, " ").strip
-            s << "\n\n" << stripped unless stripped.empty?
+            # Strip HTML, decode entities, normalize whitespace
+            stripped = desc.gsub(/<[^>]*>/, "\n").gsub(/&\w+;/, " ").gsub(/\s*\n\s*/, "\n").strip
+            # Extract only timestamped lines (e.g. "00:00 — Topic", "1:23:45 - Something")
+            timestamp_lines = stripped.each_line.select { |line|
+              line.strip.matches?(/^\d{1,2}:\d{2}(:\d{2})?\s*[—–\-:]\s*\S/)
+            }.map(&.strip).to_a
+            unless timestamp_lines.empty?
+              s << "\n\n" << timestamp_lines.join("\n")
+            end
           end
         end
         {id: ep[:id], text: text}
@@ -60,7 +72,7 @@ module Web::Routes::Embeddings
         episodes:     payload,
         callback_url: callback_url,
         secret:       secret,
-        source:       "description",
+        source:       "title",
       }.to_json
       runpod_payload = {input: JSON.parse(runpod_input)}.to_json
 

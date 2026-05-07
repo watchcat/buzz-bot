@@ -67,6 +67,25 @@ module EpisodeEmbedding
     results
   end
 
+  # Returns episodes with stale embeddings (source != 'title' and not transcript) for re-embedding.
+  def self.stale_source_episode_ids(limit : Int32 = 100) : Array(NamedTuple(id: Int64, title: String, description: String?))
+    results = [] of NamedTuple(id: Int64, title: String, description: String?)
+    AppDB.pool.query_each(
+      <<-SQL,
+        SELECT e.id, e.title, e.description
+        FROM episodes e
+        JOIN episode_embeddings ee ON ee.episode_id = e.id
+        WHERE ee.source = 'description'
+        ORDER BY e.published_at DESC NULLS LAST
+        LIMIT $1
+      SQL
+      limit
+    ) do |rs|
+      results << {id: rs.read(Int64), title: rs.read(String), description: rs.read(String?)}
+    end
+    results
+  end
+
   record TagCount, tag : String, count : Int32 do
     include JSON::Serializable
   end
