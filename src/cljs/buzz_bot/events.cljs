@@ -67,7 +67,9 @@
          limit (when (and (= (:view saved) :inbox) (pos? (:count saved)))
                  (:count saved))
          url   (if limit (str "/inbox?limit=" limit) "/inbox")]
-     {:db         (assoc-in db [:inbox :loading?] true)
+     {:db         (-> db
+                      (assoc-in [:inbox :loading?] true)
+                      (assoc-in [:inbox :search-query] ""))
       ::buzz-bot.fx/http-fetch {:method :get :url url
                                 :on-ok  [::inbox-loaded] :on-err [::fetch-error]}})))
 
@@ -82,6 +84,16 @@
        (and playing-id
             (some #(= (str (:id %)) (str playing-id)) (:episodes resp)))
        (assoc ::buzz-bot.fx/scroll-to-episode playing-id)))))
+
+(rf/reg-event-fx
+ ::search-inbox
+ (fn [{:keys [db]} [_ query]]
+   {:db (-> db
+            (assoc-in [:inbox :loading?] true)
+            (assoc-in [:inbox :search-query] query))
+    ::buzz-bot.fx/http-fetch {:method :get
+                              :url    (str "/inbox/search?q=" (js/encodeURIComponent query))
+                              :on-ok  [::inbox-loaded] :on-err [::fetch-error]}}))
 
 ;; ── Feeds ────────────────────────────────────────────────────────────────────
 

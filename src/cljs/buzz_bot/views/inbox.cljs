@@ -80,7 +80,9 @@
           (str "+" (dec (count eps)) " more")]]))))
 
 (defn view []
-  (let [expanded-feeds (r/atom #{})]
+  (let [expanded-feeds (r/atom #{})
+        query-atom     (r/atom "")
+        debounce       (r/atom nil)]
     (fn []
       (let [episodes   @(rf/subscribe [::subs/inbox-episodes])
             loading?   @(rf/subscribe [::subs/inbox-loading?])
@@ -101,7 +103,10 @@
            [:button.btn-icon
             {:title    "Refresh"
              :class    (when loading? "btn-icon--spinning")
-             :on-click #(rf/dispatch [::events/fetch-inbox])}
+             :on-click (fn [_]
+                         (when @debounce (js/clearTimeout @debounce))
+                         (reset! query-atom "")
+                         (rf/dispatch [::events/fetch-inbox]))}
             "↻"]
            [:div.section-controls
             [:label.filter-label
@@ -125,6 +130,21 @@
                :read-only true}]
              [:span.filter-switch]
              [:span.filter-text "Compact"]]]]]
+         [:div.search-section
+          [:input.search-input
+           {:type        "search"
+            :placeholder "Search episodes..."
+            :value       @query-atom
+            :on-change   (fn [e]
+                           (let [v (.. e -target -value)]
+                             (reset! query-atom v)
+                             (when @debounce (js/clearTimeout @debounce))
+                             (if (empty? v)
+                               (rf/dispatch [::events/fetch-inbox])
+                               (reset! debounce
+                                 (js/setTimeout
+                                   #(rf/dispatch [::events/search-inbox v])
+                                   300)))))}]]
          (cond
            loading?         [:div.loading "Loading..."]
            (empty? visible) [:div.empty-msg "No episodes. Subscribe to some feeds!"]

@@ -5,7 +5,7 @@
    :view-params {}
    :init-data   ""
    :theme       {}
-   :inbox       {:episodes [] :loading? false
+   :inbox       {:episodes [] :loading? false :search-query ""
                  :filters  {:hide-listened? false :compact? false :excluded-feeds #{}}}
    :feeds       {:list [] :loading? false}
    :episodes    {:feed-id nil :list [] :loading? false :order :desc :offset 0 :has-more? false}
