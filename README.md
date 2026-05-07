@@ -30,7 +30,7 @@
 | Progress tracking | Listening position saved every 5 seconds; offline saves queued and replayed on reconnect |
 | Offline caching | Episode audio downloaded in background; seamless switch to local copy on network loss |
 | Bookmarks | Bookmark episodes with a single tap; search saved episodes |
-| Collaborative filtering | Surface episodes liked by users with similar taste |
+| Smart recommendations | Hybrid semantic + collaborative filtering with explainable topic matching — [details](docs/RECOMMENDATIONS.md) |
 | Share & send | Share any episode via Telegram's share sheet, or send the audio file directly to your own chat |
 | AI dubbing | Hear any podcast in your language with the original speaker's voice cloned — [details](docs/DUBBING.md) |
 | Karaoke subtitles | Live subtitle panel with karaoke-style highlighting; fullscreen transcript; tap any line to seek |
@@ -44,12 +44,13 @@
 | Language | [Crystal](https://crystal-lang.org/) >= 1.9 |
 | Web server | [Kemal](https://kemalcr.com/) |
 | Telegram bot | [Tourmaline](https://github.com/protoncr/tourmaline) |
-| Database | PostgreSQL ([Neon](https://neon.tech)) via crystal-pg |
+| Database | PostgreSQL ([Neon](https://neon.tech)) via crystal-pg, pgvector for embeddings |
 | Frontend | ClojureScript, [re-frame](https://github.com/day8/re-frame), [Reagent](https://reagent-project.github.io/) |
 | Frontend build | [shadow-cljs](https://github.com/thheller/shadow-cljs) |
 | Service Worker | Offline audio cache (Range-aware) + offline write queue |
 | Job dispatch | [RunPod Serverless](https://www.runpod.io/serverless-gpu) API v2 |
 | AI pipeline | Demucs, WhisperX, pyannote, Gemini Flash, VoxCPM2 — [details](docs/DUBBING.md) |
+| Embeddings | all-MiniLM-L6-v2 (384-dim) + KeyBERT topic extraction — [details](docs/RECOMMENDATIONS.md) |
 | Audio storage | [Cloudflare R2](https://developers.cloudflare.com/r2/) |
 | Deployment | Docker, k3s on Hetzner — [details](docs/DEPLOYMENT.md) |
 | Ingress / TLS | Traefik v3, cert-manager + Let's Encrypt |
@@ -121,6 +122,7 @@ npx shadow-cljs watch app
 ## Documentation
 
 - [AI Dubbing Pipeline](docs/DUBBING.md) — how dubbing works, supported languages, progress tracking
+- [Recommendations](docs/RECOMMENDATIONS.md) — hybrid vector + collaborative filtering, topic extraction, explainability
 - [Deployment Guide](docs/DEPLOYMENT.md) — k3s setup, environment variables, monitoring
 - [API Reference](docs/API.md) — routes, database schema, feature flags
 
