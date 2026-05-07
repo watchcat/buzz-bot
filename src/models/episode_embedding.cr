@@ -67,7 +67,9 @@ module EpisodeEmbedding
     results
   end
 
-  record TagCount, tag : String, count : Int32
+  record TagCount, tag : String, count : Int32 do
+    include JSON::Serializable
+  end
 
   def self.top_tags_for_user(user_id : Int64, limit : Int32 = 100) : Array(TagCount)
     results = [] of TagCount
