@@ -30,11 +30,11 @@ module Web::Routes::Embeddings
         next({error: "Embedding service not configured"}.to_json)
       end
 
-      episodes = EpisodeEmbedding.unembedded_episode_ids(100)
+      episodes = EpisodeEmbedding.unembedded_episode_ids(500)
 
       # If no new episodes to embed, backfill topics for existing embeddings
       if episodes.empty?
-        episodes = EpisodeEmbedding.untopicked_episode_ids(100)
+        episodes = EpisodeEmbedding.untopicked_episode_ids(500)
         if episodes.empty?
           env.response.content_type = "application/json"
           next({ok: true, dispatched: 0}.to_json)
