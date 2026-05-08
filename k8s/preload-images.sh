@@ -41,9 +41,6 @@ images=(
   # Traefik ingress (pulled as registry-1.docker.io then retagged)
   registry-1.docker.io/library/traefik:v3.6.12
 
-  # Redis job queue
-  docker.io/library/redis:7-alpine
-
   # Telegram Bot API server
   docker.io/aiogram/telegram-bot-api:latest
 
