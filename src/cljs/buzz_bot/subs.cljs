@@ -64,6 +64,9 @@
 (rf/reg-sub ::topics-selected-tag
   :<- [::topics]
   (fn [t _] (:selected-tag t)))
+(rf/reg-sub ::topics-has-more-tags?
+  :<- [::topics]
+  (fn [t _] (:has-more-tags? t)))
 
 ;; Search
 (rf/reg-sub ::search-results        (fn [db _] (get-in db [:search :results])))

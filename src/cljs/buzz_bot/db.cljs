@@ -11,7 +11,7 @@
    :episodes    {:feed-id nil :list [] :loading? false :order :desc :offset 0 :has-more? false}
    :player      {:data nil :loading? false :send-status nil}
    :bookmarks   {:list [] :loading? false :query ""}
-   :topics    {:tags [] :episodes [] :loading? false :selected-tag nil}
+   :topics    {:tags [] :episodes [] :loading? false :selected-tag nil :has-more-tags? false :tag-offset 0}
    :search      {:query "" :results [] :loading? false :subscribed-urls #{}}
    :audio       {:episode-id nil :title "" :artist "" :artwork ""
                  :src "" :playing? false :current-time 0 :duration 0

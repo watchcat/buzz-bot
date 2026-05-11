@@ -147,7 +147,7 @@
         (for [rec recs]
           ^{:key (:id rec)}
           [:li.rec-item
-           {:on-click #(rf/dispatch [::events/navigate :player {:episode-id (:id rec)}])}
+           {:on-click #(rf/dispatch [::events/navigate :player {:episode-id (:id rec) :from "inbox"}])}
            [:div.rec-info
             [:span.rec-feed  (:feed_title rec)]
             [:span.rec-title (:title rec)]
@@ -212,7 +212,7 @@
                                           (when (= "episodes" (get params :from))
                                             {:feed-id (:feed_id episode)})])}
                 "← Back"]
-               (when (contains? #{"inbox" "bookmarks"} (get params :from))
+               (when (contains? #{"inbox" "bookmarks" "topics"} (get params :from))
                  [:button.btn-feed-link
                   {:on-click #(rf/dispatch [::events/navigate :episodes
                                             {:feed-id   (:feed_id episode)

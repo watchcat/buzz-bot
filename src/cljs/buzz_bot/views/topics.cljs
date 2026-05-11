@@ -35,7 +35,7 @@
     :on-click        #(rf/dispatch [::events/navigate :player
                                     {:episode-id (:id ep) :from "topics"}])}
    (when-let [img (:episode_image_url ep)]
-     [:img.episode-thumb {:src (img-proxy img) :alt ""}])
+     [:img.episode-thumb {:src (img-proxy img) :alt "" :loading "lazy"}])
    [:div.episode-info
     [:span.episode-feed-name (:feed_title ep)]
     [:strong.episode-title   (:title ep)]
@@ -47,13 +47,12 @@
     16
     (+ 11 (* (/ (- count min-count) (- max-count min-count)) 11))))
 
-(defn- tag-cloud [tags selected-tag expanded?]
+(defn- tag-cloud [tags selected-tag has-more-tags?]
   (let [min-count (apply min (map :count tags))
-        max-count (apply max (map :count tags))
-        visible   (if @expanded? tags (take 20 tags))]
+        max-count (apply max (map :count tags))]
     [:div.tag-cloud-section
      [:div.tag-cloud
-      (for [{:keys [tag count]} visible]
+      (for [{:keys [tag count]} tags]
         ^{:key tag}
         [:span.tag-cloud-item
          {:class    (when (= tag selected-tag) "tag-cloud-item--active")
@@ -63,44 +62,47 @@
                       (if (= tag selected-tag)
                         (rf/dispatch [::events/clear-tag])
                         (rf/dispatch [::events/select-tag tag])))}
-         tag])]
-     (when (> (count tags) 20)
+         tag
+         [:span.tag-cloud-hide
+          {:on-click (fn [e]
+                       (.stopPropagation e)
+                       (rf/dispatch [::events/hide-topic tag]))}
+          "×"]])]
+     (when has-more-tags?
        [:button.tag-cloud-toggle
-        {:on-click #(swap! expanded? not)}
-        (if @expanded?
-          "Show less"
-          (str "Show all " (count tags) " tags"))])]))
+        {:on-click #(rf/dispatch [::events/load-more-tags])}
+        "Show more"])]))
 
 (defn view []
-  (let [expanded? (r/atom false)]
-    (fn []
-      (let [tags         @(rf/subscribe [::subs/topics-tags])
-            episodes     @(rf/subscribe [::subs/topics-episodes])
-            loading?     @(rf/subscribe [::subs/topics-loading?])
-            selected-tag @(rf/subscribe [::subs/topics-selected-tag])
-            playing-id   @(rf/subscribe [::subs/audio-episode-id])]
-        [:div.episodes-container
-         [:div.section-header
-          [:div.section-header-row
-           [:h2 "Topics"]
-           [:button.btn-icon
-            {:title    "Refresh"
-             :class    (when loading? "btn-icon--spinning")
-             :on-click #(rf/dispatch [::events/fetch-topics])}
-            "↻"]]]
-         (when (seq tags)
-           [tag-cloud tags selected-tag expanded?])
-         (when selected-tag
-           [:div.topics-filter-label
-            (str "\"" selected-tag "\" · " (count episodes)
-                 (if (= 1 (count episodes)) " episode" " episodes"))])
-         (cond
-           loading?          [:div.loading "Loading..."]
-           (empty? episodes) [:div.empty-msg
-                              (if selected-tag
-                                "No episodes with this topic."
-                                "No topics yet. Episodes need embeddings first.")]
-           :else
-           [:ul#episode-list.episode-list
-            (for [ep episodes]
-              ^{:key (:id ep)} [episode-item ep playing-id])])]))))
+  (fn []
+    (let [tags            @(rf/subscribe [::subs/topics-tags])
+          episodes        @(rf/subscribe [::subs/topics-episodes])
+          loading?        @(rf/subscribe [::subs/topics-loading?])
+          selected-tag    @(rf/subscribe [::subs/topics-selected-tag])
+          has-more-tags?  @(rf/subscribe [::subs/topics-has-more-tags?])
+          playing-id      @(rf/subscribe [::subs/audio-episode-id])]
+      [:div.episodes-container
+       [:div.section-header
+        [:div.section-header-row
+         [:h2 "Topics"]
+         [:button.btn-icon
+          {:title    "Refresh"
+           :class    (when loading? "btn-icon--spinning")
+           :on-click #(rf/dispatch [::events/fetch-topics])}
+          "↻"]]]
+       (when (seq tags)
+         [tag-cloud tags selected-tag has-more-tags?])
+       (when selected-tag
+         [:div.topics-filter-label
+          (str "\"" selected-tag "\" · " (count episodes)
+               (if (= 1 (count episodes)) " episode" " episodes"))])
+       (cond
+         loading?          [:div.loading "Loading..."]
+         (empty? episodes) [:div.empty-msg
+                            (if selected-tag
+                              "No episodes with this topic."
+                              "No topics yet. Episodes need embeddings first.")]
+         :else
+         [:ul#episode-list.episode-list
+          (for [ep episodes]
+            ^{:key (:id ep)} [episode-item ep playing-id])])])))

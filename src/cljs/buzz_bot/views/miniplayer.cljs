@@ -14,7 +14,9 @@
     (when ep-id
       [:div.now-playing-bar
        [:div.now-playing-inner
-        {:on-click #(rf/dispatch [::events/navigate :player {:episode-id ep-id}])}
+        {:on-click #(let [cur-view @(rf/subscribe [::subs/view])]
+                      (rf/dispatch [::events/navigate :player
+                                    {:episode-id ep-id :from (name cur-view)}]))}
         [:div.now-playing-artwork
          (when artwork {:style {:background-image (str "url('" (img-proxy artwork) "')")}})
          (when-not artwork "🎙")]

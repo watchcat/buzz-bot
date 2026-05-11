@@ -1820,9 +1820,13 @@ body:has(.now-playing-bar) main { padding-bottom: 84px; }
   padding: 12px;
   background: var(--secondary-bg);
   border-radius: 10px;
+  max-height: 40vh;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 .tag-cloud-item {
+  position: relative;
   cursor: pointer;
   color: var(--text-color);
   transition: color 0.15s, opacity 0.15s;
@@ -1836,6 +1840,26 @@ body:has(.now-playing-bar) main { padding-bottom: 84px; }
 .tag-cloud-item--active {
   color: var(--button-color);
   font-weight: 700;
+}
+
+.tag-cloud-hide {
+  display: none;
+  position: absolute;
+  top: -6px;
+  right: -8px;
+  width: 16px;
+  height: 16px;
+  font-size: 11px;
+  line-height: 16px;
+  text-align: center;
+  border-radius: 50%;
+  background: var(--hint-color);
+  color: var(--bg-color);
+  cursor: pointer;
+}
+
+.tag-cloud-item:hover .tag-cloud-hide {
+  display: block;
 }
 
 .tag-cloud-toggle {

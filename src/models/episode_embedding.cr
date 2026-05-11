@@ -90,7 +90,7 @@ module EpisodeEmbedding
     include JSON::Serializable
   end
 
-  def self.top_tags_for_user(user_id : Int64, limit : Int32 = 100) : Array(TagCount)
+  def self.top_tags_for_user(user_id : Int64, limit : Int32 = 100, offset : Int32 = 0) : Array(TagCount)
     results = [] of TagCount
     AppDB.pool.query_each(
       <<-SQL,
@@ -100,14 +100,26 @@ module EpisodeEmbedding
         JOIN episode_embeddings ee ON ee.episode_id = e.id,
              unnest(ee.topics) AS t
         WHERE uf.user_id = $1
+          AND t NOT IN (SELECT topic FROM user_hidden_topics WHERE user_id = $1)
         GROUP BY t
         ORDER BY count DESC
-        LIMIT $2
+        LIMIT $2 OFFSET $3
       SQL
-      user_id, limit
+      user_id, limit, offset
     ) do |rs|
       results << TagCount.new(rs.read(String), rs.read(Int32))
     end
     results
+  end
+
+  def self.hide_topic(user_id : Int64, topic : String)
+    AppDB.pool.exec(
+      <<-SQL,
+        INSERT INTO user_hidden_topics (user_id, topic)
+        VALUES ($1, $2)
+        ON CONFLICT DO NOTHING
+      SQL
+      user_id, topic
+    )
   end
 end

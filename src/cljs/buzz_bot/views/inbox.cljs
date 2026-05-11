@@ -42,7 +42,7 @@
     :on-click        #(rf/dispatch [::events/navigate :player
                                     {:episode-id (:id ep) :from "inbox"}])}
    (when-let [img (:episode_image_url ep)]
-     [:img.episode-thumb {:src (img-proxy img) :alt ""}])
+     [:img.episode-thumb {:src (img-proxy img) :alt "" :loading "lazy"}])
    [:div.episode-info
     [:span.episode-feed-name (:feed_title ep)]
     [:strong.episode-title   (:title ep)]
@@ -67,7 +67,7 @@
           :on-click        #(rf/dispatch [::events/navigate :player
                                           {:episode-id (:id (first eps)) :from "inbox"}])}
          (when-let [img (:feed_image_url (first eps))]
-           [:img.episode-thumb {:src (img-proxy img) :alt ""}])
+           [:img.episode-thumb {:src (img-proxy img) :alt "" :loading "lazy"}])
          [:div.episode-info
           [:span.episode-feed-name (:feed_title (first eps))]
           [:strong.episode-title   (:title (first eps))]

@@ -12,9 +12,7 @@
     {:style    {:cursor "pointer"}
      :on-click #(rf/dispatch [::events/navigate :episodes {:feed-id (:id feed) :feed-url (:url feed) :feed-title (:title feed)}])}
     (if (:image_url feed)
-      [:div.feed-image {:style {:background-image    (str "url('" (img-proxy (:image_url feed)) "')")
-                                :background-size     "cover"
-                                :background-position "center"}}]
+      [:img.feed-image {:src (img-proxy (:image_url feed)) :alt "" :loading "lazy"}]
       [:div.feed-image-placeholder "🎙"])
     [:div.feed-meta
      [:strong.feed-title (:title feed)]]]
@@ -28,7 +26,7 @@
         subscribed? (contains? subscribed-urls feed-url)]
     [:li.search-result-item
      (when (:artwork_url result)
-       [:img.search-result-image {:src (img-proxy (:artwork_url result)) :alt (:name result)}])
+       [:img.search-result-image {:src (img-proxy (:artwork_url result)) :alt (:name result) :loading "lazy"}])
      [:div.search-result-meta
       [:span.search-result-name (:name result)]
       [:span.search-result-author (:author result)]

@@ -98,41 +98,92 @@
 
 ;; ── Topics ──────────────────────────────────────────────────────────────────
 
+(defn- topics-url [tag tag-offset]
+  (cond-> "/topics?"
+    tag        (str "tag=" (js/encodeURIComponent tag) "&")
+    true       (str "tag_limit=100&tag_offset=" tag-offset)))
+
 (rf/reg-event-fx
  ::fetch-topics
  (fn [{:keys [db]} _]
-   (let [tag (get-in db [:topics :selected-tag])
-         url (if tag (str "/topics?tag=" (js/encodeURIComponent tag)) "/topics")]
-     {:db (assoc-in db [:topics :loading?] true)
-      ::buzz-bot.fx/http-fetch {:method :get :url url
+   (let [tag (get-in db [:topics :selected-tag])]
+     {:db (-> db
+              (assoc-in [:topics :loading?] true)
+              (assoc-in [:topics :tag-offset] 0))
+      ::buzz-bot.fx/http-fetch {:method :get :url (topics-url tag 0)
                                 :on-ok  [::topics-loaded] :on-err [::fetch-error]}})))
 
 (rf/reg-event-db
  ::topics-loaded
  (fn [db [_ resp]]
    (-> db
-       (assoc-in [:topics :tags]     (:tags resp))
-       (assoc-in [:topics :episodes] (:episodes resp))
-       (assoc-in [:topics :loading?] false))))
+       (assoc-in [:topics :tags]           (:tags resp))
+       (assoc-in [:topics :episodes]       (:episodes resp))
+       (assoc-in [:topics :has-more-tags?] (:has_more_tags resp))
+       (assoc-in [:topics :tag-offset]     (count (:tags resp)))
+       (assoc-in [:topics :loading?]       false))))
+
+(rf/reg-event-fx
+ ::load-more-tags
+ (fn [{:keys [db]} _]
+   (let [tag    (get-in db [:topics :selected-tag])
+         offset (get-in db [:topics :tag-offset] 0)]
+     {::buzz-bot.fx/http-fetch {:method :get :url (topics-url tag offset)
+                                :on-ok  [::more-tags-loaded] :on-err [::fetch-error]}})))
+
+(rf/reg-event-db
+ ::more-tags-loaded
+ (fn [db [_ resp]]
+   (-> db
+       (update-in [:topics :tags] into (:tags resp))
+       (update-in [:topics :tag-offset] + (count (:tags resp)))
+       (assoc-in  [:topics :has-more-tags?] (:has_more_tags resp)))))
 
 (rf/reg-event-fx
  ::select-tag
  (fn [{:keys [db]} [_ tag]]
-   {:db       (-> db
-                  (assoc-in [:topics :selected-tag] tag)
-                  (assoc-in [:topics :loading?] true))
-    ::buzz-bot.fx/http-fetch {:method :get
-                              :url    (str "/topics?tag=" (js/encodeURIComponent tag))
-                              :on-ok  [::topics-loaded] :on-err [::fetch-error]}}))
+   (let [offset (get-in db [:topics :tag-offset] 0)]
+     {:db       (-> db
+                    (assoc-in [:topics :selected-tag] tag)
+                    (assoc-in [:topics :loading?] true))
+      ::buzz-bot.fx/http-fetch {:method :get
+                                :url    (topics-url tag offset)
+                                :on-ok  [::tag-episodes-loaded] :on-err [::fetch-error]}})))
+
+(rf/reg-event-db
+ ::tag-episodes-loaded
+ (fn [db [_ resp]]
+   (-> db
+       (assoc-in [:topics :episodes] (:episodes resp))
+       (assoc-in [:topics :loading?] false))))
 
 (rf/reg-event-fx
  ::clear-tag
  (fn [{:keys [db]} _]
-   {:db       (-> db
-                  (assoc-in [:topics :selected-tag] nil)
-                  (assoc-in [:topics :loading?] true))
-    ::buzz-bot.fx/http-fetch {:method :get :url "/topics"
-                              :on-ok  [::topics-loaded] :on-err [::fetch-error]}}))
+   (let [offset (get-in db [:topics :tag-offset] 0)]
+     {:db       (-> db
+                    (assoc-in [:topics :selected-tag] nil)
+                    (assoc-in [:topics :loading?] true))
+      ::buzz-bot.fx/http-fetch {:method :get :url (topics-url nil offset)
+                                :on-ok  [::tag-episodes-loaded] :on-err [::fetch-error]}})))
+
+(rf/reg-event-fx
+ ::hide-topic
+ (fn [{:keys [db]} [_ tag]]
+   (let [selected (get-in db [:topics :selected-tag])]
+     {:db (-> db
+              (update-in [:topics :tags] (fn [tags] (vec (remove #(= (:tag %) tag) tags))))
+              (cond-> (= selected tag)
+                (-> (assoc-in [:topics :selected-tag] nil))))
+      ::buzz-bot.fx/http-fetch {:method  :post
+                                :url     "/topics/hide"
+                                :body    {:tag tag}
+                                :on-ok   [::topic-hidden] :on-err [::fetch-error]}})))
+
+(rf/reg-event-fx
+ ::topic-hidden
+ (fn [_ _]
+   {:dispatch [::fetch-topics]}))
 
 ;; ── Feeds ────────────────────────────────────────────────────────────────────
 
