@@ -115,7 +115,7 @@ module Web::Routes::Embeddings
 
       count = 0
       payload.embeddings.each do |item|
-        next if item.vector.size != 384
+        next if item.vector.size != 1024
         EpisodeEmbedding.upsert(item.id, item.vector, payload.source, item.topics)
         count += 1
       end
