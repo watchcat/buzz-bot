@@ -52,7 +52,7 @@
 | Service Worker | Offline audio cache (Range-aware) + offline write queue |
 | Job dispatch | [RunPod Serverless](https://www.runpod.io/serverless-gpu) API v2 |
 | AI pipeline | Demucs, WhisperX, pyannote, Gemini Flash, VoxCPM2 — [details](docs/DUBBING.md) |
-| Embeddings | all-MiniLM-L6-v2 (384-dim) + KeyBERT topic extraction — [details](docs/RECOMMENDATIONS.md) |
+| Embeddings | BGE-M3 (1024-dim, multilingual) + KeyBERT topic extraction — [details](docs/RECOMMENDATIONS.md) |
 | Audio storage | [Cloudflare R2](https://developers.cloudflare.com/r2/) |
 | Deployment | Docker, k3s on Hetzner — [details](docs/DEPLOYMENT.md) |
 | Ingress / TLS | Traefik v3, cert-manager + Let's Encrypt |

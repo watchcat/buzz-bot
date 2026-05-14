@@ -15,11 +15,7 @@ The top 5 candidates are shown in the "Listeners also liked" section of the play
 
 ## Embeddings
 
-Episode text (title + description, upgraded to full transcript after dubbing) is embedded using [all-MiniLM-L6-v2](https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2) (384 dimensions).
-
-### Long text handling
-
-Transcripts from hour-long podcasts are chunked into 512-token windows with 50-token overlap. Each chunk is embedded independently, then all chunk vectors are mean-pooled and L2-normalized into a single 384-dim vector.
+Episode text (title + description, upgraded to full transcript after dubbing) is embedded using [BGE-M3](https://huggingface.co/BAAI/bge-m3) (1024 dimensions). BGE-M3 supports up to 8192 tokens natively in a single pass, covering even hour-long transcripts without chunking.
 
 ### Embedding pipeline
 
@@ -37,7 +33,7 @@ The callback is authenticated with a shared `INTERNAL_WEBHOOK_SECRET` (Bearer to
 ```
 episode_embeddings
 ├── episode_id    BIGINT PRIMARY KEY
-├── embedding     vector(384)          -- pgvector, HNSW index
+├── embedding     vector(1024)         -- pgvector, HNSW index
 ├── topics        TEXT[]               -- KeyBERT-extracted keyphrases
 ├── source        VARCHAR(20)          -- "description" or "transcript"
 ├── created_at    TIMESTAMPTZ
@@ -78,9 +74,9 @@ When an episode is dubbed, the full transcript becomes available. The dub result
 
 ## Semantic Inbox Search
 
-The inbox search box re-ranks episodes by vector similarity to a text query. A lightweight Python FastAPI sidecar (`embed-sidecar/`) loads the same all-MiniLM-L6-v2 model and embeds the query in real time (<50ms). The Crystal server queries pgvector to order inbox episodes by cosine similarity to the query vector.
+The inbox search box re-ranks episodes by vector similarity to a text query. A lightweight Python FastAPI sidecar (`embed-sidecar/`) loads the BGE-M3 model and embeds the query in real time (<50ms). The Crystal server queries pgvector to order inbox episodes by cosine similarity to the query vector.
 
-- Sidecar runs as a k8s Deployment in the `buzz-bot` namespace (`embed-sidecar:8000`)
+- Sidecar runs as a k8s Deployment in the `buzz-bot` namespace (`embed-sidecar:8000`), loading BGE-M3
 - Episodes without embeddings sort to the bottom (`NULLS LAST`)
 - 300ms debounced input; clearing restores chronological order
 
