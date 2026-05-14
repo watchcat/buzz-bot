@@ -4,7 +4,7 @@ from fastapi import FastAPI
 from pydantic import BaseModel
 from sentence_transformers import SentenceTransformer
 
-MODEL_NAME = os.environ.get("MODEL_NAME", "sentence-transformers/all-MiniLM-L6-v2")
+MODEL_NAME = os.environ.get("MODEL_NAME", "BAAI/bge-m3")
 
 app = FastAPI()
 model = None
