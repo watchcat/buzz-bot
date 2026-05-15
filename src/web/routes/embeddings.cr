@@ -114,12 +114,21 @@ module Web::Routes::Embeddings
       payload = CallbackPayload.from_json(body)
 
       count = 0
+      rejected = 0
+      bad_dims = Set(Int32).new
       payload.embeddings.each do |item|
-        next if item.vector.size != 1024
+        if item.vector.size != 1024
+          rejected += 1
+          bad_dims << item.vector.size
+          next
+        end
         EpisodeEmbedding.upsert(item.id, item.vector, payload.source, item.topics)
         count += 1
       end
 
+      if rejected > 0
+        Log.warn { "Rejected #{rejected} embeddings with wrong dims: #{bad_dims.to_a} (expected 1024)" }
+      end
       Log.info { "Stored #{count} embeddings (source=#{payload.source})" }
       env.response.content_type = "application/json"
       {ok: true, stored: count}.to_json
