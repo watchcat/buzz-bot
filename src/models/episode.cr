@@ -130,7 +130,9 @@ struct Episode
         JOIN user_feeds uf ON uf.feed_id = e.feed_id
         JOIN episode_embeddings ee ON ee.episode_id = e.id
         WHERE uf.user_id = $1
-          AND $2 = ANY(ee.topics)
+          AND ee.topics && COALESCE(
+            (SELECT array_agg(topic) FROM topic_clusters WHERE label = $2),
+            ARRAY[$2]::text[])
         ORDER BY COALESCE(e.published_at, e.created_at) DESC
         LIMIT $3 OFFSET $4
       SQL

@@ -94,14 +94,16 @@ module EpisodeEmbedding
     results = [] of TagCount
     AppDB.pool.query_each(
       <<-SQL,
-        SELECT t AS tag, COUNT(*)::int AS count
+        SELECT COALESCE(tc.label, t) AS tag, COUNT(DISTINCT e.id)::int AS count
         FROM episodes e
         JOIN user_feeds uf ON uf.feed_id = e.feed_id
         JOIN episode_embeddings ee ON ee.episode_id = e.id,
              unnest(ee.topics) AS t
+        LEFT JOIN topic_clusters tc ON tc.topic = t
         WHERE uf.user_id = $1
-          AND t NOT IN (SELECT topic FROM user_hidden_topics WHERE user_id = $1)
-        GROUP BY t
+          AND COALESCE(tc.label, t) NOT IN (
+            SELECT topic FROM user_hidden_topics WHERE user_id = $1)
+        GROUP BY COALESCE(tc.label, t)
         ORDER BY count DESC
         LIMIT $2 OFFSET $3
       SQL
