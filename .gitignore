@@ -39,4 +39,7 @@ k8s/kubeconfig
 
 scripts/experiment-output/
 scripts/.venv-exp/
-scripts/__pycache__/
+
+# Python
+__pycache__/
+*.pyc

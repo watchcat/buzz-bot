@@ -811,6 +811,8 @@ become the biggest tags). The same `min(... -count, len, str)` tie-break as
 - Create: `cluster-worker/test_cluster_job.py` (pytest for `is_noise_topic`)
 - Create: `cluster-worker/requirements.txt`
 - Create: `cluster-worker/Dockerfile`
+- Create: `cluster-worker/VERSION` (single source of truth, parity with embed-worker)
+- Create: `cluster-worker/build.sh` (ctr-import build, parity with embed-worker)
 - Create: `k8s/cluster-cronjob.yaml`
 
 > No Crystal model is needed in this branch: Python does all writes, and the
@@ -993,7 +995,15 @@ numpy==1.26.4
 requests==2.32.3
 ```
 
-Create `cluster-worker/Dockerfile`:
+Create `cluster-worker/VERSION` (single source of truth, parity with
+`embed-worker/VERSION`):
+
+```
+1.0
+```
+
+Create `cluster-worker/Dockerfile` (`-u` for unbuffered logs + `ARG`/`LABEL`
+version, matching `embed-worker/Dockerfile`):
 
 ```dockerfile
 FROM python:3.11-slim
@@ -1001,19 +1011,43 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 COPY cluster_job.py .
-CMD ["python", "cluster_job.py"]
+COPY VERSION .
+ARG VERSION=dev
+LABEL version=$VERSION
+CMD ["python", "-u", "cluster_job.py"]
 ```
 
-- [ ] **Step 6: Build + import image into k3s**
+Create `cluster-worker/build.sh` (`chmod +x`). Unlike embed-worker/embed-sidecar
+which `--push` to Docker Hub, cluster-worker is a LOCAL self-managed image
+imported into k3s containerd (`imagePullPolicy:Never`), per project memory
+`project_k3s_image_import`:
 
-Per `project_k3s_image_import` memory (k8s.io namespace + `imagePullPolicy: Never`). Run:
 ```bash
-docker build -t cluster-worker:1.0 cluster-worker/
-docker save cluster-worker:1.0 -o /tmp/cluster-worker.tar
-scp -i ~/.ssh/id_rsa /tmp/cluster-worker.tar root@46.225.0.50:/tmp/
-ssh -i ~/.ssh/id_rsa root@46.225.0.50 "ctr -n k8s.io images import /tmp/cluster-worker.tar"
+#!/usr/bin/env bash
+# Build cluster-worker and import it into the single-node k3s containerd.
+set -euo pipefail
+cd "$(dirname "$0")"
+
+VERSION=$(cat VERSION)
+IMAGE="cluster-worker:${VERSION}"
+NODE="root@46.225.0.50"
+
+echo "Building ${IMAGE} for linux/amd64..."
+docker build --platform linux/amd64 --build-arg VERSION="${VERSION}" -t "${IMAGE}" .
+docker save "${IMAGE}" -o /tmp/cluster-worker.tar
+scp -i ~/.ssh/id_rsa /tmp/cluster-worker.tar "${NODE}:/tmp/"
+ssh -i ~/.ssh/id_rsa "${NODE}" "ctr -n k8s.io images import /tmp/cluster-worker.tar"
+echo "Imported ${IMAGE} into k3s (k8s.io namespace)"
 ```
-Expected: import reports `cluster-worker:1.0`.
+
+- [ ] **Step 6: Build + import image into k3s** (controller runs this in Task 8)
+
+Run the versioned build script (it does docker build → save → scp → `ctr -n
+k8s.io images import`, per `project_k3s_image_import` memory):
+```bash
+./cluster-worker/build.sh
+```
+Expected: ends with `Imported cluster-worker:1.0 into k3s (k8s.io namespace)`.
 
 - [ ] **Step 7: CronJob manifest**
 
@@ -1142,10 +1176,16 @@ git commit -m "feat: cluster-aware tag cloud aggregation + topic filter"
 
 **Files:** none (operational)
 
-- [ ] **Step 1: Deploy buzz-bot (route + read-path changes)**
+- [ ] **Step 1: Deploy buzz-bot (read-path changes) + build cluster-worker image**
 
-Run: `k8s/deploy.sh`
-Expected: build, tar export, scp, containerd import, rollout succeeds.
+```bash
+k8s/deploy.sh            # buzz-bot: build, tar, scp, containerd import, rollout
+./cluster-worker/build.sh   # cluster-worker:1.0 → k3s containerd (k8s.io ns)
+```
+Expected: buzz-bot rollout succeeds; build.sh ends with
+`Imported cluster-worker:1.0 into k3s (k8s.io namespace)`. (The CronJob in the
+next step references `cluster-worker:1.0` with `imagePullPolicy:Never`, so the
+image MUST be imported first or the pod will `ErrImageNeverPull`.)
 
 - [ ] **Step 2: Apply the CronJob**
 
@@ -1161,8 +1201,7 @@ Expected: `cronjob.batch/cluster-trigger created`.
 kubectl --kubeconfig k8s/kubeconfig -n buzz-bot create job --from=cronjob/cluster-trigger cluster-manual-1
 kubectl --kubeconfig k8s/kubeconfig -n buzz-bot logs -f job/cluster-manual-1
 ```
-Expected (3A): `HTTP 200`; buzz-bot logs show `clustered N topics into M`.
-Expected (3B): job logs `clustered N topics into M clusters`.
+Expected: job logs `clustered N topics into M clusters` (gate=3B/sklearn).
 
 - [ ] **Step 4: Verify clustering landed**
 
@@ -1188,7 +1227,10 @@ kubectl --kubeconfig k8s/kubeconfig -n buzz-bot delete job cluster-manual-1
 - [ ] **Step 7: Final commit (if any operational tweaks were needed)**
 
 ```bash
-git add -A && git commit -m "chore: topic clustering deployed + verified" || echo "nothing to commit"
+# scope explicitly — never `git add -A` (untracked .superpowers/, docs/ideas.md,
+# k8s/tg-api-ingress.yaml are unrelated and must NOT be committed)
+git add cluster-worker/ k8s/cluster-cronjob.yaml docs/superpowers/ 2>/dev/null
+git commit -m "chore: topic clustering deployed + verified" || echo "nothing to commit"
 ```
 
 ---
