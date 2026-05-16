@@ -35,17 +35,18 @@
 | `scripts/topic-cluster-experiment.sh` | Runner: extract DATABASE_URL, venv, run script | 1 |
 | `docs/superpowers/specs/2026-05-16-topic-clustering-DECISION.md` | Gate decision record | 1 |
 | `migrations/018_topic_clusters.sql` | `topic_vectors`, `topic_clusters`, GIN index | 2 |
-| `src/models/topic_cluster.cr` | Rebuild + vector-cache + k-NN edges (3A only) | 3A |
+| ~~`src/models/topic_cluster.cr`~~ | 3A only — **NOT EXECUTED** (gate=sklearn) | ~~3A~~ |
 | `src/models/episode_embedding.cr` | Modify `top_tags_for_user` (cluster-aware) | 4 |
 | `src/models/episode.cr` | Modify `for_topic` (member overlap + fallback) | 4 |
-| `src/topic_clustering/union_find.cr` | Pure union-find (3A only) | 3A |
-| `spec/spec_helper.cr`, `spec/topic_clustering/union_find_spec.cr` | Crystal spec for union-find (3A only) | 3A |
-| `src/web/routes/topic_clusters.cr` | `POST /internal/cluster-topics` (3A only) | 3A |
-| `src/web/server.cr` | Register the new route (3A only) | 3A |
-| `migrations/019_topic_vectors_hnsw.sql` | HNSW index on `topic_vectors` (3A only) | 3A |
-| `cluster-worker/cluster_job.py` | sklearn nightly job (3B only) | 3B |
-| `cluster-worker/Dockerfile`, `requirements.txt` | 3B image (3B only) | 3B |
-| `k8s/cluster-cronjob.yaml` | Nightly trigger (both branches; body differs) | 3/8 |
+| ~~`src/topic_clustering/union_find.cr`~~ | 3A only — **NOT EXECUTED** | ~~3A~~ |
+| ~~`spec/...union_find_spec.cr`~~ | 3A only — **NOT EXECUTED** | ~~3A~~ |
+| ~~`src/web/routes/topic_clusters.cr`~~ | 3A only — **NOT EXECUTED** | ~~3A~~ |
+| ~~`src/web/server.cr`~~ | 3A only — **NOT EXECUTED** | ~~3A~~ |
+| ~~`migrations/019_topic_vectors_hnsw.sql`~~ | 3A only — **NOT CREATED** | ~~3A~~ |
+| `cluster-worker/cluster_job.py` | sklearn nightly job + `is_noise_topic` | 3B ✅ |
+| `cluster-worker/test_cluster_job.py` | pytest for `is_noise_topic` (gate amendment) | 3B ✅ |
+| `cluster-worker/Dockerfile`, `requirements.txt` | 3B prod image (no pytest) | 3B ✅ |
+| `k8s/cluster-cronjob.yaml` | Nightly trigger (sklearn body) | 3B/8 ✅ |
 
 ---
 
@@ -449,10 +450,12 @@ git commit -m "feat: migration 018 - topic_vectors, topic_clusters, topics GIN i
 
 ## Phase 3 — Nightly job (execute ONLY the branch named in the DECISION file)
 
-> If `mechanism: in-db-crystal` → do **Task 7A**, skip 7B.
-> If `mechanism: python-sklearn` → do **Task 7B**, skip 7A.
+> **GATE OUTCOME (2026-05-16):** `mechanism: python-sklearn` →
+> **execute Task 7B; SKIP Task 7A entirely.** Migration 019 (HNSW on
+> `topic_vectors`) is 7A-only and is **NOT created/applied**. Task 7A below is
+> retained for the record only — do not implement it.
 
-### Task 7A: In-DB Crystal nightly clustering (single-linkage)
+### Task 7A: In-DB Crystal nightly clustering (single-linkage) — ❌ NOT EXECUTED (gate chose python-sklearn)
 
 **Files:**
 - Create: `src/topic_clustering/union_find.cr`
@@ -795,10 +798,17 @@ git commit -m "feat: in-db Crystal nightly topic clustering (single-linkage)"
 
 ---
 
-### Task 7B: Python sklearn nightly CronJob (average/complete linkage)
+### Task 7B: Python sklearn nightly CronJob — ✅ EXECUTE THIS BRANCH
+
+Gate-locked params (from DECISION file): **linkage=complete, T=0.30, K=3**.
+Plus a **TDD'd `is_noise_topic()` date/number filter** (gate amendment — the
+topic corpus is polluted with date/timestamp fragments that would otherwise
+become the biggest tags). The same `min(... -count, len, str)` tie-break as
+`scripts/topic_cluster_experiment.py`'s `pick_label` is reused here.
 
 **Files:**
 - Create: `cluster-worker/cluster_job.py`
+- Create: `cluster-worker/test_cluster_job.py` (pytest for `is_noise_topic`)
 - Create: `cluster-worker/requirements.txt`
 - Create: `cluster-worker/Dockerfile`
 - Create: `k8s/cluster-cronjob.yaml`
@@ -806,14 +816,48 @@ git commit -m "feat: in-db Crystal nightly topic clustering (single-linkage)"
 > No Crystal model is needed in this branch: Python does all writes, and the
 > read path (Task 6) is inlined SQL against the `topic_clusters` table. The
 > table is the only cross-branch contract.
+> `requirements.txt` deliberately has NO pytest (don't bloat the prod image);
+> run `test_cluster_job.py` in a throwaway venv that also has the runtime deps
+> (numpy/psycopg2-binary/scikit-learn/requests) so `import cluster_job` resolves.
 
-- [ ] **Step 1: The job script**
+- [ ] **Step 1: Write the failing noise-filter test**
 
-Create `cluster-worker/cluster_job.py` (replace `<linkage>`, `<T>`, `<K>` with DECISION values; reuses Phase-1 pure logic by copy to keep the image self-contained):
+Create `cluster-worker/test_cluster_job.py`:
+
+```python
+from cluster_job import is_noise_topic
+
+
+def test_filters_pure_date_number_noise():
+    for s in ["03", "05", "00 00", "20 03", "13 03", "2026", "2026 07",
+              "26 2026", "03 2026", "  12  05 ", "2026 год", "2026 году",
+              "04 26", "00 01", "2026 14"]:
+        assert is_noise_topic(s), f"should be noise: {s!r}"
+
+
+def test_keeps_real_topics():
+    for s in ["war", "экономика", "ukraine", "oorlog", "covid 19",
+              "9 мая", "g7", "iran war", "блокировки telegram"]:
+        assert not is_noise_topic(s), f"should be kept: {s!r}"
+```
+
+- [ ] **Step 2: Run test to verify it fails**
+
+Run (venv with deps so `import cluster_job` resolves):
+```bash
+python3.11 -m venv /tmp/cw-venv && /tmp/cw-venv/bin/pip -q install pytest numpy psycopg2-binary scikit-learn requests
+cd cluster-worker && PYTHONPATH=. /tmp/cw-venv/bin/python -m pytest test_cluster_job.py -v
+```
+Expected: FAIL — `ModuleNotFoundError: No module named 'cluster_job'`
+
+- [ ] **Step 3: Create the job script**
+
+Create `cluster-worker/cluster_job.py` (params already substituted to the gate decision; reuses Phase-1 pure logic by copy to keep the image self-contained):
 
 ```python
 """Nightly global topic clustering (sklearn). mechanism = python-sklearn.
 Reads DATABASE_URL and embeds via the in-cluster BGE-M3 sidecar.
+Gate decision: complete linkage, cosine-distance 0.30, K=3.
 """
 import os
 import re
@@ -822,10 +866,32 @@ import psycopg2
 import requests
 from sklearn.cluster import AgglomerativeClustering
 
-LINKAGE = os.environ.get("CLUSTER_LINKAGE", "<linkage>")
-THRESHOLD = float(os.environ.get("TOPIC_CLUSTER_DISTANCE", "<T>"))
-K = int(os.environ.get("TOPIC_CLUSTER_MIN_COUNT", "<K>"))
+LINKAGE = os.environ.get("CLUSTER_LINKAGE", "complete")
+THRESHOLD = float(os.environ.get("TOPIC_CLUSTER_DISTANCE", "0.30"))
+K = int(os.environ.get("TOPIC_CLUSTER_MIN_COUNT", "3"))
 SIDECAR = os.environ.get("EMBED_SIDECAR_URL", "http://embed-sidecar:8000")
+
+# Gate amendment: drop date/number/timestamp fragments KeyBERT extracts from
+# episode dates & timestamped show-notes. Without this they form the largest
+# clusters and would dominate the tag cloud. Deterministic; unit-tested.
+_NUM_ONLY = re.compile(r"[\d\s:.\-/]+")
+_YEAR_WORD = re.compile(r"20\d{2}(\s+(год|году|year|jaar))?", re.IGNORECASE)
+
+
+def is_noise_topic(t: str) -> bool:
+    """True if the topic string is a pure date/number fragment (no real word).
+    Conservative: only nukes strings that are ENTIRELY digits/separators, or a
+    bare 4-digit year optionally followed by a year-word. Anything containing a
+    real word (any language) is kept ('covid 19', '9 мая' survive).
+    """
+    s = t.strip()
+    if not s:
+        return True
+    if _NUM_ONLY.fullmatch(s):
+        return True
+    if _YEAR_WORD.fullmatch(s):
+        return True
+    return False
 
 
 def pick_label(members, counts):
@@ -848,6 +914,8 @@ def main():
         "FROM episode_embeddings, unnest(topics) AS t "
         "GROUP BY t HAVING COUNT(DISTINCT episode_id) >= %s", (K,))
     counts = {r[0]: r[1] for r in cur.fetchall()}
+    # Gate amendment: strip date/number noise before embed/cluster/label.
+    counts = {t: c for t, c in counts.items() if not is_noise_topic(t)}
     topics = sorted(counts)
     if len(topics) < 3:
         print(f"only {len(topics)} topics >= K={K}, nothing to do")
@@ -904,9 +972,19 @@ if __name__ == "__main__":
     main()
 ```
 
-- [ ] **Step 2: Deps + image**
+- [ ] **Step 4: Run noise-filter test (passes) + syntax check**
 
-Create `cluster-worker/requirements.txt`:
+Run:
+```bash
+cd cluster-worker && PYTHONPATH=. /tmp/cw-venv/bin/python -m pytest test_cluster_job.py -v
+python -c "import ast; ast.parse(open('cluster_job.py').read()); print('syntax OK')"
+```
+Expected: `2 passed`; then `syntax OK`.
+
+- [ ] **Step 5: Deps + image**
+
+Create `cluster-worker/requirements.txt` (runtime only — NO pytest, keep the
+prod image lean; the test runs in the dev venv from Step 2):
 
 ```
 scikit-learn==1.5.1
@@ -926,15 +1004,7 @@ COPY cluster_job.py .
 CMD ["python", "cluster_job.py"]
 ```
 
-- [ ] **Step 3: Smoke-test the script logic locally**
-
-Run:
-```bash
-cd cluster-worker && python -c "import ast,sys; ast.parse(open('cluster_job.py').read()); print('syntax OK')"
-```
-Expected: `syntax OK`
-
-- [ ] **Step 4: Build + import image into k3s**
+- [ ] **Step 6: Build + import image into k3s**
 
 Per `project_k3s_image_import` memory (k8s.io namespace + `imagePullPolicy: Never`). Run:
 ```bash
@@ -945,7 +1015,7 @@ ssh -i ~/.ssh/id_rsa root@46.225.0.50 "ctr -n k8s.io images import /tmp/cluster-
 ```
 Expected: import reports `cluster-worker:1.0`.
 
-- [ ] **Step 5: CronJob manifest**
+- [ ] **Step 7: CronJob manifest**
 
 Create `k8s/cluster-cronjob.yaml`:
 
@@ -978,11 +1048,11 @@ spec:
           restartPolicy: OnFailure
 ```
 
-- [ ] **Step 6: Commit branch 7B**
+- [ ] **Step 8: Commit branch 7B**
 
 ```bash
 git add cluster-worker/ k8s/cluster-cronjob.yaml
-git commit -m "feat: python sklearn nightly topic clustering CronJob"
+git commit -m "feat: python sklearn nightly topic clustering CronJob + date-noise filter"
 ```
 
 ---
