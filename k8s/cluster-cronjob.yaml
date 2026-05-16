@@ -1,0 +1,26 @@
+# k8s/cluster-cronjob.yaml
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: cluster-trigger
+  namespace: buzz-bot
+spec:
+  schedule: "0 3 * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+          - name: cluster
+            image: cluster-worker:1.0
+            imagePullPolicy: Never
+            envFrom:
+            - secretRef:
+                name: buzz-bot-env
+            env:
+            - name: EMBED_SIDECAR_URL
+              value: "http://embed-sidecar:8000"
+          restartPolicy: OnFailure
