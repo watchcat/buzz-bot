@@ -36,3 +36,7 @@ public/js/
 k8s/secret.yaml
 k8s/tg-api-secret.yaml
 k8s/kubeconfig
+
+scripts/experiment-output/
+scripts/.venv-exp/
+scripts/__pycache__/
