@@ -297,6 +297,7 @@ cd "$(dirname "$0")"
 
 DBURL=$(kubectl --kubeconfig ../k8s/kubeconfig -n buzz-bot get secret buzz-bot-env \
   -o jsonpath='{.data.DATABASE_URL}' | base64 -d | sed -E 's#\?.*#?sslmode=require#')
+[ -n "$DBURL" ] || { echo "ERROR: DATABASE_URL extracted as empty (secret missing key?)" >&2; exit 1; }
 export DATABASE_URL="$DBURL"
 
 nix-shell --packages python3 gcc --run '
