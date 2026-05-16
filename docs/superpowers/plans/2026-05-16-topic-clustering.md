@@ -151,6 +151,29 @@ git commit -m "feat: topic-cluster experiment pure logic (label pick, grouping)"
 **Files:**
 - Modify: `scripts/topic_cluster_experiment.py` (append `main()` and helpers)
 
+- [ ] **Step 0: Tighten `pick_label` docstring (Task 1 review follow-up)**
+
+`pick_label` now gains more callers. Replace its docstring body to state the
+preconditions the Task 1 reviewer flagged. The function code is unchanged; only
+the docstring:
+
+```python
+def pick_label(members: list[str], counts: dict[str, int]) -> str:
+    """Canonical label = member with max global episode count.
+
+    Deterministic tie-break: highest count, then shortest string, then
+    lexicographic (case-sensitive: Python codepoint order, so uppercase
+    sorts before lowercase — 'AI' < 'ai'). Keeps labels stable across
+    nightly runs.
+
+    Precondition: `members` must be non-empty (min() raises ValueError on []).
+    Callers cluster real members, so this always holds in practice.
+    """
+    return min(members, key=lambda m: (-counts.get(m, 0), len(m), m))
+```
+
+(Re-run `python -m pytest test_topic_cluster_experiment.py -v` after — still 3 passed; behavior unchanged, docstring only.)
+
 - [ ] **Step 1: Append DB + grid code**
 
 Append to `scripts/topic_cluster_experiment.py`:
@@ -291,8 +314,10 @@ echo "Done. Review scripts/experiment-output/*.txt"
 Run:
 ```bash
 chmod +x scripts/topic-cluster-experiment.sh
-printf '\nscripts/experiment-output/\nscripts/.venv-exp/\n' >> .gitignore
+printf '\nscripts/experiment-output/\nscripts/.venv-exp/\nscripts/__pycache__/\n' >> .gitignore
 ```
+
+(`scripts/__pycache__/` included per Task 1 code review — pytest creates it.)
 
 - [ ] **Step 3: Commit the runner**
 
