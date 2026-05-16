@@ -300,7 +300,7 @@ DBURL=$(kubectl --kubeconfig ../k8s/kubeconfig -n buzz-bot get secret buzz-bot-e
 [ -n "$DBURL" ] || { echo "ERROR: DATABASE_URL extracted as empty (secret missing key?)" >&2; exit 1; }
 export DATABASE_URL="$DBURL"
 
-nix-shell --packages python3 gcc --run '
+nix-shell --packages python311 gcc --run '
   set -e
   [ -d .venv-exp ] || python3 -m venv .venv-exp
   ./.venv-exp/bin/pip install -q -r requirements-experiment.txt
