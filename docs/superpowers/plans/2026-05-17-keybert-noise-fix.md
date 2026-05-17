@@ -23,6 +23,7 @@
 | `embed-worker/topic_clean.py` | Pure `is_noise_topic` + `clean_topic_input`. Imports only `re`. | 2, 3 |
 | `embed-worker/test_topic_clean.py` | pytest: noise guard (mirrors cluster-worker table) + input cleaning. | 2, 3 |
 | `embed-worker/handler.py` | Rewrite `extract_topics` to wire cleaning + multilingual `CountVectorizer` + guard. | 4 |
+| `embed-worker/Dockerfile` | Add `COPY stopwords.py .` + `COPY topic_clean.py .` so the new modules ship in the RunPod image (else runtime `ModuleNotFoundError`). | 4 |
 | `embed-worker/requirements.txt` | Add explicit `scikit-learn==1.5.1` (was transitive via keybert). | 4 |
 | `embed-worker/VERSION` | `2.0` → `2.1` (gates the RunPod redeploy). | 5 |
 
@@ -335,6 +336,25 @@ scikit-learn==1.5.1
 (Full file becomes: `runpod==1.6.2`, `sentence-transformers==3.0.1`,
 `torch>=2.6.0`, `requests==2.32.3`, `keybert==0.8.5`, `scikit-learn==1.5.1`.)
 
+- [ ] **Step 1b: Ship the new modules in the image (CRITICAL)**
+
+`handler.py` will now `import` `topic_clean` and `stopwords`. The Dockerfile
+only copies `handler.py`/`VERSION`, so without this the RunPod worker crashes
+with `ModuleNotFoundError` on every job. In `embed-worker/Dockerfile`, change:
+
+```dockerfile
+COPY handler.py .
+COPY VERSION .
+```
+to:
+```dockerfile
+COPY stopwords.py .
+COPY topic_clean.py .
+COPY handler.py .
+COPY VERSION .
+```
+(Nothing else in the Dockerfile changes.)
+
 - [ ] **Step 2: Write the failing guarded integration test**
 
 Append to `embed-worker/test_topic_clean.py`:
@@ -459,7 +479,7 @@ via the spot-check (Task 6 Step 5).
 - [ ] **Step 6: Commit**
 
 ```bash
-git add embed-worker/handler.py embed-worker/requirements.txt embed-worker/test_topic_clean.py
+git add embed-worker/handler.py embed-worker/Dockerfile embed-worker/requirements.txt embed-worker/test_topic_clean.py
 git commit -m "feat: source-clean KeyBERT extraction (timestamps/dates + multilingual stopwords)"
 ```
 
