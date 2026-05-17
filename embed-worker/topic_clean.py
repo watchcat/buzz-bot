@@ -30,8 +30,13 @@ def is_noise_topic(t: str) -> bool:
 _TS_PREFIX = re.compile(r"^\s*\d{1,2}:\d{2}(?::\d{2})?\s*[—–\-:.)\]]*\s*")
 # Standalone time token anywhere: "10:15", "1:23:45"
 _TIME_TOKEN = re.compile(r"\b\d{1,2}:\d{2}(?::\d{2})?\b")
-# Explicit date string: 17.05.2026 / 2026-05-17 / 05/17/2026
+# Explicit date string: 17.05.2026 / 2026-05-17 / 05/17/2026.
+# NOTE: also strips 3-part version numbers (1.2.3, 17.4.1) — accepted
+# best-effort trade-off; the adjacent topic word survives and is_noise_topic
+# is the downstream backstop (spec: dominant timestamp case only).
 _DATE = re.compile(r"\b\d{1,4}[./-]\d{1,2}[./-]\d{1,4}\b")
+# Collapse runs of spaces/tabs left by the substitutions above.
+_WS = re.compile(r"[ \t]{2,}")
 
 
 def clean_topic_input(text: str | None) -> str:
@@ -49,7 +54,7 @@ def clean_topic_input(text: str | None) -> str:
         line = _TS_PREFIX.sub("", line, count=1)
         line = _TIME_TOKEN.sub(" ", line)
         line = _DATE.sub(" ", line)
-        line = re.sub(r"[ \t]{2,}", " ", line).strip()
+        line = _WS.sub(" ", line).strip()
         if line:
             out_lines.append(line)
     return "\n".join(out_lines)

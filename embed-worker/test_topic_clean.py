@@ -1,4 +1,4 @@
-from topic_clean import is_noise_topic
+from topic_clean import is_noise_topic, clean_topic_input
 
 
 def test_filters_pure_date_number_noise():
@@ -12,9 +12,6 @@ def test_keeps_real_topics():
     for s in ["war", "экономика", "ukraine", "oorlog", "covid 19",
               "9 мая", "g7", "iran war", "блокировки telegram"]:
         assert not is_noise_topic(s), f"should be kept: {s!r}"
-
-
-from topic_clean import clean_topic_input
 
 
 def test_strips_leading_chapter_timestamps_keeps_labels():
