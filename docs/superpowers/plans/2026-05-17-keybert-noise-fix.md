@@ -452,9 +452,24 @@ def extract_topics(text: str, top_n: int = 10) -> list[str]:
     return out
 ```
 
-(Leave `get_model`, `get_kw_model`, `embed_episode`, `handler`, and the
-`runpod.serverless.start` line unchanged. `embed_episode` still uses the raw
-`episode["text"]` — the vector path is untouched.)
+Also wrap the module-bottom serverless start so the module is importable for
+the guarded test (without it, `from handler import extract_topics` triggers
+runpod's CLI runner and `sys.exit(1)` inside pytest). Change:
+
+```python
+runpod.serverless.start({"handler": handler})
+```
+to:
+```python
+if __name__ == "__main__":
+    runpod.serverless.start({"handler": handler})
+```
+Production is unaffected: the Docker `CMD ["python", "-u", "handler.py"]` runs
+the module as `__main__`, so the serverless loop still starts in the image.
+
+(Leave `get_model`, `get_kw_model`, `embed_episode`, and `handler` unchanged.
+`embed_episode` still uses the raw `episode["text"]` — the vector path is
+untouched.)
 
 - [ ] **Step 5: Syntax check + run tests**
 
