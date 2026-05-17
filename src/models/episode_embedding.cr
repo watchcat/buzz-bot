@@ -103,6 +103,8 @@ module EpisodeEmbedding
         WHERE uf.user_id = $1
           AND COALESCE(tc.label, t) NOT IN (
             SELECT topic FROM user_hidden_topics WHERE user_id = $1)
+          AND COALESCE(tc.label, t) !~ '^[0-9 :./-]+$'
+          AND COALESCE(tc.label, t) !~* '^20[0-9]{2}( (год|году|year|jaar))?$'
         GROUP BY COALESCE(tc.label, t)
         ORDER BY count DESC
         LIMIT $2 OFFSET $3
