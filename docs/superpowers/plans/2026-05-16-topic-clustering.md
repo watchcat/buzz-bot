@@ -1235,6 +1235,73 @@ git commit -m "chore: topic clustering deployed + verified" || echo "nothing to 
 
 ---
 
+## Phase 6 — Post-verification follow-up
+
+### Task 9: Read-path noise exclusion (Task 8 verification finding)
+
+**Files:**
+- Modify: `src/models/episode_embedding.cr` (`top_tags_for_user`)
+
+> **Why:** `is_noise_topic` (Task 7B) keeps date/number noise out of *cluster
+> formation* only. Task 6's read path resolves un-clustered topics via
+> `COALESCE(tc.label, t)` → raw string, which resurfaces exactly that filtered
+> noise as singleton tags (verified: `03` was the 5th-biggest tag, 255 eps).
+> Fix the cloud aggregation to exclude the same noise pattern. `for_topic` is
+> deliberately NOT changed — once a tag is absent from the cloud it is
+> unclickable, so `for_topic` never receives it; filtering there would only
+> make a stale/cached noise-tag click return a confusing empty list. Verified
+> the two SQL regexes classify identically to Python `is_noise_topic`.
+
+- [ ] **Step 1: Add the noise exclusion to `top_tags_for_user`**
+
+In `src/models/episode_embedding.cr`, in the `top_tags_for_user` SQL, add two
+predicates immediately after the existing `... NOT IN (SELECT topic FROM
+user_hidden_topics WHERE user_id = $1)` line (i.e. before `GROUP BY`):
+
+```sql
+          AND COALESCE(tc.label, t) !~ '^[0-9 :./-]+$'
+          AND COALESCE(tc.label, t) !~* '^20[0-9]{2}( (год|году|year|jaar))?$'
+```
+
+These mirror `is_noise_topic`'s `_NUM_ONLY` (`^[\d\s:.\-/]+$`) and `_YEAR_WORD`
+(`20\d{2}(\s+(год|году|year|jaar))?`) rules. Nothing else in the method changes
+(params, `query_each`, return type, `TagCount.new(...)` mapping all unchanged).
+
+- [ ] **Step 2: Compile check**
+
+Run: `crystal build src/buzz_bot.cr -o /tmp/buzz_bot_check` (via nix if needed:
+`nix-shell --packages crystal --run '...'`). Expected: builds, no errors.
+
+- [ ] **Step 3: Live SQL verification (noise gone, real tags + clusters stay)**
+
+```bash
+DBURL=$(kubectl --kubeconfig k8s/kubeconfig -n buzz-bot get secret buzz-bot-env \
+  -o jsonpath='{.data.DATABASE_URL}' | base64 -d | sed -E 's#\?.*#?sslmode=require#')
+nix-shell --packages postgresql --run "psql \"$DBURL\" -c \"
+  SELECT COALESCE(tc.label,t) tag, COUNT(DISTINCT e.id) c
+  FROM episodes e JOIN user_feeds uf ON uf.feed_id=e.feed_id
+  JOIN episode_embeddings ee ON ee.episode_id=e.id, unnest(ee.topics) t
+  LEFT JOIN topic_clusters tc ON tc.topic=t
+  WHERE uf.user_id=1
+    AND COALESCE(tc.label,t) NOT IN (SELECT topic FROM user_hidden_topics WHERE user_id=1)
+    AND COALESCE(tc.label,t) !~ '^[0-9 :./-]+\$'
+    AND COALESCE(tc.label,t) !~* '^20[0-9]{2}( (год|году|year|jaar))?\$'
+  GROUP BY 1 ORDER BY c DESC LIMIT 12;\""
+```
+Expected: no pure-numeric tags (`03` etc. gone); real tags and multi-member
+cluster labels (e.g. cross-lingual `episode`, `live новости`) still present.
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add src/models/episode_embedding.cr
+git commit -m "fix: exclude date/number noise from tag cloud (read-path follow-up)"
+```
+
+> Deploy (`k8s/deploy.sh`) is the user's to run, as with Task 8.
+
+---
+
 ## Self-review notes (author)
 
 - **Spec coverage:** Phase 1 experiment+gate → spec Phase 1 + locked "threshold/mechanism" decisions. Task 5 → spec Phase 2 schema. Task 6 → spec Phase 4 read path (all 3 SQL changes; `hide_topic` intentionally unmodified — covered by the aggregation's `COALESCE(label,t) NOT IN hidden`). Tasks 7A/7B → spec Phase 3 (both mechanisms fully written; gate picks one). Task 8 → spec "implementation order" #5.
