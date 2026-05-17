@@ -9,6 +9,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Pre-download model at build time (~2.2 GB)
 RUN python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('BAAI/bge-m3')"
 
+COPY stopwords.py .
+COPY topic_clean.py .
 COPY handler.py .
 COPY VERSION .
 

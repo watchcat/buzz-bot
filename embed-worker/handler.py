@@ -4,6 +4,11 @@ import runpod
 import requests
 from sentence_transformers import SentenceTransformer
 from keybert import KeyBERT
+from sklearn.feature_extraction.text import CountVectorizer
+from topic_clean import clean_topic_input, is_noise_topic
+from stopwords import STOPWORDS
+
+_STOPWORDS_LIST = sorted(STOPWORDS)
 
 MODEL_NAME = os.environ.get("MODEL_NAME", "BAAI/bge-m3")
 
@@ -36,18 +41,41 @@ def embed_episode(episode: dict, title_prefix: str = "") -> list[float]:
 
 
 def extract_topics(text: str, top_n: int = 10) -> list[str]:
-    """Extract diverse keyphrases from text using KeyBERT + MMR."""
-    if not text or not text.strip():
+    """Extract diverse keyphrases via KeyBERT + MMR, source-cleaned.
+
+    Pipeline: strip timestamps/dates -> KeyBERT with a multilingual-stopword
+    CountVectorizer (over-fetch) -> drop entirely-numeric/date keyphrases ->
+    de-dupe (case-insensitive) -> first `top_n`.
+    """
+    cleaned = clean_topic_input(text)
+    if not cleaned:
         return []
     km = get_kw_model()
+    # Custom vectorizer: ngram_range MUST be set here (KeyBERT ignores
+    # keyphrase_ngram_range when a vectorizer is passed). No custom
+    # token_pattern — keep sklearn default so 'covid 19'/'gpt 4' n-grams form;
+    # entirely-numeric phrases are rejected at the keyphrase level below.
+    vectorizer = CountVectorizer(ngram_range=(1, 2), stop_words=_STOPWORDS_LIST)
     keywords = km.extract_keywords(
-        text,
-        keyphrase_ngram_range=(1, 2),
-        top_n=top_n,
+        cleaned,
+        vectorizer=vectorizer,
+        top_n=15,            # over-fetch; trimmed to top_n after filtering
         use_mmr=True,
         diversity=0.3,
     )
-    return [kw for kw, _score in keywords]
+    out: list[str] = []
+    seen: set[str] = set()
+    for kw, _score in keywords:
+        if is_noise_topic(kw):
+            continue
+        key = kw.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(kw)
+        if len(out) >= top_n:
+            break
+    return out
 
 
 def handler(job):

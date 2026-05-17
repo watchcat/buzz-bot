@@ -40,3 +40,31 @@ def test_safe_on_empty_and_none():
 def test_non_timestamp_numeric_lines_survive():
     # "1." is not MM:SS — must NOT be treated as a timestamp prefix
     assert clean_topic_input("1. First real topic") == "1. First real topic"
+
+
+import os
+import pytest
+
+
+@pytest.mark.skipif(
+    os.environ.get("RUN_MODEL_TESTS") != "1",
+    reason="set RUN_MODEL_TESTS=1 to run the heavy KeyBERT/BGE-M3 test",
+)
+def test_extract_topics_drops_noise_keeps_real():
+    from handler import extract_topics  # heavy import (torch/keybert)
+    text = (
+        "#493 Jeff Kaplan: World of Warcraft\n"
+        "00:00 — Introduction\n"
+        "03:12 — Early career at Blizzard\n"
+        "1:23:45 — Future of gaming and esports\n"
+        "26:30 — World of Warcraft design\n"
+        "это было обсуждение про экономику\n"
+    )
+    topics = extract_topics(text, top_n=10)
+    assert len(topics) <= 10
+    from topic_clean import is_noise_topic
+    assert not any(is_noise_topic(t) for t in topics), topics
+    # leading timestamps must not produce numeric tags
+    assert not any(t.strip() in {"00", "00 00", "03", "493", "2026"} for t in topics), topics
+    blob = " ".join(topics).lower()
+    assert "blizzard" in blob or "warcraft" in blob or "gaming" in blob, topics
