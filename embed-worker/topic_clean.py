@@ -24,3 +24,32 @@ def is_noise_topic(t: str) -> bool:
     if _YEAR_WORD.fullmatch(s):
         return True
     return False
+
+
+# Leading chapter-timestamp prefix: "00:00 — ", "1:23:45 - ", "12:30) "
+_TS_PREFIX = re.compile(r"^\s*\d{1,2}:\d{2}(?::\d{2})?\s*[—–\-:.)\]]*\s*")
+# Standalone time token anywhere: "10:15", "1:23:45"
+_TIME_TOKEN = re.compile(r"\b\d{1,2}:\d{2}(?::\d{2})?\b")
+# Explicit date string: 17.05.2026 / 2026-05-17 / 05/17/2026
+_DATE = re.compile(r"\b\d{1,4}[./-]\d{1,2}[./-]\d{1,4}\b")
+
+
+def clean_topic_input(text: str | None) -> str:
+    """Strip timestamps/dates from the KeyBERT-only input text.
+
+    Removes leading chapter-timestamp prefixes per line (keeping the chapter
+    label), and blanks inline time tokens / explicit date strings. Leaves all
+    words and number-bearing words intact ('covid 19', '9 мая', 'gpt 4').
+    Total function: empty/None/whitespace -> "".
+    """
+    if not text or not text.strip():
+        return ""
+    out_lines = []
+    for line in text.split("\n"):
+        line = _TS_PREFIX.sub("", line, count=1)
+        line = _TIME_TOKEN.sub(" ", line)
+        line = _DATE.sub(" ", line)
+        line = re.sub(r"[ \t]{2,}", " ", line).strip()
+        if line:
+            out_lines.append(line)
+    return "\n".join(out_lines)
