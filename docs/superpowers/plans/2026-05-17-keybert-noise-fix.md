@@ -430,13 +430,20 @@ def extract_topics(text: str, top_n: int = 10) -> list[str]:
     # token_pattern — keep sklearn default so 'covid 19'/'gpt 4' n-grams form;
     # entirely-numeric phrases are rejected at the keyphrase level below.
     vectorizer = CountVectorizer(ngram_range=(1, 2), stop_words=_STOPWORDS_LIST)
-    keywords = km.extract_keywords(
-        cleaned,
-        vectorizer=vectorizer,
-        top_n=15,            # over-fetch; trimmed to top_n after filtering
-        use_mmr=True,
-        diversity=0.3,
-    )
+    try:
+        keywords = km.extract_keywords(
+            cleaned,
+            vectorizer=vectorizer,
+            top_n=15,            # over-fetch; trimmed to top_n after filtering
+            use_mmr=True,
+            diversity=0.3,
+        )
+    except ValueError:
+        # Empty vocabulary (cleaned text was all stop-words/numbers). Return
+        # no topics rather than letting it propagate — handler() runs
+        # embed_episode() BEFORE this, so an uncaught raise would discard the
+        # already-computed (primary) embedding for this episode too.
+        return []
     out: list[str] = []
     seen: set[str] = set()
     for kw, _score in keywords:
