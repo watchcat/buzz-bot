@@ -3,6 +3,7 @@
             [clojure.string :as str]
             [buzz-bot.db :as db]
             [buzz-bot.fx]
+            [buzz-bot.playback :as pb]
             [buzz-bot.events.dub :as dub-events]))
 
 (rf/reg-event-db ::initialize-db (fn [_ _] db/default-db))
@@ -339,7 +340,8 @@
            dub-statuses (:dub_statuses resp)
            init-dub     (when dub-statuses [[::dub-events/init-statuses new-id dub-statuses]])]
        (cond
-         (= cur-id new-id)
+         (pb/should-skip-reload? {:same-episode? (= cur-id new-id)
+                                  :was-playing?  was-playing?})
          {:db         (assoc-in db' [:audio :pending?] false)
           :dispatch-n (conj (vec init-dub) [::audio-download-start new-id])}
 
@@ -506,9 +508,13 @@
  ::audio-ended
  (fn [{:keys [db]} _]
    (let [autoplay? (get-in db [:audio :autoplay?])
-         next-id   (get-in db [:player :data :next_id])]
-     (when (and autoplay? next-id)
-       {:dispatch [::navigate :player {:episode-id next-id :autoplay? true}]}))))
+         next-id   (get-in db [:player :data :next_id])
+         db'       (-> db
+                       (assoc-in [:audio :episode-id] nil)
+                       (assoc-in [:audio :playing?]   false))]
+     (if (and autoplay? next-id)
+       {:db db' :dispatch [::navigate :player {:episode-id next-id :autoplay? true}]}
+       {:db db'}))))
 
 ;; ── Audio commands ───────────────────────────────────────────────────────────
 
@@ -521,7 +527,9 @@
          src       (if cached?
                      (str "/episodes/" ep-id "/audio")
                      (get-in db [:player :data :episode :audio_url]))
-         start     (get-in db [:player :data :user_episode :progress_seconds] 0)
+         start     (pb/resume-start
+                     (get-in db [:player :data :user_episode :completed])
+                     (get-in db [:player :data :user_episode :progress_seconds]))
          autoplay? (:autoplay? opts false)]
      (js/localStorage.setItem "buzz-last-episode-id" ep-id)
      (js/localStorage.setItem "buzz-last-episode-meta"
