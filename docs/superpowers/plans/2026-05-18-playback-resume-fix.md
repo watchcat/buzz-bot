@@ -446,6 +446,17 @@ to:
 
 - [ ] **Step 2: Add `flush-progress!` and replace the interval with a trust-gated save**
 
+> **Controller correction (applied during execution):** `trustworthy-position?`
+> and `flush-progress!` are defined **before `wire-listeners!`** (immediately
+> after the stall-recovery helpers, before the `;; ── Listener wiring` comment),
+> NOT at the `start-progress-interval!` location. Reason: the `pause` listener
+> inside `wire-listeners!` (Step 3) calls `flush-progress!`; defining it later
+> in the same namespace is a ClojureScript forward reference that emits an
+> "undeclared Var" warning and would fail the "compiles clean" gate. The two
+> helper defns' bodies are exactly as shown below; only their file position
+> moved earlier. `start-progress-interval!` is then replaced in place with just
+> the gated version (it references the now-earlier `trustworthy-position?`).
+
 Replace the entire `start-progress-interval!` block (lines ~212-219):
 
 ```clojure
