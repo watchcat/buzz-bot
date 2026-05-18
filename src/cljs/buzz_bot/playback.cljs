@@ -15,3 +15,13 @@
   `was-playing?` is the navigation-time snapshot (events.cljs :325-327)."
   [{:keys [same-episode? was-playing?]}]
   (boolean (and same-episode? was-playing?)))
+
+(defn should-save-progress?
+  "True when the element's currentTime is trustworthy enough to persist.
+  False during reloads/seeks (covers stall-recovery, :switch-src, download
+  swap, network reload — bug 3) regardless of source. nil readyState is
+  treated as untrustworthy."
+  [{:keys [recovering? ready-state seeking?]}]
+  (not (or (boolean recovering?)
+           (boolean seeking?)
+           (< (or ready-state 0) trustworthy-ready-state))))

@@ -25,3 +25,24 @@
     (is (false? (pb/should-skip-reload? {:same-episode? false :was-playing? false}))))
   (testing "nil inputs are falsey, not exceptions"
     (is (false? (pb/should-skip-reload? {:same-episode? nil :was-playing? nil})))))
+
+(deftest should-save-progress?-test
+  (testing "trustworthy when not recovering, not seeking, readyState >= 2"
+    (is (true? (pb/should-save-progress?
+                 {:recovering? false :ready-state 2 :seeking? false})))
+    (is (true? (pb/should-save-progress?
+                 {:recovering? false :ready-state 4 :seeking? false}))))
+  (testing "suppressed during reload (recovering?)"
+    (is (false? (pb/should-save-progress?
+                  {:recovering? true :ready-state 4 :seeking? false}))))
+  (testing "suppressed while seeking"
+    (is (false? (pb/should-save-progress?
+                  {:recovering? false :ready-state 4 :seeking? true}))))
+  (testing "suppressed when readyState below HAVE_CURRENT_DATA (covers .load() reset)"
+    (is (false? (pb/should-save-progress?
+                  {:recovering? false :ready-state 1 :seeking? false})))
+    (is (false? (pb/should-save-progress?
+                  {:recovering? false :ready-state 0 :seeking? false}))))
+  (testing "nil readyState treated as untrustworthy"
+    (is (false? (pb/should-save-progress?
+                  {:recovering? false :ready-state nil :seeking? false})))))
