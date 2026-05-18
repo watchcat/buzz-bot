@@ -2,7 +2,7 @@
   "name": "buzz-bot",
   "version": "1.0.0",
   "scripts": {
-    "test": "shadow-cljs compile test && node out/node-tests.js"
+    "test": "node node_modules/.bin/shadow-cljs compile test && node out/node-tests.js"
   },
   "devDependencies": {
     "shadow-cljs": "2.28.18"
