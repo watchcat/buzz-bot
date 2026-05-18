@@ -1,11 +1,15 @@
-{:source-paths ["src/cljs"]
+{:source-paths ["src/cljs" "test"]
  :dependencies [[reagent "1.2.0"]
                 [re-frame "1.4.3"]]
  :builds
- {:app {:target     :browser
-        :output-dir "public/js"
-        :asset-path "/js"
-        :modules    {:main {:init-fn buzz-bot.core/init!}}
-        :release    {:compiler-options {:source-map "public/js/main.js.map"}}
-        :build-options {:cache-level :off}
-        :devtools   {:repl-init-ns buzz-bot.core}}}}
+ {:app  {:target     :browser
+         :output-dir "public/js"
+         :asset-path "/js"
+         :modules    {:main {:init-fn buzz-bot.core/init!}}
+         :release    {:compiler-options {:source-map "public/js/main.js.map"}}
+         :build-options {:cache-level :off}
+         :devtools   {:repl-init-ns buzz-bot.core}}
+  :test {:target    :node-test
+         :output-to "out/node-tests.js"
+         :ns-regexp "-test$"
+         :autorun   false}}}
