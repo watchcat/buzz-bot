@@ -1,6 +1,7 @@
 (ns buzz-bot.audio
   (:require [re-frame.core :as rf]
-            [re-frame.db]))
+            [re-frame.db]
+            [buzz-bot.playback :as pb]))
 
 (defonce ^:private audio-atom
   (volatile! (doto (js/Audio.)
@@ -112,6 +113,24 @@
       (set! (.-src (el)) target)
       (load-and-resume! t))))
 
+;; ── Progress persistence helpers ─────────────────────────────────────────────
+;; Defined before wire-listeners! / init! so the pause/hide listeners that call
+;; flush-progress! are not forward references (no cljs "undeclared Var" warning).
+
+(defn- trustworthy-position? []
+  (pb/should-save-progress? {:recovering? @recovering?
+                             :ready-state (.-readyState (el))
+                             :seeking?    (.-seeking (el))}))
+
+;; Persist the current position now (pause / app-hide / pagehide). Trust-gated
+;; so a transient .load() reset (stall-recovery, :switch-src, download swap)
+;; can never write a spurious 0 over good progress (bug 3).
+(defn- flush-progress! []
+  (when (trustworthy-position?)
+    (when-let [ep-id (get-in @re-frame.db/app-db [:audio :episode-id])]
+      (rf/dispatch [:buzz-bot.events/save-progress ep-id
+                    (js/Math.floor (.-currentTime (el)))]))))
+
 ;; ── Listener wiring ──────────────────────────────────────────────────────────
 
 (defn- wire-listeners! []
@@ -133,7 +152,8 @@
       (fn []
         (cancel-stall-timer!)
         (set-playback-state! "paused")
-        (rf/dispatch [:buzz-bot.events/audio-paused])))
+        (rf/dispatch [:buzz-bot.events/audio-paused])
+        (flush-progress!)))
     (.addEventListener audio "ended"
       (fn []
         (cancel-stall-timer!)
@@ -212,7 +232,7 @@
 (defn- start-progress-interval! []
   (js/setInterval
    (fn []
-     (when-not (.-paused (el))
+     (when (and (not (.-paused (el))) (trustworthy-position?))
        (when-let [ep-id (get-in @re-frame.db/app-db [:audio :episode-id])]
          (rf/dispatch [:buzz-bot.events/save-progress ep-id
                        (js/Math.floor (.-currentTime (el)))]))))
@@ -223,7 +243,12 @@
 (defn init! []
   (wire-listeners!)
   (wire-media-session!)
-  (start-progress-interval!))
+  (start-progress-interval!)
+  ;; Telegram's WebView suspends/throttles the 5 s interval when the Mini App
+  ;; is backgrounded/closed; flush the position before that happens (bug 2).
+  (.addEventListener js/document "visibilitychange"
+    (fn [] (when (.-hidden js/document) (flush-progress!))))
+  (.addEventListener js/window "pagehide" (fn [] (flush-progress!))))
 
 ;; ── Command dispatch ──────────────────────────────────────────────────────────
 
