@@ -60,7 +60,10 @@ users ──< user_feeds >── feeds ──< episodes ──< user_episodes >�
 | `dubbed_episodes` | One row per (episode, language) — status, R2 URL, speaker samples JSONB |
 | `dub_segments` | Transcript segments with original timestamps, speaker ID, word-level alignment |
 | `dub_segment_translations` | One row per (segment, language) — translated text, synthesized audio key, `synth_start_sec`, `synth_duration` |
-| `episode_embeddings` | 1024-dim vector embedding (pgvector), KeyBERT topic keywords, source type |
+| `episode_embeddings` | 1024-dim vector embedding (pgvector), cleaned KeyBERT topic keywords, source type |
+| `topic_vectors` | Per-distinct-topic BGE-M3 embedding cache (nightly clustering) |
+| `topic_clusters` | `topic → cluster_id, label` — nightly global topic clustering result |
+| `user_hidden_topics` | Per-user hidden tag-cloud labels |
 
 `dubbed_episodes.step` tracks pipeline progress (`queued` through `complete` / `failed`). A PostgreSQL trigger fires `pg_notify('dub_status', ...)` on every step update, fanning out to all SSE subscribers.
 
