@@ -19,6 +19,11 @@ run() { nix-shell --packages postgresql --run "psql \"$DBURL\" -tA -c \"$1\""; }
 echo "== (1) EXPLAIN: HNSW engaged + latency (ef_search=$EF) =="
 EID=$(run "SELECT episode_id FROM episode_embeddings ORDER BY random() LIMIT 1")
 VEC=$(run "SELECT embedding::text FROM episode_embeddings WHERE episode_id=$EID")
+# Warm-up: Neon fetches the (~100+ MB) HNSW index from disaggregated storage
+# on first touch — cold first-hit is ~seconds, warm steady-state is single-digit
+# ms. Production keeps the index warm under traffic; we gate on warm steady
+# state, not Neon cold-fetch. Discard one query to page the index in.
+run "BEGIN; SET LOCAL hnsw.ef_search=$EF; SELECT ee.episode_id FROM episode_embeddings ee WHERE ee.episode_id<>$EID ORDER BY ee.embedding <=> '$VEC'::vector LIMIT 20; COMMIT" >/dev/null
 PLAN=$(nix-shell --packages postgresql --run "psql \"$DBURL\" -c \"BEGIN; SET LOCAL hnsw.ef_search=$EF; EXPLAIN (ANALYZE, BUFFERS) SELECT ee.episode_id FROM episode_embeddings ee WHERE ee.episode_id<>$EID ORDER BY ee.embedding <=> '$VEC'::vector LIMIT 20; COMMIT;\"")
 echo "$PLAN" | grep -E 'Index Scan using episode_embeddings_hnsw_idx|Seq Scan on episode_embeddings|Execution Time'
 echo "$PLAN" | grep -q 'Index Scan using episode_embeddings_hnsw_idx' \
