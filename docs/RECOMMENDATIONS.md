@@ -62,7 +62,7 @@ Alongside the embedding, `embed-worker` runs [KeyBERT](https://github.com/Maarte
 
 1. **Input cleaning** — leading chapter timestamps (`00:00 — …`, `1:23:45 …`) and inline time/date strings are stripped *before* KeyBERT, so digits never become keyphrases.
 2. **Multilingual KeyBERT** — KeyBERT with a `CountVectorizer` using a vendored EN+RU+NL stop-word set and `ngram_range=(1,2)`, with Maximal Marginal Relevance (`diversity=0.3`) for variety. It over-fetches the top 15 candidates.
-3. **Noise guard** — candidates that are *entirely* numeric/date fragments (`is_noise_topic`) are dropped; number-bearing real topics (`covid 19`, `9 мая`) survive.
+3. **Noise guard** — candidates that are *entirely* numeric/date fragments (`is_noise_topic`) are dropped; number-bearing real topics ( `9 мая`) survive.
 4. **Dedupe & trim** — case-insensitive de-dupe, keep the first 10. An episode whose cleaned text yields no real keyphrase stores `topics = '{}'` (legitimately topic-less).
 
 `is_noise_topic` lives in **three synchronised places** — `embed-worker` (the root fix), the nightly cluster job (safety net), and the tag-cloud read query (belt-and-suspenders); a shared test table guards them against drift.
