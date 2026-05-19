@@ -208,63 +208,121 @@ struct Episode
 
   record ScoredEpisode, episode : Episode, vector_score : Float64, collab_score : Float64, score : Float64, matching_topics : Array(String), total_matching : Int32
 
+  # pgvector hnsw.ef_search for the recs kNN. 200 gives ~near-exact recall@20
+  # on the current corpus; pinned by scripts/verify-recs-hnsw.sh. Code literal
+  # (SET LOCAL takes no bind params) — not user input.
+  EF_SEARCH = 200
+
+  private def self.build_scored(rs) : ScoredEpisode
+    ep                  = from_rs(rs)
+    vector_score        = rs.read(Float64)
+    collab_score        = rs.read(Float64)
+    score               = rs.read(Float64)
+    matching_topics_raw = rs.read(Array(String))
+    total_matching      = rs.read(Int32)
+    ScoredEpisode.new(ep, vector_score, collab_score, score, matching_topics_raw, total_matching)
+  end
+
   def self.recommended_for_episode(episode_id : Int64, limit : Int32 = 5) : Array(ScoredEpisode)
     results = [] of ScoredEpisode
-    AppDB.pool.query_each(
-      <<-SQL,
-        WITH vector_recs AS (
-          SELECT e.id, 1 - (ee.embedding <=> target.embedding) AS sim_score
-          FROM episode_embeddings ee
-          JOIN episodes e ON e.id = ee.episode_id
-          CROSS JOIN episode_embeddings target
-          WHERE target.episode_id = $1
-            AND ee.episode_id != $1
-          ORDER BY ee.embedding <=> target.embedding
-          LIMIT 20
-        ),
-        collab_recs AS (
-          SELECT ue.episode_id AS id, COUNT(*)::float AS collab_score
-          FROM user_episodes ue
-          WHERE ue.liked = TRUE
-            AND ue.user_id IN (
-              SELECT user_id FROM user_episodes
-              WHERE episode_id = $1 AND liked = TRUE
-            )
-            AND ue.episode_id != $1
-          GROUP BY ue.episode_id
-        ),
-        combined AS (
-          SELECT
-            COALESCE(v.id, c.id) AS id,
-            COALESCE(v.sim_score, 0) AS vector_score,
-            COALESCE(c.collab_score, 0) / GREATEST((SELECT MAX(collab_score) FROM collab_recs), 1) AS collab_score,
-            COALESCE(v.sim_score, 0) * 0.7
-              + COALESCE(c.collab_score, 0) / GREATEST((SELECT MAX(collab_score) FROM collab_recs), 1) * 0.3
-              AS score
-          FROM vector_recs v
-          FULL OUTER JOIN collab_recs c ON v.id = c.id
-        )
-        SELECT e.id, e.feed_id, e.guid, e.title, e.description, e.audio_url, e.duration_sec, e.published_at, e.image_url,
-               cb.vector_score, cb.collab_score, cb.score,
-               COALESCE((SELECT array_agg(t) FROM (SELECT unnest(src_ee.topics) INTERSECT SELECT unnest(rec_ee.topics) LIMIT 3) x(t)), '{}') AS matching_topics,
-               COALESCE((SELECT count(*)::int FROM (SELECT unnest(src_ee.topics) INTERSECT SELECT unnest(rec_ee.topics)) x(t)), 0) AS total_matching
-        FROM episodes e
-        JOIN combined cb ON e.id = cb.id
-        LEFT JOIN episode_embeddings rec_ee ON rec_ee.episode_id = e.id
-        LEFT JOIN episode_embeddings src_ee ON src_ee.episode_id = $1
-        ORDER BY cb.score DESC
-        LIMIT $2
-      SQL
-      episode_id, limit
-    ) do |rs|
-      ep = from_rs(rs)
-      vector_score = rs.read(Float64)
-      collab_score = rs.read(Float64)
-      score = rs.read(Float64)
-      matching_topics_raw = rs.read(Array(String))
-      total_matching = rs.read(Int32)
-      results << ScoredEpisode.new(ep, vector_score, collab_score, score, matching_topics_raw, total_matching)
+
+    target = AppDB.pool.query_one?(
+      "SELECT embedding::text FROM episode_embeddings WHERE episode_id = $1",
+      episode_id, as: String)
+
+    if target.nil?
+      # No embedding yet → collab-only. Reproduces today's behaviour exactly:
+      # previously CROSS JOIN target produced no rows, so vector_recs was empty
+      # and `combined` fell back to collab via FULL OUTER JOIN + COALESCE.
+      AppDB.pool.query_each(
+        <<-SQL,
+          WITH collab_recs AS (
+            SELECT ue.episode_id AS id, COUNT(*)::float AS collab_score
+            FROM user_episodes ue
+            WHERE ue.liked = TRUE
+              AND ue.user_id IN (
+                SELECT user_id FROM user_episodes
+                WHERE episode_id = $1 AND liked = TRUE
+              )
+              AND ue.episode_id != $1
+            GROUP BY ue.episode_id
+          ),
+          combined AS (
+            SELECT
+              c.id AS id,
+              0.0::float AS vector_score,
+              COALESCE(c.collab_score, 0) / GREATEST((SELECT MAX(collab_score) FROM collab_recs), 1) AS collab_score,
+              COALESCE(c.collab_score, 0) / GREATEST((SELECT MAX(collab_score) FROM collab_recs), 1) * 0.3 AS score
+            FROM collab_recs c
+          )
+          SELECT e.id, e.feed_id, e.guid, e.title, e.description, e.audio_url, e.duration_sec, e.published_at, e.image_url,
+                 cb.vector_score, cb.collab_score, cb.score,
+                 COALESCE((SELECT array_agg(t) FROM (SELECT unnest(src_ee.topics) INTERSECT SELECT unnest(rec_ee.topics) LIMIT 3) x(t)), '{}') AS matching_topics,
+                 COALESCE((SELECT count(*)::int FROM (SELECT unnest(src_ee.topics) INTERSECT SELECT unnest(rec_ee.topics)) x(t)), 0) AS total_matching
+          FROM episodes e
+          JOIN combined cb ON e.id = cb.id
+          LEFT JOIN episode_embeddings rec_ee ON rec_ee.episode_id = e.id
+          LEFT JOIN episode_embeddings src_ee ON src_ee.episode_id = $1
+          ORDER BY cb.score DESC
+          LIMIT $2
+        SQL
+        episode_id, limit
+      ) { |rs| results << build_scored(rs) }
+      return results
     end
+
+    # Target embedding present → HNSW-eligible kNN. SET LOCAL scopes
+    # hnsw.ef_search to this txn so it cannot leak onto other pooled-connection
+    # users; the read-only txn is otherwise side-effect free.
+    AppDB.pool.transaction do |tx|
+      conn = tx.connection
+      conn.exec("SET LOCAL hnsw.ef_search = #{EF_SEARCH}")
+      conn.query_each(
+        <<-SQL,
+          WITH vector_recs AS (
+            SELECT ee.episode_id AS id, 1 - (ee.embedding <=> $2::vector) AS sim_score
+            FROM episode_embeddings ee
+            WHERE ee.episode_id != $1
+            ORDER BY ee.embedding <=> $2::vector
+            LIMIT 20
+          ),
+          collab_recs AS (
+            SELECT ue.episode_id AS id, COUNT(*)::float AS collab_score
+            FROM user_episodes ue
+            WHERE ue.liked = TRUE
+              AND ue.user_id IN (
+                SELECT user_id FROM user_episodes
+                WHERE episode_id = $1 AND liked = TRUE
+              )
+              AND ue.episode_id != $1
+            GROUP BY ue.episode_id
+          ),
+          combined AS (
+            SELECT
+              COALESCE(v.id, c.id) AS id,
+              COALESCE(v.sim_score, 0) AS vector_score,
+              COALESCE(c.collab_score, 0) / GREATEST((SELECT MAX(collab_score) FROM collab_recs), 1) AS collab_score,
+              COALESCE(v.sim_score, 0) * 0.7
+                + COALESCE(c.collab_score, 0) / GREATEST((SELECT MAX(collab_score) FROM collab_recs), 1) * 0.3
+                AS score
+            FROM vector_recs v
+            FULL OUTER JOIN collab_recs c ON v.id = c.id
+          )
+          SELECT e.id, e.feed_id, e.guid, e.title, e.description, e.audio_url, e.duration_sec, e.published_at, e.image_url,
+                 cb.vector_score, cb.collab_score, cb.score,
+                 COALESCE((SELECT array_agg(t) FROM (SELECT unnest(src_ee.topics) INTERSECT SELECT unnest(rec_ee.topics) LIMIT 3) x(t)), '{}') AS matching_topics,
+                 COALESCE((SELECT count(*)::int FROM (SELECT unnest(src_ee.topics) INTERSECT SELECT unnest(rec_ee.topics)) x(t)), 0) AS total_matching
+          FROM episodes e
+          JOIN combined cb ON e.id = cb.id
+          LEFT JOIN episode_embeddings rec_ee ON rec_ee.episode_id = e.id
+          LEFT JOIN episode_embeddings src_ee ON src_ee.episode_id = $1
+          ORDER BY cb.score DESC
+          LIMIT $3
+        SQL
+        episode_id, target, limit
+      ) { |rs| results << build_scored(rs) }
+    end
+
     results
   end
 
