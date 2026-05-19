@@ -28,10 +28,14 @@ spec:
           resources:
             requests:
               cpu: 100m
-              memory: 384Mi
+              memory: 512Mi
             limits:
               cpu: 500m
-              memory: 512Mi
+              # Bumped 512Mi→1Gi: concurrent img-proxy/audio-proxy stream-through
+              # buffers (slow upstreams) + #90 backfill payloads OOMKilled the
+              # 512Mi pod (exit 137, CrashLoop). Stopgap; real fix = bound/redirect
+              # proxy streaming (tracked follow-up, post-#90-drain).
+              memory: 1Gi
           livenessProbe:
             httpGet:
               path: /
