@@ -12,6 +12,7 @@ SAMPLE=${SAMPLE:-50}
 
 DBURL=$(kubectl --kubeconfig ../k8s/kubeconfig -n buzz-bot get secret buzz-bot-env \
   -o jsonpath='{.data.DATABASE_URL}' | base64 -d | sed -E 's#\?.*#?sslmode=require#')
+[ -n "$DBURL" ] || { echo "ERROR: DATABASE_URL extracted as empty (secret missing key?)" >&2; exit 1; }
 
 run() { nix-shell --packages postgresql --run "psql \"$DBURL\" -tA -c \"$1\""; }
 
@@ -25,6 +26,7 @@ echo "$PLAN" | grep -q 'Index Scan using episode_embeddings_hnsw_idx' \
 echo "$PLAN" | grep -q 'Seq Scan on episode_embeddings' \
   && { echo "  FAIL: Seq Scan present"; exit 1; } || true
 MS=$(echo "$PLAN" | grep -oE 'Execution Time: [0-9.]+' | grep -oE '[0-9.]+')
+[ -n "$MS" ] || { echo "  FAIL: Execution Time not found in EXPLAIN output"; exit 1; }
 awk -v m="$MS" 'BEGIN{ if (m+0 < 10) print "  PASS: Execution "m" ms (<10)"; else { print "  FAIL: Execution "m" ms (>=10)"; exit 1 } }'
 
 echo "== (2) Near-exact A/B over $SAMPLE episodes =="
@@ -37,8 +39,9 @@ for EID in $(run "SELECT episode_id FROM episode_embeddings ORDER BY random() LI
     ne=split(E,ea,","); nh=split(H,ha,",");
     for(i=1;i<=nh;i++) hs[ha[i]]=1;
     inter=0; for(i=1;i<=ne;i++) if(ea[i] in hs) inter++;
-    for(i=1;i<=5;i++) e5[ea[i]]=1; t5=1;
-    for(i=1;i<=5;i++) if(!(ha[i] in e5)) t5=0;
+    for(i=1;i<=ne && i<=5;i++) e5[ea[i]]=1;
+    t5=(ne>=5 && nh>=5);
+    if(t5) for(i=1;i<=5;i++) if(!(ha[i] in e5)) t5=0;
     printf "%.4f %d", inter/20.0, t5 }')"
   recall_sum=$(awk -v s="$recall_sum" -v r="$r" 'BEGIN{printf "%.6f", s+r}')
   top5_ok=$((top5_ok + t)); n=$((n+1))
