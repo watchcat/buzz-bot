@@ -57,6 +57,13 @@ module EpisodeEmbedding
         FROM episodes e
         JOIN episode_embeddings ee ON ee.episode_id = e.id
         WHERE ee.topics = '{}'
+          -- source='title' + empty topics = "already processed by the current
+          -- pipeline, legitimately no topics" (e.g. all-noise/all-stopword
+          -- content after #90), NOT "awaiting topic backfill". Without this,
+          -- a few permanently-empty episodes are re-dispatched every cron run
+          -- and starve the source='description' re-extract queue forever
+          -- (untopicked is checked before stale in /internal/embed).
+          AND ee.source <> 'title'
         ORDER BY e.published_at DESC NULLS LAST
         LIMIT $1
       SQL
