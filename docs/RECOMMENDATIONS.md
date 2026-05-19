@@ -120,7 +120,7 @@ When an episode is dubbed, the full transcript becomes available. The dub result
 
 ## Semantic Inbox Search
 
-The inbox search box re-ranks episodes by vector similarity to a text query. A lightweight Python FastAPI sidecar (`embed-sidecar/`) loads the BGE-M3 model and embeds the query in real time (<50ms). The Crystal server queries pgvector to order inbox episodes by cosine similarity to the query vector.
+The inbox search box re-ranks the user's **subscribed episodes** by vector similarity to a text query. (Scope note: the semantic query ranks *all* episodes from the user's feeds — `for_inbox_semantic` joins `user_feeds` only; it does **not** apply the unheard/listened filter the normal inbox view uses.) A lightweight Python FastAPI sidecar (`embed-sidecar/`) loads the BGE-M3 model and embeds the query in real time (low-latency, with the model kept warm). The Crystal server then queries pgvector to order those episodes by cosine similarity to the query vector.
 
 - Sidecar runs as a k8s Deployment in the `buzz-bot` namespace (`embed-sidecar:8000`), loading BGE-M3
 - Episodes without embeddings sort to the bottom (`NULLS LAST`)
