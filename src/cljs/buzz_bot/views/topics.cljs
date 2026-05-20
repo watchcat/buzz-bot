@@ -3,6 +3,7 @@
             [reagent.core :as r]
             [buzz-bot.subs :as subs]
             [buzz-bot.events :as events]
+            [buzz-bot.tag-cloud :as tc]
             [buzz-bot.views.utils :refer [img-proxy]]))
 
 (defn- fmt-pub-date [published-at]
@@ -42,32 +43,62 @@
     [episode-meta ep]]
    [:span.episode-play-icon "▶"]])
 
-(defn- tag-font-size [count min-count max-count]
-  (if (= min-count max-count)
-    16
-    (+ 11 (* (/ (- count min-count) (- max-count min-count)) 11))))
+(defn- tag-cloud-item
+  "Single tag span with size/opacity/weight from tag-style, click-to-filter,
+   and pointer-event long-press-to-hide. Form-2 component so each instance
+   keeps its own timer in an r/atom. Outer accepts (but discards) the initial
+   args Reagent passes at mount; the inner fn re-binds them on every render."
+  [_initial-tag _min-c _max-c]
+  (let [timer  (r/atom nil)
+        cancel #(when @timer
+                  (js/clearTimeout @timer)
+                  (reset! timer nil))]
+    (fn [{:keys [tag count selected?]} min-c max-c]
+      [:span.tag-cloud-item
+       {:class             (when selected? "tag-cloud-item--active")
+        :style             (when-not selected?
+                             (let [s (tc/tag-style count min-c max-c)]
+                               {:font-size   (str (:font-size s) "px")
+                                :font-weight (:font-weight s)
+                                :opacity     (:opacity s)}))
+        :on-click          (fn [e]
+                             (.stopPropagation e)
+                             (if selected?
+                               (rf/dispatch [::events/clear-tag])
+                               (rf/dispatch [::events/select-tag tag])))
+        :on-pointer-down   (fn [_e]
+                             (reset! timer
+                                     (js/setTimeout
+                                      (fn []
+                                        (reset! timer nil)
+                                        (.showConfirm
+                                         js/Telegram.WebApp
+                                         (str "Hide \"" tag "\" from your topics?")
+                                         (fn [confirmed?]
+                                           (when confirmed?
+                                             (rf/dispatch
+                                              [::events/hide-topic tag])))))
+                                      500)))
+        :on-pointer-up     cancel
+        :on-pointer-leave  cancel
+        :on-pointer-cancel cancel}
+       tag])))
 
-(defn- tag-cloud [tags selected-tag has-more-tags?]
-  (let [min-count (apply min (map :count tags))
-        max-count (apply max (map :count tags))]
+(defn- tag-cloud [tags selected-tag has-more-tags? hint-dismissed?]
+  (let [min-c (apply min (map :count tags))
+        max-c (apply max (map :count tags))]
     [:div.tag-cloud-section
      [:div.tag-cloud
-      (for [{:keys [tag count]} tags]
+      (for [{:keys [tag] :as t} tags]
         ^{:key tag}
-        [:span.tag-cloud-item
-         {:class    (when (= tag selected-tag) "tag-cloud-item--active")
-          :style    {:font-size (str (tag-font-size count min-count max-count) "px")}
-          :on-click (fn [e]
-                      (.stopPropagation e)
-                      (if (= tag selected-tag)
-                        (rf/dispatch [::events/clear-tag])
-                        (rf/dispatch [::events/select-tag tag])))}
-         tag
-         [:span.tag-cloud-hide
-          {:on-click (fn [e]
-                       (.stopPropagation e)
-                       (rf/dispatch [::events/hide-topic tag]))}
-          "×"]])]
+        [tag-cloud-item
+         (assoc t :selected? (= tag selected-tag))
+         min-c
+         max-c])]
+     (when-not hint-dismissed?
+       [:button.tag-cloud-hint
+        {:on-click #(rf/dispatch [::events/dismiss-tag-cloud-hint])}
+        "Tap to filter · long-press to hide · ×"])
      (when has-more-tags?
        [:button.tag-cloud-toggle
         {:on-click #(rf/dispatch [::events/load-more-tags])}
@@ -80,6 +111,7 @@
           loading?        @(rf/subscribe [::subs/topics-loading?])
           selected-tag    @(rf/subscribe [::subs/topics-selected-tag])
           has-more-tags?  @(rf/subscribe [::subs/topics-has-more-tags?])
+          hint-dismissed? @(rf/subscribe [::subs/topics-cloud-hint-dismissed?])
           playing-id      @(rf/subscribe [::subs/audio-episode-id])]
       [:div.episodes-container
        [:div.section-header
@@ -91,7 +123,7 @@
            :on-click #(rf/dispatch [::events/fetch-topics])}
           "↻"]]]
        (when (seq tags)
-         [tag-cloud tags selected-tag has-more-tags?])
+         [tag-cloud tags selected-tag has-more-tags? hint-dismissed?])
        (when selected-tag
          [:div.topics-filter-label
           (str "\"" selected-tag "\" · " (count episodes)
