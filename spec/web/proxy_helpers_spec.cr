@@ -16,7 +16,11 @@ describe ProxyHelpers::ProxyLimiter do
         end
       end
 
-      # Wait for all four fibers to take their slot
+      # Crystal's scheduler is cooperative; Fiber.yield hands control to the
+      # next ready fiber. Each spawned fiber is runnable (blocked on
+      # hold.receive only AFTER it has acquired a slot), so this loop
+      # terminates in at most N yields. Same reasoning applies to the other
+      # `while limiter.in_flight < N` loops in this file.
       while limiter.in_flight < 4
         Fiber.yield
       end
