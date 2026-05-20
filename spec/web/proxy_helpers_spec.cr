@@ -228,5 +228,26 @@ describe ProxyHelpers::ProxyStreamer do
     ensure
       fake.try &.close
     end
+
+    it "raises Exception with /upstream status/ when upstream returns non-2xx" do
+      fake = FakeUpstream.new do |ctx|
+        ctx.response.status_code = 404
+        ctx.response.print "not found"
+      end
+
+      sink = IO::Memory.new
+      header_calls = 0
+      expect_raises(Exception, /upstream status 404/) do
+        ProxyHelpers::ProxyStreamer.stream_through(
+          fake.url("/x"), sink,
+          on_headers: ->(_resp : HTTP::Client::Response) { header_calls += 1 },
+        )
+      end
+      # No body written; on_headers never called (rejected before headers fired)
+      sink.size.should eq(0)
+      header_calls.should eq(0)
+    ensure
+      fake.try &.close
+    end
   end
 end

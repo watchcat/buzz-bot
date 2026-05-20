@@ -87,6 +87,10 @@ module ProxyHelpers
             raise "upstream status #{resp.status_code}"
           end
 
+          # Up-front check: if the upstream declares a Content-Length that
+          # parses to > max, abort before any byte is read. Malformed or
+          # missing Content-Length silently falls through to the mid-stream
+          # byte-counter check below — that's the safety net.
           if (max = max_bytes) && (cl_str = resp.headers["Content-Length"]?)
             if (cl = cl_str.to_i64?) && cl > max
               raise TooLarge.new("declared Content-Length #{cl} > #{max}")
