@@ -13,7 +13,7 @@
 (deftest tag-style-max-count-test
   (testing "max count → largest size, full opacity, heavier weight"
     (let [s (tc/tag-style 100 1 100)]
-      (is (= 32.0 (:font-size s)))
+      (is (= 22.0 (:font-size s)))
       (is (= 600 (:font-weight s)))
       ;; opacity = 0.45 + 1 * 0.55 = 1.0
       (is (< 0.999 (:opacity s) 1.001)))))
@@ -21,8 +21,8 @@
 (deftest tag-style-all-equal-test
   (testing "all tags same count → ratio 0.5 → middle values"
     (let [s (tc/tag-style 5 5 5)]
-      ;; 13 + 0.5 * 19 = 22.5
-      (is (= 22.5 (:font-size s)))
+      ;; 13 + 0.5 * 9 = 17.5  (max-px now 22, range 22-13=9)
+      (is (= 17.5 (:font-size s)))
       ;; ratio 0.5 is < 0.6 threshold, so 400
       (is (= 400 (:font-weight s)))
       ;; opacity = 0.45 + 0.5 * 0.55 = 0.725

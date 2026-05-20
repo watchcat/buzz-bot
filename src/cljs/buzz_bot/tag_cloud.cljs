@@ -6,7 +6,7 @@
    No re-frame, no DOM — testable in isolation.")
 
 (def ^:private min-px  13)
-(def ^:private max-px  32)
+(def ^:private max-px  22)
 (def ^:private min-op  0.45)
 (def ^:private max-op  1.0)
 (def ^:private weight-threshold 0.6)
