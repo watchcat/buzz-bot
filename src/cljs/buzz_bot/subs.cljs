@@ -68,6 +68,10 @@
   :<- [::topics]
   (fn [t _] (:has-more-tags? t)))
 
+(rf/reg-sub ::topics-cloud-hint-dismissed?
+  :<- [::topics]
+  (fn [t _] (:cloud-hint-dismissed? t)))
+
 ;; Search
 (rf/reg-sub ::search-results        (fn [db _] (get-in db [:search :results])))
 (rf/reg-sub ::search-loading?       (fn [db _] (get-in db [:search :loading?])))

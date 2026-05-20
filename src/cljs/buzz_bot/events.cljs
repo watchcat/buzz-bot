@@ -181,6 +181,12 @@
                                 :body    {:tag tag}
                                 :on-ok   [::topic-hidden] :on-err [::fetch-error]}})))
 
+(rf/reg-event-db
+  ::dismiss-tag-cloud-hint
+  (fn [db _]
+    (js/localStorage.setItem "topics-cloud-hint-dismissed" "1")
+    (assoc-in db [:topics :cloud-hint-dismissed?] true)))
+
 (rf/reg-event-fx
  ::topic-hidden
  (fn [_ _]
