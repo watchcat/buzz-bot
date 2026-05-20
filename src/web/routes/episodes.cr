@@ -2,6 +2,16 @@ require "ecr"
 require "json"
 
 module Web::Routes::Episodes
+  # Global semaphore: bound concurrent in-flight audio_proxy fibers so a
+  # stalled upstream CDN can't accumulate fibers without limit. Caps:
+  # 64 globally (~21 MB worst-case RAM at 128 KB chunk + ~200 KB conn
+  # state per fiber); 16 per upstream host so one bad CDN can't monopolise
+  # the pool. Note: audio_proxy is ONLY used for the service worker's
+  # background "save for offline" flow — actual listening streams direct
+  # from the CDN and never traverses our pod. Crystal requires constants at
+  # module/class body scope (not inside method bodies).
+  LIMITER_AUDIO = ProxyHelpers::ProxyLimiter.new(global_cap: 64, per_host_cap: 16)
+
   def self.register
     # Fetch minimal metadata for a set of episode IDs (used by offline cache UI).
     # Query param: ids=1,2,3
@@ -210,31 +220,38 @@ module Web::Routes::Episodes
       while redirects_left > 0
         redirects_left -= 1
         uri = URI.parse(url)
-        HTTP::Client.get(url) do |resp|
-          if resp.status_code.in?(301, 302, 303, 307, 308)
-            loc = resp.headers["Location"]? || break
-            url = loc.starts_with?("http") ? loc : "#{uri.scheme}://#{uri.host}#{loc}"
-          else
-            env.response.status_code = 200
-            env.response.content_type = "audio/mpeg"
-            env.response.headers["X-Accel-Buffering"] = "no"
-            env.response.headers["Cache-Control"] = "no-store"
-            # Forward Content-Length so the JS client can verify completeness.
-            if cl = resp.headers["Content-Length"]?
-              env.response.headers["Content-Length"] = cl
+        begin
+          LIMITER_AUDIO.with_slot(uri.host || "") do
+            HTTP::Client.get(url) do |resp|
+              if resp.status_code.in?(301, 302, 303, 307, 308)
+                loc = resp.headers["Location"]? || break
+                url = loc.starts_with?("http") ? loc : "#{uri.scheme}://#{uri.host}#{loc}"
+              else
+                env.response.status_code = 200
+                env.response.content_type = "audio/mpeg"
+                env.response.headers["X-Accel-Buffering"] = "no"
+                env.response.headers["Cache-Control"] = "no-store"
+                if cl = resp.headers["Content-Length"]?
+                  env.response.headers["Content-Length"] = cl
+                end
+                env.response.flush
+                streaming_started = true
+                begin
+                  IO.copy(resp.body_io, env.response, 128 * 1024)
+                rescue IO::Error
+                  Log.debug { "audio_proxy client disconnected mid-stream" }
+                end
+                env.response.close
+              end
             end
-            env.response.flush
-            streaming_started = true
-            begin
-              IO.copy(resp.body_io, env.response, 128 * 1024)
-            rescue IO::Error
-              Log.debug { "audio_proxy client disconnected mid-stream" }
-            end
-            # Close the response before returning so Kemal's post-processing
-            # cannot corrupt the stream (chunked terminator is sent here).
-            env.response.close
-            break
           end
+          break if streaming_started
+        rescue ex : ProxyHelpers::ProxyLimiter::CapExceeded
+          # CapExceeded fires before any header is written, so the response
+          # is still mutable.
+          Log.info { "audio_proxy 503 — #{ex.message}" }
+          env.response.headers["Retry-After"] = "2"
+          halt env, status_code: 503, response: "Busy"
         end
       end
       nil
