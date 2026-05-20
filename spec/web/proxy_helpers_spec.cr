@@ -97,3 +97,136 @@ describe ProxyHelpers::ProxyLimiter do
     end
   end
 end
+
+require "http/server"
+
+class CountingWriter < IO
+  def initialize(@inner : IO, @sizes : Array(Int32))
+  end
+
+  def read(slice : Bytes) : Int32
+    raise "read not supported"
+  end
+
+  def write(slice : Bytes) : Nil
+    @sizes << slice.size
+    @inner.write(slice)
+  end
+end
+
+# Local HTTP fixture that lets each test install a handler closure.
+class FakeUpstream
+  getter port : Int32
+
+  def initialize(&handler : HTTP::Server::Context ->)
+    @server = HTTP::Server.new { |ctx| handler.call(ctx) }
+    addr = @server.bind_tcp("127.0.0.1", 0)
+    @port = addr.port
+    spawn { @server.listen }
+  end
+
+  def url(path : String) : String
+    "http://127.0.0.1:#{@port}#{path}"
+  end
+
+  def close
+    @server.close
+  end
+end
+
+describe ProxyHelpers::ProxyStreamer do
+  describe ".stream_through" do
+    it "copies a small body verbatim and calls on_headers once before any body byte" do
+      body = "hello world".to_slice
+      header_calls = 0
+      fake = FakeUpstream.new do |ctx|
+        ctx.response.headers["Content-Type"] = "image/jpeg"
+        ctx.response.write(body)
+      end
+
+      sink = IO::Memory.new
+      ProxyHelpers::ProxyStreamer.stream_through(
+        fake.url("/x"), sink,
+        on_headers: ->(resp : HTTP::Client::Response) do
+          header_calls += 1
+          resp.headers["Content-Type"]?.should eq("image/jpeg")
+          sink.size.should eq(0)
+        end,
+      )
+      sink.to_slice.should eq(body)
+      header_calls.should eq(1)
+    ensure
+      fake.try &.close
+    end
+
+    it "writes the body in multiple chunks rather than buffering all at once" do
+      # 200 KB body at 64 KB chunk size — expect at least 3 separate writes
+      # to the destination IO. A buffering implementation would issue 1.
+      body = Bytes.new(200 * 1024) { |i| (i & 0xff).to_u8 }
+      fake = FakeUpstream.new do |ctx|
+        ctx.response.headers["Content-Type"] = "image/jpeg"
+        ctx.response.write(body)
+      end
+
+      writes = [] of Int32
+      sink = IO::Memory.new
+      counting = CountingWriter.new(sink, writes)
+      ProxyHelpers::ProxyStreamer.stream_through(
+        fake.url("/x"), counting,
+        chunk: 64 * 1024,
+      )
+      sink.size.should eq(body.size)
+      writes.size.should be >= 3
+    ensure
+      fake.try &.close
+    end
+
+    it "raises TooLarge up front when declared Content-Length exceeds max_bytes" do
+      body = Bytes.new(200 * 1024) { 0_u8 }
+      fake = FakeUpstream.new do |ctx|
+        ctx.response.headers["Content-Type"] = "image/jpeg"
+        ctx.response.headers["Content-Length"] = body.size.to_s
+        ctx.response.write(body)
+      end
+
+      sink = IO::Memory.new
+      header_calls = 0
+      expect_raises(ProxyHelpers::ProxyStreamer::TooLarge, /Content-Length/) do
+        ProxyHelpers::ProxyStreamer.stream_through(
+          fake.url("/x"), sink,
+          max_bytes: 100_i64 * 1024,
+          on_headers: ->(_resp : HTTP::Client::Response) { header_calls += 1 },
+        )
+      end
+      # No body written; on_headers never called (we rejected before headers fired)
+      sink.size.should eq(0)
+      header_calls.should eq(0)
+    ensure
+      fake.try &.close
+    end
+
+    it "raises TooLarge mid-stream when running byte total exceeds max_bytes" do
+      # Send chunked encoding (no Content-Length) so the up-front check is skipped
+      body = Bytes.new(200 * 1024) { 0_u8 }
+      fake = FakeUpstream.new do |ctx|
+        ctx.response.headers["Content-Type"] = "image/jpeg"
+        # Don't set Content-Length — Crystal's HTTP::Server will chunk
+        ctx.response.write(body)
+      end
+
+      sink = IO::Memory.new
+      expect_raises(ProxyHelpers::ProxyStreamer::TooLarge, /streamed bytes/) do
+        ProxyHelpers::ProxyStreamer.stream_through(
+          fake.url("/x"), sink,
+          max_bytes: 100_i64 * 1024,
+          chunk: 64 * 1024,
+        )
+      end
+      # Some bytes made it before the abort
+      sink.size.should be > 0
+      sink.size.should be <= 200 * 1024
+    ensure
+      fake.try &.close
+    end
+  end
+end

@@ -56,4 +56,60 @@ module ProxyHelpers
       end
     end
   end
+
+  # HTTP::Client block-form copy — no body buffering. Optional max_bytes
+  # ceiling rejects oversize responses either up front (declared
+  # Content-Length > max) or mid-stream (running total > max). on_headers
+  # fires exactly once, before any body byte is written to dst_io, so the
+  # caller can set its own Content-Type / Cache-Control / status and
+  # flush before bytes flow.
+  module ProxyStreamer
+    class TooLarge < Exception; end
+
+    def self.stream_through(
+      url : String,
+      dst_io : IO,
+      *,
+      max_bytes : Int64? = nil,
+      chunk : Int32 = 64 * 1024,
+      connect_timeout : Time::Span = 5.seconds,
+      read_timeout : Time::Span = 15.seconds,
+      on_headers : (HTTP::Client::Response ->)? = nil,
+    ) : Nil
+      uri = URI.parse(url)
+      client = HTTP::Client.new(uri)
+      client.connect_timeout = connect_timeout
+      client.read_timeout = read_timeout
+
+      begin
+        client.get(uri.request_target) do |resp|
+          if resp.status_code < 200 || resp.status_code >= 300
+            raise "upstream status #{resp.status_code}"
+          end
+
+          if (max = max_bytes) && (cl_str = resp.headers["Content-Length"]?)
+            if (cl = cl_str.to_i64?) && cl > max
+              raise TooLarge.new("declared Content-Length #{cl} > #{max}")
+            end
+          end
+
+          on_headers.try &.call(resp)
+
+          buf = Bytes.new(chunk)
+          total = 0_i64
+          loop do
+            n = resp.body_io.read(buf)
+            break if n == 0
+            total += n
+            if (max = max_bytes) && total > max
+              raise TooLarge.new("streamed bytes #{total} exceeded max #{max}")
+            end
+            dst_io.write(buf[0, n])
+          end
+        end
+      ensure
+        client.close
+      end
+    end
+  end
 end
