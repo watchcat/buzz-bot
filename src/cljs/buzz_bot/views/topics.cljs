@@ -61,6 +61,13 @@
                                {:font-size   (str (:font-size s) "px")
                                 :font-weight (:font-weight s)
                                 :opacity     (:opacity s)}))
+        :ref               (when selected?
+                             (fn [el]
+                               (when el
+                                 (js/requestAnimationFrame
+                                  #(.scrollIntoView el
+                                    #js {:block  "center"
+                                         :inline "nearest"})))))
         :on-click          (fn [e]
                              (.stopPropagation e)
                              (if selected?
