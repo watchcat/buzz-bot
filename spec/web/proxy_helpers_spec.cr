@@ -249,5 +249,74 @@ describe ProxyHelpers::ProxyStreamer do
     ensure
       fake.try &.close
     end
+
+    it "follows redirects up to max_redirects and fires on_headers once on final response" do
+      b_fake = FakeUpstream.new do |ctx|
+        ctx.response.headers["Content-Type"] = "image/png"
+        ctx.response.print "final body"
+      end
+
+      a_fake = FakeUpstream.new do |ctx|
+        ctx.response.status_code = 301
+        ctx.response.headers["Location"] = b_fake.url("/img")
+        ctx.response.print ""
+      end
+
+      sink = IO::Memory.new
+      header_calls = 0
+      ProxyHelpers::ProxyStreamer.stream_through(
+        a_fake.url("/x"), sink,
+        max_redirects: 5,
+        on_headers: ->(resp : HTTP::Client::Response) do
+          header_calls += 1
+          resp.headers["Content-Type"]?.should eq("image/png")
+        end,
+      )
+      sink.to_slice.should eq("final body".to_slice)
+      header_calls.should eq(1)
+    ensure
+      a_fake.try &.close
+      b_fake.try &.close
+    end
+
+    it "raises Exception when max_redirects exhausted following a redirect loop" do
+      hit_count = 0
+      loop_port = 0
+      a_fake = FakeUpstream.new do |ctx|
+        hit_count += 1
+        ctx.response.status_code = 301
+        # self-loop: always redirect back to itself
+        ctx.response.headers["Location"] = "http://127.0.0.1:#{loop_port}/x"
+        ctx.response.print ""
+      end
+      loop_port = a_fake.port
+
+      sink = IO::Memory.new
+      expect_raises(Exception) do
+        ProxyHelpers::ProxyStreamer.stream_through(
+          a_fake.url("/x"), sink,
+          max_redirects: 3,
+        )
+      end
+      # initial GET + 3 redirects = 4 total hits
+      hit_count.should eq(4)
+    ensure
+      a_fake.try &.close
+    end
+
+    it "preserves default behavior (no redirect-following) when max_redirects not set" do
+      fake = FakeUpstream.new do |ctx|
+        ctx.response.status_code = 301
+        ctx.response.headers["Location"] = "http://example.com/other"
+        ctx.response.print ""
+      end
+
+      sink = IO::Memory.new
+      expect_raises(Exception, /upstream status 301/) do
+        ProxyHelpers::ProxyStreamer.stream_through(fake.url("/x"), sink)
+      end
+    ensure
+      fake.try &.close
+    end
   end
 end

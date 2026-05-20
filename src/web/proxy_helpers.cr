@@ -60,9 +60,14 @@ module ProxyHelpers
   # HTTP::Client block-form copy — no body buffering. Optional max_bytes
   # ceiling rejects oversize responses either up front (declared
   # Content-Length > max) or mid-stream (running total > max). on_headers
-  # fires exactly once, before any body byte is written to dst_io, so the
-  # caller can set its own Content-Type / Cache-Control / status and
+  # fires exactly once on the final 2xx response (not on intermediate
+  # redirect responses), before any body byte is written to dst_io, so
+  # the caller can set its own Content-Type / Cache-Control / status and
   # flush before bytes flow.
+  #
+  # max_redirects (default 0) controls opt-in redirect-following. When 0,
+  # any 3xx triggers the existing "raise upstream status N" path. When > 0,
+  # 3xx responses extract Location and retry up to max_redirects times.
   module ProxyStreamer
     class TooLarge < Exception; end
 
@@ -75,44 +80,72 @@ module ProxyHelpers
       connect_timeout : Time::Span = 5.seconds,
       read_timeout : Time::Span = 15.seconds,
       on_headers : (HTTP::Client::Response ->)? = nil,
+      max_redirects : Int32 = 0,
     ) : Nil
-      uri = URI.parse(url)
-      client = HTTP::Client.new(uri)
-      client.connect_timeout = connect_timeout
-      client.read_timeout = read_timeout
+      current_url = url
+      redirects_remaining = max_redirects
 
-      begin
-        client.get(uri.request_target) do |resp|
-          if resp.status_code < 200 || resp.status_code >= 300
-            raise "upstream status #{resp.status_code}"
-          end
+      loop do
+        uri = URI.parse(current_url)
+        client = HTTP::Client.new(uri)
+        client.connect_timeout = connect_timeout
+        client.read_timeout = read_timeout
 
-          # Up-front check: if the upstream declares a Content-Length that
-          # parses to > max, abort before any byte is read. Malformed or
-          # missing Content-Length silently falls through to the mid-stream
-          # byte-counter check below — that's the safety net.
-          if (max = max_bytes) && (cl_str = resp.headers["Content-Length"]?)
-            if (cl = cl_str.to_i64?) && cl > max
-              raise TooLarge.new("declared Content-Length #{cl} > #{max}")
+        redirect_target = nil
+
+        begin
+          client.get(uri.request_target) do |resp|
+            # Handle redirects when opt-in
+            if {301, 302, 303, 307, 308}.includes?(resp.status_code)
+              if redirects_remaining > 0
+                loc = resp.headers["Location"]?
+                raise Exception.new("redirect without Location") unless loc
+                # Resolve relative Location against current URI
+                redirect_target = loc.starts_with?("http") ? loc : "#{uri.scheme}://#{uri.host}#{loc}"
+                # on_headers must NOT fire on intermediate redirect responses
+              else
+                raise "upstream status #{resp.status_code}"
+              end
+            elsif resp.status_code < 200 || resp.status_code >= 300
+              raise "upstream status #{resp.status_code}"
+            else
+              # 2xx — stream the body
+
+              # Up-front check: if the upstream declares a Content-Length that
+              # parses to > max, abort before any byte is read. Malformed or
+              # missing Content-Length silently falls through to the mid-stream
+              # byte-counter check below — that's the safety net.
+              if (max = max_bytes) && (cl_str = resp.headers["Content-Length"]?)
+                if (cl = cl_str.to_i64?) && cl > max
+                  raise TooLarge.new("declared Content-Length #{cl} > #{max}")
+                end
+              end
+
+              on_headers.try &.call(resp)
+
+              buf = Bytes.new(chunk)
+              total = 0_i64
+              loop do
+                n = resp.body_io.read(buf)
+                break if n == 0
+                total += n
+                if (max = max_bytes) && total > max
+                  raise TooLarge.new("streamed bytes #{total} exceeded max #{max}")
+                end
+                dst_io.write(buf[0, n])
+              end
             end
           end
-
-          on_headers.try &.call(resp)
-
-          buf = Bytes.new(chunk)
-          total = 0_i64
-          loop do
-            n = resp.body_io.read(buf)
-            break if n == 0
-            total += n
-            if (max = max_bytes) && total > max
-              raise TooLarge.new("streamed bytes #{total} exceeded max #{max}")
-            end
-            dst_io.write(buf[0, n])
-          end
+        ensure
+          client.close
         end
-      ensure
-        client.close
+
+        if (target = redirect_target)
+          redirects_remaining -= 1
+          current_url = target
+        else
+          break
+        end
       end
     end
   end

@@ -39,6 +39,7 @@ module Web::Routes::App
             env.response.flush
             headers_sent = true
           end,
+          max_redirects: 5,
         )
       rescue ex : ProxyHelpers::ProxyStreamer::TooLarge
         if headers_sent
