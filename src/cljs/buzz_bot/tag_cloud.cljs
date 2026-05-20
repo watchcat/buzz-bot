@@ -5,11 +5,11 @@
    visual channels (size, weight, opacity) via a log-scaled ratio in [0, 1].
    No re-frame, no DOM — testable in isolation.")
 
-(def ^:private MIN-PX  13)
-(def ^:private MAX-PX  32)
-(def ^:private MIN-OP  0.45)
-(def ^:private MAX-OP  1.0)
-(def ^:private WEIGHT-THRESHOLD 0.6)
+(def ^:private min-px  13)
+(def ^:private max-px  32)
+(def ^:private min-op  0.45)
+(def ^:private max-op  1.0)
+(def ^:private weight-threshold 0.6)
 
 (defn- ratio
   "Logarithmic position of `count` in [min-count, max-count], in [0, 1].
@@ -28,6 +28,6 @@
      :opacity     — Number in [0.45, 1.0]."
   [count min-count max-count]
   (let [r (ratio count min-count max-count)]
-    {:font-size   (+ MIN-PX (* r (- MAX-PX MIN-PX)))
-     :font-weight (if (>= r WEIGHT-THRESHOLD) 600 400)
-     :opacity     (+ MIN-OP (* r (- MAX-OP MIN-OP)))}))
+    {:font-size   (+ min-px (* r (- max-px min-px)))
+     :font-weight (if (>= r weight-threshold) 600 400)
+     :opacity     (+ min-op (* r (- max-op min-op)))}))
