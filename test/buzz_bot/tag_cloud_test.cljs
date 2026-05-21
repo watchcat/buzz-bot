@@ -2,44 +2,64 @@
   (:require [cljs.test :refer [deftest is testing]]
             [buzz-bot.tag-cloud :as tc]))
 
-(deftest tag-style-min-count-test
-  (testing "min count → smallest size, lowest opacity, lighter weight"
-    (let [s (tc/tag-style 1 1 100)]
-      (is (= 13.0 (:font-size s)))
+(deftest quartile-thresholds-evenly-distributed-test
+  (testing "8 evenly-spaced counts → quartile cutoffs at sorted[2,4,6]"
+    ;; ⌊0.25·8⌋=2 → 3; ⌊0.50·8⌋=4 → 5; ⌊0.75·8⌋=6 → 7
+    (is (= [3 5 7] (tc/quartile-thresholds [1 2 3 4 5 6 7 8])))))
+
+(deftest quartile-thresholds-all-equal-test
+  (testing "all counts identical → all thresholds identical"
+    (is (= [5 5 5] (tc/quartile-thresholds [5 5 5 5])))))
+
+(deftest quartile-thresholds-empty-test
+  (testing "empty input → safe degenerate [0 0 0]"
+    (is (= [0 0 0] (tc/quartile-thresholds [])))))
+
+(deftest quartile-thresholds-input-order-irrelevant-test
+  (testing "shuffled input yields same thresholds as sorted input"
+    (is (= (tc/quartile-thresholds [1 2 3 4 5 6 7 8])
+           (tc/quartile-thresholds [8 3 1 6 4 7 2 5])))))
+
+(deftest tag-style-top-tier-test
+  (testing "count >= q3 → top tier (800/1.0)"
+    (let [s (tc/tag-style 50 [10 20 40])]
+      (is (= 800 (:font-weight s)))
+      (is (= 1.0 (:opacity s))))))
+
+(deftest tag-style-third-tier-test
+  (testing "q2 <= count < q3 → 700/0.9"
+    (let [s (tc/tag-style 25 [10 20 40])]
+      (is (= 700 (:font-weight s)))
+      (is (= 0.9 (:opacity s))))))
+
+(deftest tag-style-second-tier-test
+  (testing "q1 <= count < q2 → 500/0.7"
+    (let [s (tc/tag-style 15 [10 20 40])]
+      (is (= 500 (:font-weight s)))
+      (is (= 0.7 (:opacity s))))))
+
+(deftest tag-style-bottom-tier-test
+  (testing "count < q1 → bottom tier (400/0.5)"
+    (let [s (tc/tag-style 5 [10 20 40])]
       (is (= 400 (:font-weight s)))
-      ;; opacity = 0.45 + 0 * 0.55 = 0.45
-      (is (< 0.449 (:opacity s) 0.451)))))
+      (is (= 0.5 (:opacity s))))))
 
-(deftest tag-style-max-count-test
-  (testing "max count → largest size, full opacity, heavier weight"
-    (let [s (tc/tag-style 100 1 100)]
-      (is (= 22.0 (:font-size s)))
-      (is (= 600 (:font-weight s)))
-      ;; opacity = 0.45 + 1 * 0.55 = 1.0
-      (is (< 0.999 (:opacity s) 1.001)))))
+(deftest tag-style-boundary-inclusive-test
+  (testing "count equal to a threshold lands in the higher tier"
+    (is (= 500 (:font-weight (tc/tag-style 10 [10 20 40]))))
+    (is (= 700 (:font-weight (tc/tag-style 20 [10 20 40]))))
+    (is (= 800 (:font-weight (tc/tag-style 40 [10 20 40]))))))
 
-(deftest tag-style-all-equal-test
-  (testing "all tags same count → ratio 0.5 → middle values"
-    (let [s (tc/tag-style 5 5 5)]
-      ;; 13 + 0.5 * 9 = 17.5  (max-px now 22, range 22-13=9)
-      (is (= 17.5 (:font-size s)))
-      ;; ratio 0.5 is < 0.6 threshold, so 400
-      (is (= 400 (:font-weight s)))
-      ;; opacity = 0.45 + 0.5 * 0.55 = 0.725
-      (is (< 0.724 (:opacity s) 0.726)))))
-
-(deftest tag-style-weight-threshold-test
-  (testing "weight = 400 below ratio 0.6"
-    ;; count=5 in [1, 100] → log(5)/log(100) ≈ 0.35 → < 0.6 → 400
-    (is (= 400 (:font-weight (tc/tag-style 5 1 100)))))
-  (testing "weight = 600 at or above ratio 0.6"
-    ;; count=20 in [1, 100] → log(20)/log(100) ≈ 0.65 → ≥ 0.6 → 600
-    (is (= 600 (:font-weight (tc/tag-style 20 1 100))))))
+(deftest tag-style-no-font-size-test
+  (testing "font-size is intentionally absent (CSS-controlled)"
+    (is (nil? (:font-size (tc/tag-style 5 [10 20 40]))))))
 
 (deftest tag-style-monotonic-test
-  (testing "size strictly increases with count over a typical range"
-    (let [sizes (map #(:font-size (tc/tag-style % 1 100)) [1 5 10 25 50 100])]
-      (is (apply < sizes))))
-  (testing "opacity strictly increases with count over a typical range"
-    (let [ops (map #(:opacity (tc/tag-style % 1 100)) [1 5 10 25 50 100])]
-      (is (apply < ops)))))
+  (testing "weight is non-decreasing as count rises through the tiers"
+    (let [ts [10 20 40]
+          ws (map #(:font-weight (tc/tag-style % ts)) [5 15 25 50])]
+      (is (apply <= ws))))
+  (testing "opacity is non-decreasing as count rises through the tiers"
+    (let [ts [10 20 40]
+          os (map #(:opacity (tc/tag-style % ts)) [5 15 25 50])]
+      (is (apply <= os)))))

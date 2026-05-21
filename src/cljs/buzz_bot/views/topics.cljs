@@ -44,23 +44,21 @@
    [:span.episode-play-icon "▶"]])
 
 (defn- tag-cloud-item
-  "Single tag span with size/opacity/weight from tag-style, click-to-filter,
-   and pointer-event long-press-to-hide. Form-2 component so each instance
-   keeps its own timer in an r/atom. Outer accepts (but discards) the initial
-   args Reagent passes at mount; the inner fn re-binds them on every render."
-  [_initial-tag _min-c _max-c]
+  "Single tag span. Non-selected: weight/opacity from quartile tier (size
+   inherited from .tag-cloud). Selected: pill style with episode count
+   appended inline. Form-2 component so each instance keeps its own
+   long-press timer in an r/atom. Outer accepts (but discards) the
+   initial args Reagent passes at mount; the inner fn re-binds them on
+   every render."
+  [_initial-tag _thresholds _episode-count]
   (let [timer  (r/atom nil)
         cancel #(when @timer
                   (js/clearTimeout @timer)
                   (reset! timer nil))]
-    (fn [{:keys [tag count selected?]} min-c max-c]
+    (fn [{:keys [tag count selected?]} thresholds episode-count]
       [:span.tag-cloud-item
        {:class             (when selected? "tag-cloud-item--active")
-        :style             (when-not selected?
-                             (let [s (tc/tag-style count min-c max-c)]
-                               {:font-size   (str (:font-size s) "px")
-                                :font-weight (:font-weight s)
-                                :opacity     (:opacity s)}))
+        :style             (when-not selected? (tc/tag-style count thresholds))
         :ref               (when selected?
                              (fn [el]
                                (when el
@@ -89,19 +87,20 @@
         :on-pointer-up     cancel
         :on-pointer-leave  cancel
         :on-pointer-cancel cancel}
-       tag])))
+       tag
+       (when selected?
+         [:span.tag-cloud-item__count (str episode-count)])])))
 
-(defn- tag-cloud [tags selected-tag has-more-tags? hint-dismissed?]
-  (let [min-c (apply min (map :count tags))
-        max-c (apply max (map :count tags))]
+(defn- tag-cloud [tags selected-tag has-more-tags? hint-dismissed? episode-count]
+  (let [thresholds (tc/quartile-thresholds (map :count tags))]
     [:div.tag-cloud-section
      [:div.tag-cloud
       (for [{:keys [tag] :as t} tags]
         ^{:key tag}
         [tag-cloud-item
          (assoc t :selected? (= tag selected-tag))
-         min-c
-         max-c])]
+         thresholds
+         episode-count])]
      (when-not hint-dismissed?
        [:button.tag-cloud-hint
         {:on-click #(rf/dispatch [::events/dismiss-tag-cloud-hint])}
@@ -130,11 +129,8 @@
            :on-click #(rf/dispatch [::events/fetch-topics])}
           "↻"]]]
        (when (seq tags)
-         [tag-cloud tags selected-tag has-more-tags? hint-dismissed?])
-       (when selected-tag
-         [:div.topics-filter-label
-          (str "\"" selected-tag "\" · " (count episodes)
-               (if (= 1 (count episodes)) " episode" " episodes"))])
+         [tag-cloud tags selected-tag has-more-tags? hint-dismissed?
+          (count episodes)])
        (cond
          loading?          [:div.loading "Loading..."]
          (empty? episodes) [:div.empty-msg
