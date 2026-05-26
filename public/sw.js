@@ -1,7 +1,8 @@
 const SHELL_CACHE = 'buzz-shell-v1';
 const API_CACHE   = 'buzz-api-v1';
 const AUDIO_CACHE = 'buzz-audio-v1';
-const KEEP_CACHES = new Set([SHELL_CACHE, API_CACHE, AUDIO_CACHE]);
+const IMG_CACHE   = 'buzz-img-v1';
+const KEEP_CACHES = new Set([SHELL_CACHE, API_CACHE, AUDIO_CACHE, IMG_CACHE]);
 
 self.addEventListener('install', event => {
   event.waitUntil(
@@ -42,9 +43,44 @@ self.addEventListener('fetch', event => {
   // Audio proxy — streaming download, must not be cached by networkFirst
   if (/^\/episodes\/\d+\/audio_proxy$/.test(url.pathname)) return;
 
+  // Image proxy — stale-while-revalidate. Podcast artwork rarely changes;
+  // serving from cache instantly eliminates the per-navigation thundering
+  // herd through upstream CDNs (seen as 50+ slow img-proxy fetches per
+  // feed-list view in production). Background refresh keeps cache fresh.
+  if (url.pathname === '/img-proxy') {
+    event.respondWith(staleWhileRevalidate(IMG_CACHE, req));
+    return;
+  }
+
   // HTML + API — network-first, stale fallback
   event.respondWith(networkFirst(req));
 });
+
+// Map<url, Promise<Response>> — collapses concurrent SW fetches for the
+// same URL into one upstream request. Defeats the cold-cache race where
+// two near-simultaneous img loads each pass through networkFirst/SWR and
+// both hit upstream before either response is committed to cache.
+const inFlight = new Map();
+function coalescedFetch(url, request) {
+  let p = inFlight.get(url);
+  if (!p) {
+    p = fetch(request).finally(() => inFlight.delete(url));
+    inFlight.set(url, p);
+  }
+  // Each caller needs its own readable body.
+  return p.then(resp => resp.clone());
+}
+
+async function staleWhileRevalidate(cacheName, request) {
+  const cache  = await caches.open(cacheName);
+  const cached = await cache.match(new Request(request.url));
+  const refresh = coalescedFetch(request.url, request).then(resp => {
+    if (resp.ok) cache.put(new Request(request.url), resp.clone());
+    return resp;
+  }).catch(() => null);
+  if (cached) return cached;
+  return (await refresh) || new Response('Offline', { status: 503 });
+}
 
 async function cacheFirst(cacheName, request) {
   const cache  = await caches.open(cacheName);

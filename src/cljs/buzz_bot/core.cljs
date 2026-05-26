@@ -91,7 +91,7 @@
   ;; Remove any old cache buckets not used by the current SW strategy.
   ;; Do NOT call .unregister — we need the SW running.
   (when (.-caches js/window)
-    (let [keep #{"buzz-shell-v1" "buzz-api-v1" "buzz-audio-v1"}]
+    (let [keep #{"buzz-shell-v1" "buzz-api-v1" "buzz-audio-v1" "buzz-img-v1"}]
       (-> (.keys js/caches)
           (.then (fn [ks]
                    (js/Promise.all
