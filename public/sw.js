@@ -71,14 +71,46 @@ function coalescedFetch(url, request) {
   return p.then(resp => resp.clone());
 }
 
+// Freshness threshold for SWR: while a cached entry is younger than this,
+// serve it directly and SKIP the background revalidate. Once older, fall
+// back to classic SWR (serve stale, fetch fresh in background). Tracked
+// via an `x-cached-at` header we stamp onto the stored Response — the
+// SW Cache API has no native expiry, so we encode it ourselves.
+// 6 h is comfortably below the upstream Cache-Control: max-age=86400 we
+// set on /img-proxy, and matches how rarely podcast artwork actually
+// changes in practice.
+const STALE_AFTER = 6 * 60 * 60 * 1000;
+
+function withCacheStamp(resp) {
+  const headers = new Headers(resp.headers);
+  headers.set('x-cached-at', String(Date.now()));
+  return new Response(resp.clone().body, {
+    status:     resp.status,
+    statusText: resp.statusText,
+    headers,
+  });
+}
+
+function isFresh(cached) {
+  if (!cached) return false;
+  const stamp = Number(cached.headers.get('x-cached-at') || 0);
+  return stamp > 0 && (Date.now() - stamp) < STALE_AFTER;
+}
+
 async function staleWhileRevalidate(cacheName, request) {
   const cache  = await caches.open(cacheName);
   const cached = await cache.match(new Request(request.url));
+
+  // Fresh enough → no upstream call at all.
+  if (isFresh(cached)) return cached;
+
+  // Stale or missing → kick off a single coalesced refresh.
   const refresh = coalescedFetch(request.url, request).then(resp => {
-    if (resp.ok) cache.put(new Request(request.url), resp.clone());
+    if (resp.ok) cache.put(new Request(request.url), withCacheStamp(resp));
     return resp;
   }).catch(() => null);
-  if (cached) return cached;
+
+  if (cached) return cached;                       // stale: serve now, refresh async
   return (await refresh) || new Response('Offline', { status: 503 });
 }
 
