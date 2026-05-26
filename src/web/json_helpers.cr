@@ -76,11 +76,8 @@ module Web
   def self.build_episode_list(episodes : Array(Episode), user_id : Int64) : Array(EpisodeJson)
     return [] of EpisodeJson if episodes.empty?
 
-    # Batch-fetch feeds
-    feed_ids  = episodes.map(&.feed_id).uniq
-    feeds_map = feed_ids.each_with_object({} of Int64 => Feed) do |fid, h|
-      Feed.find(fid).try { |f| h[fid] = f }
-    end
+    # Batch-fetch feeds (single ANY($1) round-trip).
+    feeds_map = Feed.find_many(episodes.map(&.feed_id).uniq)
 
     # Batch-fetch user_episodes
     ep_ids = episodes.map(&.id)

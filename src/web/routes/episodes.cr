@@ -48,7 +48,10 @@ module Web::Routes::Episodes
       feed = Feed.find(feed_id)
       halt env, status_code: 404, response: %({"error":"Feed not found"}) unless feed
 
-      limit = (env.params.query["limit"]?.try(&.to_i32) || 50).clamp(1, 500)
+      # Default page size kept small: each row triggers an /img-proxy fetch
+      # for its per-episode thumbnail, and the upstream feed CDN is often the
+      # critical-path bottleneck. Client uses `load-more` (offset) for more.
+      limit = (env.params.query["limit"]?.try(&.to_i32) || 20).clamp(1, 500)
       offset = env.params.query["offset"]?.try(&.to_i32) || 0
 
       order_param = env.params.query["order"]?
@@ -109,10 +112,11 @@ module Web::Routes::Episodes
       is_premium = user.subscribed?
       recs_raw = Episode.recommended_for_episode(episode_id)
 
-      rec_feeds_map = recs_raw.map(&.episode.feed_id).uniq.each_with_object({} of Int64 => String) do |fid, h|
-        h[fid] = Feed.find(fid).try(&.title) || ""
-      end
-      recs = recs_raw.map { |r| Web::RecJson.new(r, rec_feeds_map[r.episode.feed_id]? || "") }
+      rec_feeds = Feed.find_many(recs_raw.map(&.episode.feed_id).uniq)
+      recs = recs_raw.map { |r|
+        ft = rec_feeds[r.episode.feed_id]?.try(&.title) || ""
+        Web::RecJson.new(r, ft)
+      }
 
       ep_json = Web::EpisodeJson.new(
         episode,

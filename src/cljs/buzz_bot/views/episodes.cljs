@@ -32,7 +32,12 @@
       :on-click        #(rf/dispatch [::events/navigate :player
                                       {:episode-id (:id ep) :from "episodes"}])}
      (when-let [img (:episode_image_url ep)]
-       [:img.episode-thumb {:src (img-proxy img) :alt "" :loading "lazy"}])
+       [:img.episode-thumb {:src      (img-proxy img)
+                            :alt      ""
+                            :loading  "lazy"
+                            :decoding "async"
+                            :width    48
+                            :height   48}])
      [:div.episode-info
       [:span.episode-title (:title ep)]
       (when meta-str [:span.episode-meta meta-str])]

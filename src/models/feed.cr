@@ -64,6 +64,27 @@ struct Feed
     ) { |rs| from_rs(rs) }
   end
 
+  # Batched analogue of `find` — one round-trip for N feeds. Returns a
+  # {id => Feed} map; missing ids are simply absent (mirrors `find` returning
+  # nil). Empty input short-circuits to an empty map.
+  def self.find_many(ids : Array(Int64)) : Hash(Int64, Feed)
+    result = {} of Int64 => Feed
+    return result if ids.empty?
+    AppDB.pool.query_each(
+      <<-SQL,
+        SELECT id, url, title, description, image_url, last_fetched_at,
+               etag, last_modified, ttl_minutes
+        FROM feeds
+        WHERE id = ANY($1)
+      SQL
+      ids
+    ) do |rs|
+      f = from_rs(rs)
+      result[f.id] = f
+    end
+    result
+  end
+
   def self.for_user(user_id : Int64) : Array(Feed)
     feeds = [] of Feed
     AppDB.pool.query_each(
