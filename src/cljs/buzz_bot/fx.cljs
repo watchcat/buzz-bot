@@ -124,22 +124,38 @@
 ;; ── ::open-dub-sse ───────────────────────────────────────────────────────────
 ;; Opens an SSE connection for dub progress updates.
 ;; Dispatches ::dub-events/sse-event with each parsed JSON message.
+;; On `readyState 2` (permanent close) dispatches ::dub-events/sse-error so the
+;; events ns can decide between reconnect and falling back to ::start-dub-poll.
+;; `onerror` with readyState 0 (CONNECTING) is left alone — the browser is
+;; auto-retrying and our handler would only get in its way.
 ;; Stores the EventSource in a js-side atom so ::close-dub-sse can close it.
-;; Options: {:episode-id id :lang lang :init-data str}
+;; Options: {:episode-id id :lang lang}
 
-(def ^:private active-sse (atom nil))
+(def ^:private active-sse  (atom nil))   ; current EventSource or nil
+(def ^:private active-poll (atom nil))   ; {:tid timeout-id :episode-id … :lang …} or nil
+
+(defn- stop-poll! []
+  (when-let [p @active-poll]
+    (js/clearInterval (:tid p))
+    (reset! active-poll nil)))
 
 (rf/reg-fx
  ::open-dub-sse
  (fn [{:keys [episode-id lang]}]
-   ;; Close any existing SSE connection first
-   (when-let [es @active-sse]
-     (.close es)
+   ;; Going back to (or staying on) SSE — kill any active poll first.
+   (stop-poll!)
+   ;; Close previous SSE if any.
+   (when-let [prev @active-sse]
+     (.close prev)
      (reset! active-sse nil))
    (let [init-data (get @re-frame.db/app-db :init-data "")
-         url       (str "/episodes/" episode-id "/dub/" lang "/events?initData=" (js/encodeURIComponent init-data))
+         url       (str "/episodes/" episode-id "/dub/" lang
+                        "/events?initData=" (js/encodeURIComponent init-data))
          es        (js/EventSource. url)]
      (reset! active-sse es)
+     (set! (.-onopen es)
+           (fn [_]
+             (rf/dispatch [:buzz-bot.events.dub/sse-open lang])))
      (set! (.-onmessage es)
            (fn [e]
              (when-let [data (try (js->clj (.parse js/JSON (.-data e)) :keywordize-keys true)
@@ -147,17 +163,40 @@
                (rf/dispatch [:buzz-bot.events.dub/sse-event episode-id lang data]))))
      (set! (.-onerror es)
            (fn [_]
-             (.close es)
-             (reset! active-sse nil))))))
+             ;; readyState 0 = CONNECTING — browser is auto-reconnecting, leave alone.
+             ;; readyState 2 = CLOSED    — permanent failure; we take over recovery.
+             (when (= 2 (.-readyState es))
+               (.close es)
+               (when (identical? es @active-sse) (reset! active-sse nil))
+               (rf/dispatch [:buzz-bot.events.dub/sse-error episode-id lang])))))))
 
 ;; ── ::close-dub-sse ──────────────────────────────────────────────────────────
 
 (rf/reg-fx
  ::close-dub-sse
  (fn [_]
+   (stop-poll!)
    (when-let [es @active-sse]
      (.close es)
      (reset! active-sse nil))))
+
+;; ── ::start-dub-poll ─────────────────────────────────────────────────────────
+;; Fallback when SSE has permanently died. Polls the player JSON every 5 s
+;; until the dub reaches a terminal state. Each tick dispatches
+;; ::dub-events/poll-tick which fires the actual request via ::http-fetch.
+
+(rf/reg-fx
+ ::start-dub-poll
+ (fn [{:keys [episode-id lang]}]
+   (stop-poll!)
+   (let [tick #(rf/dispatch [:buzz-bot.events.dub/poll-tick episode-id lang])
+         tid  (js/setInterval tick 5000)]
+     (reset! active-poll {:tid tid :episode-id episode-id :lang lang})
+     (tick))))
+
+(rf/reg-fx
+ ::stop-dub-poll
+ (fn [_] (stop-poll!)))
 
 ;; ── ::persist-cached-ids ─────────────────────────────────────────────────────
 

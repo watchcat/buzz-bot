@@ -22,7 +22,11 @@ module Web::Routes::DubProgress
 
       # Fan out to any open SSE connections directly — don't rely on PG NOTIFY
       # which is unreliable on Neon serverless across connections.
-      if (dub = DubbedEpisode.find_by_id(payload.dub_id))
+      # Skip if the row is already terminal: a late progress event
+      # (out-of-order / post-result) would otherwise emit a "processing"
+      # SSE payload to a client that had already advanced to done/failed.
+      if (dub = DubbedEpisode.find_by_id(payload.dub_id)) &&
+         (dub.status == "pending" || dub.status == "processing")
         key      = "#{dub.episode_id}:#{dub.language}"
         pct_part = payload.pct.try { |p| ":#{p.to_i}" } || ""
         DubHub.instance.publish(key, "#{dub.episode_id}:#{dub.language}:#{payload.step}:processing#{pct_part}")

@@ -147,7 +147,109 @@
                         (cond-> (= status :failed)
                           (assoc-in [:dub :statuses lang :error] (:error data))))}
          (= status :done)
-         (assoc :dispatch [:buzz-bot.events/fetch-subtitles episode-id lang]))))))
+         (assoc :dispatch [:buzz-bot.events/fetch-subtitles episode-id lang])
+         ;; Terminal — stop any reconnect/poll machinery
+         (#{:done :failed} status)
+         (assoc ::fx/stop-dub-poll nil))))))
+
+;; ── SSE reconnect + poll-fallback machinery ──────────────────────────────────
+;; EventSource's built-in auto-reconnect handles transient blips (readyState
+;; stays 0=CONNECTING). When it gives up (readyState 2=CLOSED) the fx layer
+;; dispatches ::sse-error here. We retry the open up to MAX-SSE-ATTEMPTS times
+;; with a short backoff; beyond that we fall back to polling the player JSON
+;; until terminal.
+
+(def ^:private MAX-SSE-ATTEMPTS 3)
+(def ^:private SSE-BACKOFF-MS  2000)
+
+(rf/reg-event-fx
+ ::sse-open
+ (fn [{:keys [db]} [_ lang]]
+   ;; Healthy connection — reset the attempt counter for this lang.
+   {:db (assoc-in db [:dub :sse-attempts lang] 0)}))
+
+(rf/reg-event-fx
+ ::sse-error
+ (fn [{:keys [db]} [_ episode-id lang]]
+   (let [current-ep (get-in db [:player :data :episode :id])
+         status     (get-in db [:dub :statuses lang :status])
+         attempts   (get-in db [:dub :sse-attempts lang] 0)]
+     (cond
+       ;; User navigated away — abandon the SSE for this episode.
+       (not= (str episode-id) (str current-ep))
+       nil
+
+       ;; Already terminal locally — nothing to recover.
+       (#{:done :failed} status)
+       nil
+
+       ;; Still budget left — schedule another open attempt.
+       (< attempts MAX-SSE-ATTEMPTS)
+       {:db             (assoc-in db [:dub :sse-attempts lang] (inc attempts))
+        :dispatch-later {:ms       SSE-BACKOFF-MS
+                         :dispatch [::reopen-sse episode-id lang]}}
+
+       ;; Exhausted SSE attempts — switch to polling the player JSON.
+       :else
+       {:db                 (assoc-in db [:dub :sse-attempts lang] 0)
+        ::fx/start-dub-poll {:episode-id episode-id :lang lang}}))))
+
+(rf/reg-event-fx
+ ::reopen-sse
+ (fn [{:keys [db]} [_ episode-id lang]]
+   ;; Re-check preconditions before actually re-opening — the user may have
+   ;; navigated, or the dub may have completed via a separate signal in the
+   ;; interim.
+   (let [current-ep (get-in db [:player :data :episode :id])
+         status     (get-in db [:dub :statuses lang :status])]
+     (when (and (= (str episode-id) (str current-ep))
+                (#{:pending :processing} status))
+       {::fx/open-dub-sse {:episode-id episode-id :lang lang}}))))
+
+(rf/reg-event-fx
+ ::poll-tick
+ (fn [{:keys [db]} [_ episode-id lang]]
+   (let [current-ep (get-in db [:player :data :episode :id])
+         status     (get-in db [:dub :statuses lang :status])]
+     (cond
+       (not= (str episode-id) (str current-ep))
+       {::fx/stop-dub-poll nil}
+
+       (#{:done :failed} status)
+       {::fx/stop-dub-poll nil}
+
+       :else
+       {::fx/http-fetch {:method :get
+                         :url    (str "/episodes/" episode-id "/player")
+                         :on-ok  [::poll-loaded episode-id lang]
+                         :on-err [::poll-err]}}))))
+
+(rf/reg-event-fx
+ ::poll-loaded
+ (fn [{:keys [db]} [_ episode-id lang resp]]
+   ;; Defensive: don't apply if the user navigated away mid-flight.
+   (when (= (str episode-id) (str (get-in db [:player :data :episode :id])))
+     (let [dub-status-raw (get-in resp [:dub_statuses (keyword lang)])
+           status         (some-> dub-status-raw :status keyword)]
+       (when dub-status-raw
+         (let [db' (-> db
+                       (assoc-in [:dub :statuses lang :status] status)
+                       (assoc-in [:dub :statuses lang :step]   (:step dub-status-raw))
+                       (cond-> (= status :done)
+                         (-> (assoc-in [:dub :statuses lang :r2-url]      (:r2_url dub-status-raw))
+                             (assoc-in [:dub :statuses lang :translation] (:translation dub-status-raw)))))]
+           (cond-> {:db db'}
+             (#{:done :failed} status)
+             (assoc ::fx/stop-dub-poll nil)
+             (= status :done)
+             (assoc :dispatch [:buzz-bot.events/fetch-subtitles episode-id lang]))))))))
+
+(rf/reg-event-db
+ ::poll-err
+ ;; Transient — just let the next interval tick try again. The interval keeps
+ ;; running until either ::poll-loaded sees a terminal status or the user
+ ;; navigates away (caught by the next tick's guard).
+ (fn [db _] db))
 
 (rf/reg-event-fx
  ::send-telegram

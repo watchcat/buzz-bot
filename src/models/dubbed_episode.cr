@@ -97,8 +97,14 @@ struct DubbedEpisode
   end
 
   def self.set_step(id : Int64, step : String)
+    # Refuse to overwrite step once the row reached a terminal state.
+    # Late progress reports (e.g. the post-result "complete" POST seen in
+    # prod logs, or out-of-order reports from the pipeline's per-event
+    # daemon threads) would otherwise flip step backwards and trigger a
+    # spurious PG NOTIFY → DubHub fanout that the UI would interpret as
+    # "back to processing".
     AppDB.pool.exec(
-      "UPDATE dubbed_episodes SET step = $2 WHERE id = $1",
+      "UPDATE dubbed_episodes SET step = $2 WHERE id = $1 AND status NOT IN ('done', 'failed')",
       id, step
     )
     # The dub_update_notify PG trigger fires automatically on every UPDATE,
