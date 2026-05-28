@@ -7,6 +7,9 @@
    :theme       {}
    :inbox       {:episodes [] :loading? false :search-query ""
                  :filters  {:hide-listened? false :compact? false :excluded-feeds #{}}}
+   :inbox-dubbed {:items    []
+                  :loading? false
+                  :loaded?  false}
    :feeds       {:list [] :loading? false}
    :episodes    {:feed-id          nil
                  :list             []

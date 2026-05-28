@@ -22,6 +22,9 @@
   :<- [::inbox]
   (fn [inbox _] (:filters inbox)))
 
+(rf/reg-sub ::inbox-dubbed-items
+  (fn [db _] (get-in db [:inbox-dubbed :items])))
+
 ;; Feeds
 (rf/reg-sub ::feeds-list     (fn [db _] (get-in db [:feeds :list])))
 (rf/reg-sub ::feeds-loading? (fn [db _] (get-in db [:feeds :loading?])))
