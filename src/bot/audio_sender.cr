@@ -20,9 +20,10 @@ module AudioSender
   MAX_UPLOAD_SIZE = Config.telegram_api_server ? 2000 * 1024 * 1024 : 50 * 1024 * 1024
   URL_SEND_TIMEOUT = 60.seconds
 
-  def self.send_to_user(telegram_id : Int64, episode : Episode, feed : Feed?, override_url : String? = nil)
+  def self.send_to_user(telegram_id : Int64, episode : Episode, feed : Feed?,
+                        override_url : String? = nil, caption : String? = nil)
     audio_url = override_url || episode.audio_url
-    if try_url_send(telegram_id, episode, feed, audio_url)
+    if try_url_send(telegram_id, episode, feed, audio_url, caption)
       Log.info { "AudioSender: sent episode #{episode.id} by URL to #{telegram_id}" }
       return
     end
@@ -39,7 +40,7 @@ module AudioSender
       return
     end
 
-    download_and_upload(telegram_id, episode, feed, audio_url)
+    download_and_upload(telegram_id, episode, feed, audio_url, caption)
   rescue ex
     Log.error { "AudioSender unhandled error for episode #{episode.id}: #{ex.message}" }
     notify_failure(telegram_id, episode.title, ex.message)
@@ -48,7 +49,8 @@ module AudioSender
   # --------------------------------------------------------------------------
   # Fast path: send by URL
   # --------------------------------------------------------------------------
-  private def self.try_url_send(telegram_id : Int64, episode : Episode, feed : Feed?, audio_url : String) : Bool
+  private def self.try_url_send(telegram_id : Int64, episode : Episode, feed : Feed?,
+                                 audio_url : String, caption : String?) : Bool
     body = JSON.build do |j|
       j.object do
         j.field "chat_id", telegram_id
@@ -56,6 +58,7 @@ module AudioSender
         j.field "title",   episode.title
         j.field "performer", feed.try(&.title) || ""
         episode.duration_sec.try { |d| j.field "duration", d }
+        caption.try { |c| j.field "caption", c unless c.empty? }
       end
     end
 
@@ -72,7 +75,9 @@ module AudioSender
   # --------------------------------------------------------------------------
   # Slow path: stream-download then multipart-upload
   # --------------------------------------------------------------------------
-  private def self.download_and_upload(telegram_id : Int64, episode : Episode, feed : Feed?, audio_url : String)
+  private def self.download_and_upload(telegram_id : Int64, episode : Episode,
+                                        feed : Feed?, audio_url : String,
+                                        caption : String?)
     tempfile = File.tempfile("buzz-episode", ".mp3")
     downloaded = 0_i64
 
@@ -104,7 +109,7 @@ module AudioSender
       end
 
       tempfile.rewind
-      upload_multipart(telegram_id, episode, feed, tempfile)
+      upload_multipart(telegram_id, episode, feed, tempfile, caption)
       Log.info { "AudioSender: uploaded episode #{episode.id} (#{mb(downloaded)} MB) to #{telegram_id}" }
     rescue ex
       Log.error { "AudioSender download/upload failed for episode #{episode.id}: #{ex.message}" }
@@ -114,7 +119,9 @@ module AudioSender
     end
   end
 
-  private def self.upload_multipart(telegram_id : Int64, episode : Episode, feed : Feed?, file : File)
+  private def self.upload_multipart(telegram_id : Int64, episode : Episode,
+                                     feed : Feed?, file : File,
+                                     caption : String?)
     boundary = "BuzzBot#{Random::Secure.hex(10)}"
     # Write multipart to a temp file so we can stream it to Telegram
     # without holding the entire audio in memory.
@@ -125,6 +132,7 @@ module AudioSender
       builder.field("title",     episode.title)
       builder.field("performer", feed.try(&.title) || "")
       episode.duration_sec.try { |d| builder.field("duration", d.to_s) }
+      caption.try { |c| builder.field("caption", c) unless c.empty? }
       builder.file(
         "audio", file,
         HTTP::FormData::FileMetadata.new(filename: "episode.mp3"),
