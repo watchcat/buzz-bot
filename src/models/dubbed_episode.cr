@@ -124,6 +124,7 @@ struct DubbedEpisode
         UPDATE dubbed_episodes
         SET step = 'complete', status = 'done', r2_url = $2,
             speaker_samples = $3::jsonb,
+            completed_at = NOW(),
             expires_at = NOW() + INTERVAL '29 days'
         WHERE id = $1
       SQL
