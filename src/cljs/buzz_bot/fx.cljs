@@ -12,7 +12,7 @@
 ;;   :on-err  — event vector appended with error string
 
 (defn- method-str [m]
-  (case m :get "GET" :post "POST" :put "PUT" :delete "DELETE" "GET"))
+  (case m :get "GET" :post "POST" :put "PUT" :patch "PATCH" :delete "DELETE" "GET"))
 
 (defn- build-init [method body init-data]
   (let [headers (js-obj "X-Init-Data" init-data)

@@ -2,6 +2,7 @@
   (:require [re-frame.core :as rf]
             [clojure.string :as str]
             [buzz-bot.db :as db]
+            [buzz-bot.delivery]
             [buzz-bot.fx]
             [buzz-bot.playback :as pb]
             [buzz-bot.events.dub :as dub-events]))
@@ -309,6 +310,82 @@
    (let [feed-id (get-in db [:episodes :feed-id])]
      {:db       (assoc-in db [:episodes :order] order)
       :dispatch [::fetch-episodes feed-id order]})))
+
+;; ── Per-feed delivery mode ───────────────────────────────────────────────────
+
+;; Cycle delivery mode for the current feed. Optimistic UI: write the new
+;; mode immediately to db, fire PATCH; on err revert. The premium flag
+;; shortens the cycle to off↔notify for non-premium users so tap-cycle
+;; never lands on mp3 without entitlement (matches Send-to-Chat gate).
+(rf/reg-event-fx
+ ::cycle-delivery-mode
+ (fn [{:keys [db]} [_ feed-id]]
+   (let [current   (or (get-in db [:episodes :delivery-mode]) :off)
+         premium?  (boolean (get-in db [:episodes :is-premium?]))
+         next-m    (buzz-bot.delivery/next-mode current premium?)]
+     {:dispatch [::set-delivery-mode feed-id next-m]})))
+
+(rf/reg-event-fx
+ ::set-delivery-mode
+ (fn [{:keys [db]} [_ feed-id mode]]
+   (let [prior     (or (get-in db [:episodes :delivery-mode]) :off)
+         premium?  (boolean (get-in db [:episodes :is-premium?]))]
+     (cond
+       (= prior mode)
+       {}
+
+       ;; Non-premium user picked mp3 from the long-press popup → no
+       ;; optimistic write, no PATCH; just surface the upsell banner.
+       (and (= mode :mp3) (not premium?))
+       {:db (assoc-in db [:episodes :delivery-upsell?] true)}
+
+       :else
+       {:db (-> db
+                (assoc-in [:episodes :delivery-mode]    mode)
+                (assoc-in [:episodes :delivery-pending] prior)
+                (assoc-in [:episodes :delivery-upsell?] false))
+        ::buzz-bot.fx/http-fetch
+        {:method :patch
+         :url    (str "/feeds/" feed-id "/delivery_mode")
+         :body   {:mode (name mode)}
+         :on-ok  [::delivery-patch-ok]
+         :on-err [::delivery-patch-err]}}))))
+
+(rf/reg-event-db
+ ::delivery-patch-ok
+ (fn [db _]
+   (assoc-in db [:episodes :delivery-pending] nil)))
+
+(rf/reg-event-db
+ ::delivery-patch-err
+ (fn [db [_ err]]
+   ;; Revert to the prior mode and clear pending. If err is HTTP 402
+   ;; (premium_required — e.g. premium expired between fetch and PATCH),
+   ;; also flip the upsell banner on.
+   (let [prior    (get-in db [:episodes :delivery-pending])
+         http402? (and (string? err) (str/includes? err "402"))]
+     (-> db
+         (assoc-in [:episodes :delivery-mode]    (or prior :off))
+         (assoc-in [:episodes :delivery-pending] nil)
+         (cond-> http402?
+           (assoc-in [:episodes :delivery-upsell?] true))))))
+
+(rf/reg-event-db
+ ::dismiss-delivery-upsell
+ (fn [db _]
+   (assoc-in db [:episodes :delivery-upsell?] false)))
+
+;; Bump last_viewed_at server-side and clear local NEW marks. Fire-and-forget;
+;; failure is silent — the badge will just reappear on next fetch.
+(rf/reg-event-fx
+ ::mark-feed-viewed
+ (fn [{:keys [db]} [_ feed-id]]
+   {:db (assoc-in db [:episodes :new-episode-ids] #{})
+    ::buzz-bot.fx/http-fetch
+    {:method :post
+     :url    (str "/feeds/" feed-id "/viewed")
+     :on-ok  [::noop]
+     :on-err [::noop]}}))
 
 ;; ── Player ───────────────────────────────────────────────────────────────────
 
