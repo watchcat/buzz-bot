@@ -3,6 +3,7 @@
             [reagent.core :as r]
             [buzz-bot.subs :as subs]
             [buzz-bot.events :as events]
+            [buzz-bot.views.inbox-dubbed :as inbox-dubbed]
             [buzz-bot.views.utils :refer [img-proxy]]))
 
 (defn- fmt-pub-date [published-at]
@@ -140,6 +141,7 @@
                :read-only true}]
              [:span.filter-switch]
              [:span.filter-text "Compact"]]]]]
+         [inbox-dubbed/widget]
          [:div.search-section
           [:input.search-input
            {:type        "search"
