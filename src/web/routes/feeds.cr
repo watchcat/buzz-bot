@@ -141,5 +141,17 @@ module Web::Routes::Feeds
       env.response.status_code = 204
       nil
     end
+
+    post "/feeds/:id/viewed" do |env|
+      user = Auth.current_user(env)
+      halt env, status_code: 401, response: "Unauthorized" unless user
+
+      feed_id = env.params.url["id"].to_i64?
+      halt env, status_code: 400, response: %({"error":"bad_feed_id"}) unless feed_id
+
+      UserFeed.touch_viewed(user.id, feed_id)
+      env.response.status_code = 204
+      nil
+    end
   end
 end
