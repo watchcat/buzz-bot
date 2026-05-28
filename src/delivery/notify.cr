@@ -47,7 +47,7 @@ module Delivery::Notify
     if (img = feed.image_url)
       begin
         BotClient.client.send_photo(
-          chat_id:      telegram_id,
+          chat:         telegram_id,
           photo:        img,
           caption:      caption,
           parse_mode:   Tourmaline::ParseMode::Markdown,
