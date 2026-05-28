@@ -54,7 +54,8 @@ RUN apk add --no-cache \
     libssl3 \
     libcrypto3 \
     ca-certificates \
-    tzdata
+    tzdata \
+    vips-tools
 
 WORKDIR /app
 

@@ -320,3 +320,92 @@ describe ProxyHelpers::ProxyStreamer do
     end
   end
 end
+
+# Returns true when the `vipsthumbnail` binary is on PATH. The image-resize
+# specs need a real libvips at runtime; on hosts without vips-tools installed
+# (some dev shells, minimal CI), they're skipped rather than failed.
+private def vips_available? : Bool
+  Process.run("vipsthumbnail", args: ["--version"],
+    output: Process::Redirect::Close, error: Process::Redirect::Close).success?
+rescue
+  false
+end
+
+# Generates a real PNG fixture via vips (so we have a valid image to feed
+# vipsthumbnail in the round-trip tests).
+private def make_png_fixture(width = 800, height = 800) : Bytes
+  path = File.tempfile("imgproxy-fixture", ".png").path
+  status = Process.run("vips", args: ["black", path, width.to_s, height.to_s, "--bands", "3"],
+    output: Process::Redirect::Close, error: Process::Redirect::Close)
+  raise "vips black failed: #{status.exit_code}" unless status.success?
+  bytes = File.read(path).to_slice
+  File.delete(path) rescue nil
+  bytes
+end
+
+describe ProxyHelpers::ImageResizer do
+  describe ".resize_through" do
+    it "fetches, resizes, and writes JPEG bytes to dst_io" do
+      pending! "vipsthumbnail not on PATH" unless vips_available?
+      png = make_png_fixture(1200, 1200)
+      fake = FakeUpstream.new do |ctx|
+        ctx.response.headers["Content-Type"] = "image/png"
+        ctx.response.write(png)
+      end
+
+      sink = IO::Memory.new
+      header_calls = 0
+      ProxyHelpers::ImageResizer.resize_through(
+        fake.url("/x"), sink,
+        on_headers: -> do
+          header_calls += 1
+          sink.size.should eq(0)
+          nil
+        end,
+      )
+      header_calls.should eq(1)
+      sink.size.should be > 0
+      # JPEG SOI marker — proves the upstream PNG made it through libvips
+      sink.to_slice[0, 3].should eq(Bytes[0xff, 0xd8, 0xff])
+    ensure
+      fake.try &.close
+    end
+
+    it "raises TooLarge when upstream exceeds the buffer cap" do
+      # 200 KB body, cap 100 KB → ProxyStreamer mid-stream abort, rewrapped
+      # into ImageResizer::TooLarge.
+      body = Bytes.new(200 * 1024) { 0_u8 }
+      fake = FakeUpstream.new do |ctx|
+        ctx.response.headers["Content-Type"] = "image/jpeg"
+        ctx.response.write(body)
+      end
+
+      sink = IO::Memory.new
+      expect_raises(ProxyHelpers::ImageResizer::TooLarge) do
+        ProxyHelpers::ImageResizer.resize_through(
+          fake.url("/x"), sink,
+          max_bytes: 100_i64 * 1024,
+        )
+      end
+      sink.size.should eq(0)
+    ensure
+      fake.try &.close
+    end
+
+    it "raises ResizeFailed when upstream isn't a decodable image" do
+      pending! "vipsthumbnail not on PATH" unless vips_available?
+      fake = FakeUpstream.new do |ctx|
+        ctx.response.headers["Content-Type"] = "text/html"
+        ctx.response.print "<html>not an image</html>"
+      end
+
+      sink = IO::Memory.new
+      expect_raises(ProxyHelpers::ImageResizer::ResizeFailed) do
+        ProxyHelpers::ImageResizer.resize_through(fake.url("/x"), sink)
+      end
+      sink.size.should eq(0)
+    ensure
+      fake.try &.close
+    end
+  end
+end

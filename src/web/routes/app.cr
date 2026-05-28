@@ -23,6 +23,11 @@ module Web::Routes::App
     # through via HTTP::Client block form (no buffering); aborts with 502 if
     # the upstream declares (or streams) more than IMG_PROXY_MAX_BYTES. No
     # in-process cache — we rely on Cache-Control for browser + SW shell.
+    #
+    # Fallback for oversized but legitimate artwork: when the streaming path
+    # raises TooLarge before any byte reaches the client, retry through
+    # ImageResizer (buffer up to 20 MB, vipsthumbnail → JPEG ≤ 600 px). Keeps
+    # the fast path fast for the 99 % of feeds under 5 MB.
     get "/img-proxy" do |env|
       url = env.params.query["url"]?.to_s
       halt env, status_code: 400, response: "Bad Request" if url.empty?
@@ -46,7 +51,24 @@ module Web::Routes::App
           Log.warn { "img-proxy mid-stream TooLarge url=#{url}: #{ex.message}" }
           env.response.close
         else
-          halt env, status_code: 502, response: "Upstream too large"
+          begin
+            ProxyHelpers::ImageResizer.resize_through(
+              url, env.response,
+              on_headers: -> do
+                env.response.content_type = "image/jpeg"
+                env.response.headers["Cache-Control"] = "public, max-age=86400, immutable"
+                env.response.flush
+                headers_sent = true
+                nil
+              end,
+            )
+          rescue rex : ProxyHelpers::ImageResizer::TooLarge
+            Log.warn { "img-proxy resize TooLarge url=#{url}: #{rex.message}" }
+            halt env, status_code: 502, response: "Upstream too large" unless headers_sent
+          rescue rex
+            Log.warn { "img-proxy resize error url=#{url} #{rex.class}: #{rex.message}" }
+            halt env, status_code: 502, response: "Bad Gateway" unless headers_sent
+          end
         end
       rescue ex
         if headers_sent

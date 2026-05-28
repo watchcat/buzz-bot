@@ -68,6 +68,81 @@ module ProxyHelpers
   # max_redirects (default 0) controls opt-in redirect-following. When 0,
   # any 3xx triggers the existing "raise upstream status N" path. When > 0,
   # 3xx responses extract Location and retry up to max_redirects times.
+  # Buffer-then-resize fallback for oversized podcast artwork. The cheap
+  # stream-through path in ProxyStreamer caps responses at 5 MB; a small
+  # number of legitimate feeds (e.g. Lex Fridman ships a 7.8 MB 3000×3000
+  # PNG) exceed that. Rather than raise the streaming cap (which would let
+  # bogus HTML error pages slip through too), we route oversized fetches
+  # through libvips: buffer up to RESIZE_MAX_BYTES, hand it to vipsthumbnail
+  # for a max-edge resize + JPEG re-encode, and emit the small re-encoded
+  # bytes as the response body. The runtime alpine image installs vips-tools
+  # for the `vipsthumbnail` binary; if it's missing, ResizeFailed surfaces
+  # to the route handler as a 502.
+  module ImageResizer
+    RESIZE_MAX_BYTES = 20_i64 * 1024 * 1024
+    THUMB_SIZE       =                  600
+    THUMB_QUALITY    =                   85
+
+    class TooLarge < Exception; end
+
+    class ResizeFailed < Exception; end
+
+    def self.resize_through(
+      url : String,
+      dst_io : IO,
+      *,
+      max_bytes : Int64 = RESIZE_MAX_BYTES,
+      size : Int32 = THUMB_SIZE,
+      quality : Int32 = THUMB_QUALITY,
+      connect_timeout : Time::Span = 5.seconds,
+      read_timeout : Time::Span = 15.seconds,
+      on_headers : (-> Nil)? = nil,
+      max_redirects : Int32 = 5,
+    ) : Nil
+      buf = IO::Memory.new
+      begin
+        ProxyStreamer.stream_through(
+          url, buf,
+          max_bytes: max_bytes,
+          connect_timeout: connect_timeout,
+          read_timeout: read_timeout,
+          max_redirects: max_redirects,
+        )
+      rescue ex : ProxyStreamer::TooLarge
+        raise TooLarge.new(ex.message)
+      end
+
+      # vipsthumbnail needs file paths — stdin support varies across libvips
+      # builds and the temp-file overhead is negligible next to decode work.
+      input = File.tempfile("imgproxy-in")
+      output_path = "#{input.path}.out.jpg"
+      begin
+        input.write(buf.to_slice)
+        input.close
+
+        status = Process.run(
+          "vipsthumbnail",
+          args: [
+            input.path,
+            "--size", size.to_s,
+            "-o", "#{output_path}[Q=#{quality}]",
+          ],
+          output: Process::Redirect::Close,
+          error: Process::Redirect::Close,
+        )
+        unless status.success?
+          raise ResizeFailed.new("vipsthumbnail exited #{status.exit_code} for #{url}")
+        end
+
+        on_headers.try &.call
+        File.open(output_path, "rb") { |f| IO.copy(f, dst_io) }
+      ensure
+        input.delete rescue nil
+        File.delete(output_path) rescue nil
+      end
+    end
+  end
+
   module ProxyStreamer
     class TooLarge < Exception; end
 
