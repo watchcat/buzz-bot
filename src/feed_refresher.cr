@@ -1,4 +1,5 @@
 require "http/client"
+require "./delivery/dispatch"
 
 # FeedRefresher runs as two concurrent fibers:
 #
@@ -140,6 +141,8 @@ module FeedRefresher
     rescue ex
       Log.warn { "FeedRefresher: episode upsert error (feed #{feed.id}): #{ex.message}" }
     end
+
+    Delivery::Dispatch.fanout(feed, inserted_eps)
 
     label = feed.title || feed.url
     Log.info { "FeedRefresher: feed #{feed.id} \"#{label}\" — #{new_count} new/updated episodes" }
