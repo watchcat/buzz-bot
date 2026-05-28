@@ -22,6 +22,8 @@
 
   /* Accent tint */
   --accent-tint: color-mix(in srgb, var(--button-color) 12%, transparent);
+  --accent-13: color-mix(in srgb, var(--button-color) 13%, transparent);
+  --accent-33: color-mix(in srgb, var(--button-color) 33%, transparent);
 }
 
 * {
@@ -1892,3 +1894,130 @@ body:has(.now-playing-bar) main { padding-bottom: 84px; }
   opacity: 0.6;
 }
 
+/* ── Feed delivery + sort chips ─────────────────────────────────── */
+
+.feed-chips-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 var(--gap) 12px;
+}
+
+.delivery-chip {
+  width: 140px;             /* fixed — prevents jitter on label change */
+  height: 28px;
+  padding: 5px 12px 5px 10px;
+  border-radius: 999px;
+  font: 600 12.5px/1 inherit;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+  cursor: pointer;
+  border: 1px solid var(--border);
+  background: var(--secondary-bg);
+  color: var(--hint-color);
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  transition: opacity 0.12s;
+}
+.delivery-chip:active { opacity: 0.7; }
+.delivery-chip--active {
+  background: var(--accent-13);
+  color:      var(--button-color);
+  border-color: var(--accent-33);
+}
+.delivery-chip__chevron { opacity: 0.6; display: inline-flex; }
+
+.sort-chip {
+  height: 28px;
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--hint-color);
+  font: 500 12.5px/1 inherit;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  cursor: pointer;
+  white-space: nowrap;
+  user-select: none;
+}
+.sort-chip:active { opacity: 0.7; }
+
+/* ── NEW badge on episode cards ─────────────────────────────────── */
+
+.episode-new-badge {
+  display: inline-block;
+  background: var(--button-color);
+  color: var(--button-text-color);
+  font: 700 9px/1 inherit;
+  letter-spacing: 0.4px;
+  padding: 1px 5px;
+  border-radius: 4px;
+  margin-right: 6px;
+  text-transform: uppercase;
+  flex: 0 0 auto;
+  vertical-align: middle;
+}
+
+/* ── ⋯ overflow menu (per-feed header) ──────────────────────────── */
+
+.overflow-anchor { position: relative; display: inline-block; }
+.overflow-trigger {
+  background: transparent;
+  border: none;
+  color: var(--text-color);
+  font-size: 20px;
+  line-height: 1;
+  padding: 4px 6px;
+  cursor: pointer;
+}
+.overflow-trigger:active { opacity: 0.6; }
+.overflow-menu {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  min-width: 180px;
+  background: var(--secondary-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.18);
+  z-index: 50;
+  padding: 4px 0;
+}
+.overflow-menu__item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: none;
+  color: var(--text-color);
+  font: 500 14px/1 inherit;
+  padding: 10px 14px;
+  cursor: pointer;
+}
+.overflow-menu__item:active { background: var(--overlay); }
+.overflow-menu__item + .overflow-menu__item {
+  border-top: 1px solid var(--border-lt);
+}
+
+/* ── Delivery upsell banner ─────────────────────────────────────── */
+
+/* Mirrors the player's .send-result.upsell visual treatment for
+   consistency. Appears under the chips row when a non-premium user
+   tries to enable mp3 delivery. Tap-to-dismiss. */
+.delivery-upsell {
+  margin: 0 var(--gap) 12px;
+  padding: 10px 12px;
+  background: var(--accent-13);
+  border: 1px solid var(--accent-33);
+  border-radius: var(--radius);
+  color: var(--text-color);
+  font: 500 13px/1.35 inherit;
+  cursor: pointer;
+}
+.delivery-upsell strong { font-weight: 700; }
+.delivery-upsell:active { opacity: 0.7; }
