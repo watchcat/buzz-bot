@@ -57,7 +57,9 @@
                           (assoc-in [:episodes :restore-to-id] restore-id)))}
          fetch-event (assoc :dispatch-n (cond-> [fetch-event]
                                            (= view :player)
-                                           (conj [::dub-events/reset])))
+                                           (conj [::dub-events/reset])
+                                           (= view :inbox)
+                                           (conj [::fetch-inbox-dubbed])))
          (= cur-view :player)
          (update :dispatch-n (fnil conj []) [::clear-subtitles]))))))
 
@@ -97,6 +99,43 @@
     ::buzz-bot.fx/http-fetch {:method :get
                               :url    (str "/inbox/search?q=" (js/encodeURIComponent query))
                               :on-ok  [::inbox-loaded] :on-err [::fetch-error]}}))
+
+;; Latest-dubbed widget — fetched on first inbox entry; replaces items
+;; on success; silent failure (widget just stays hidden).
+(rf/reg-event-fx
+ ::fetch-inbox-dubbed
+ (fn [{:keys [db]} _]
+   (if (get-in db [:inbox-dubbed :loaded?])
+     {}
+     {:db (assoc-in db [:inbox-dubbed :loading?] true)
+      ::buzz-bot.fx/http-fetch
+      {:method :get
+       :url    "/inbox/dubbed"
+       :on-ok  [::inbox-dubbed-loaded]
+       :on-err [::inbox-dubbed-err]}})))
+
+(rf/reg-event-db
+ ::inbox-dubbed-loaded
+ (fn [db [_ resp]]
+   (-> db
+       (assoc-in [:inbox-dubbed :items]    (vec (:items resp)))
+       (assoc-in [:inbox-dubbed :loaded?]  true)
+       (assoc-in [:inbox-dubbed :loading?] false))))
+
+(rf/reg-event-db
+ ::inbox-dubbed-err
+ (fn [db [_ _err]]
+   ;; Silent: widget just stays empty/hidden. Inbox proper renders fine.
+   (-> db
+       (assoc-in [:inbox-dubbed :loading?] false)
+       (assoc-in [:inbox-dubbed :loaded?]  true))))
+
+;; v1 stub — "See all →" routes here but does nothing yet. Wired up so
+;; the button has a real dispatch and the design isn't lying about a
+;; nav target; future work replaces this with a navigate to /dubbed.
+(rf/reg-event-db
+ ::see-all-dubbed-stub
+ (fn [db _] db))
 
 ;; ── Topics ──────────────────────────────────────────────────────────────────
 
