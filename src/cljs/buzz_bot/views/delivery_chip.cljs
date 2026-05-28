@@ -45,7 +45,11 @@
 ;; The mp3 button is labeled "(Premium)" for non-premium users; the
 ;; ::set-delivery-mode handler enforces the gate (no PATCH; banner instead).
 (defn- open-picker! [feed-id current-mode premium?]
-  (let [tg     (some-> js/window .-Telegram .-WebApp)
+  ;; ^js hint disables shadow-cljs property-name munging on `tg` so
+  ;; `.-showPopup` / `.showPopup` survive advanced compilation intact
+  ;; (without externs for Telegram.WebApp, the closure compiler would
+  ;; otherwise rename them and break the call at runtime).
+  (let [^js tg (some-> js/window .-Telegram .-WebApp)
         popup? (and tg (.-showPopup tg))
         mp3-label (if premium? "Send MP3" "Send MP3 (Premium)")]
     (if popup?
