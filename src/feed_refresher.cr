@@ -127,13 +127,16 @@ module FeedRefresher
 
     Feed.update_refresh_metadata(feed.id, new_etag, new_last_mod, clamped_ttl)
 
-    new_count = 0
+    new_count      = 0
+    inserted_eps   = [] of Episode
     parsed.episodes.each do |ep|
       result = Episode.upsert(
         feed.id, ep.guid, ep.title, ep.description,
         ep.audio_url, ep.duration_sec, ep.published_at, ep.image_url
       )
-      new_count += 1 if result
+      next unless result
+      new_count += 1
+      inserted_eps << result.episode if result.was_inserted
     rescue ex
       Log.warn { "FeedRefresher: episode upsert error (feed #{feed.id}): #{ex.message}" }
     end

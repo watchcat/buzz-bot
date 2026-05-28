@@ -26,7 +26,14 @@ struct Episode
     )
   end
 
-  def self.upsert(feed_id : Int64, guid : String, title : String, description : String?, audio_url : String, duration_sec : Int32?, published_at : Time?, image_url : String? = nil) : Episode?
+  record UpsertResult, episode : Episode, was_inserted : Bool
+
+  # Insert-or-update an episode. Returns nil only if neither path runs
+  # (current SQL guarantees a row either way; the nil branch is for safety
+  # against future schema/constraint changes). The `was_inserted` flag uses
+  # the standard Postgres trick: `xmax` is 0 on a fresh INSERT and set to
+  # the deleter's xid on an UPDATE-from-conflict.
+  def self.upsert(feed_id : Int64, guid : String, title : String, description : String?, audio_url : String, duration_sec : Int32?, published_at : Time?, image_url : String? = nil) : UpsertResult?
     AppDB.pool.query_one?(
       <<-SQL,
         INSERT INTO episodes (feed_id, guid, title, description, audio_url, duration_sec, published_at, image_url)
@@ -38,10 +45,14 @@ struct Episode
           duration_sec = COALESCE(EXCLUDED.duration_sec, episodes.duration_sec),
           published_at = COALESCE(episodes.published_at, EXCLUDED.published_at),
           image_url    = COALESCE(EXCLUDED.image_url, episodes.image_url)
-        RETURNING id, feed_id, guid, title, description, audio_url, duration_sec, published_at, image_url
+        RETURNING id, feed_id, guid, title, description, audio_url, duration_sec, published_at, image_url,
+                  (xmax = 0) AS was_inserted
       SQL
       feed_id, guid, title, description, audio_url, duration_sec, published_at, image_url
-    ) { |rs| from_rs(rs) }
+    ) do |rs|
+      ep = from_rs(rs)
+      UpsertResult.new(episode: ep, was_inserted: rs.read(Bool))
+    end
   end
 
   def self.find(id : Int64) : Episode?
