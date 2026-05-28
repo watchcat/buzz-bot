@@ -265,13 +265,20 @@
  (fn [{:keys [db]} [_ resp]]
    (let [restore-id (get-in db [:episodes :restore-to-id])
          server-order (some-> (:episode_order resp) keyword)
+         delivery     (some-> (:delivery_mode resp) keyword)
+         new-ids      (set (:new_episode_ids resp))
+         premium?     (boolean (:is_premium resp))
          db'        (-> db
-                        (assoc-in [:episodes :list]           (:episodes resp))
-                        (assoc-in [:episodes :has-more?]      (:has_more resp))
-                        (assoc-in [:episodes :loading?]       false)
-                        (assoc-in [:episodes :restore-to-id]  nil)
+                        (assoc-in [:episodes :list]            (:episodes resp))
+                        (assoc-in [:episodes :has-more?]       (:has_more resp))
+                        (assoc-in [:episodes :loading?]        false)
+                        (assoc-in [:episodes :restore-to-id]   nil)
+                        (assoc-in [:episodes :new-episode-ids] new-ids)
+                        (assoc-in [:episodes :is-premium?]     premium?)
                         (cond-> server-order
-                          (assoc-in [:episodes :order] server-order)))
+                          (assoc-in [:episodes :order] server-order))
+                        (cond-> delivery
+                          (assoc-in [:episodes :delivery-mode] delivery)))
          playing-id (get-in db [:audio :episode-id])
          eps        (:episodes resp)
          scroll-id  (or (when (and restore-id
