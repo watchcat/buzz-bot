@@ -41,6 +41,26 @@
   :<- [::episodes]
   (fn [ep _] (:order ep)))
 
+(rf/reg-sub ::delivery-mode
+  :<- [::episodes]
+  (fn [e _] (or (:delivery-mode e) :off)))
+
+(rf/reg-sub ::delivery-pending
+  :<- [::episodes]
+  (fn [e _] (:delivery-pending e)))
+
+(rf/reg-sub ::delivery-upsell?
+  :<- [::episodes]
+  (fn [e _] (boolean (:delivery-upsell? e))))
+
+(rf/reg-sub ::is-premium?
+  :<- [::episodes]
+  (fn [e _] (boolean (:is-premium? e))))
+
+(rf/reg-sub ::new-episode-ids
+  :<- [::episodes]
+  (fn [e _] (or (:new-episode-ids e) #{})))
+
 ;; Player
 (rf/reg-sub ::player-data        (fn [db _] (get-in db [:player :data])))
 (rf/reg-sub ::player-loading?    (fn [db _] (get-in db [:player :loading?])))
