@@ -1,5 +1,6 @@
 require "ecr"
 require "json"
+require "../../models/user_feed"
 
 module Web::Routes::Episodes
   # Global semaphore: bound concurrent in-flight audio_proxy fibers so a
@@ -90,8 +91,28 @@ module Web::Routes::Episodes
 
       items = Web.build_episode_list(episodes, user.id)
 
+      delivery_mode = UserFeed.get_delivery_mode(user.id, feed_id)
+
+      new_ids = if (lv = UserFeed.last_viewed_at(user.id, feed_id))
+        episodes.compact_map { |ep| ep.id if (pub = ep.published_at) && pub > lv }
+      else
+        # First-ever view of this feed: treat everything as already-seen so
+        # we don't blast NEW badges across the entire history on day one.
+        [] of Int64
+      end
+
       env.response.content_type = "application/json"
-      {episodes: items, has_more: has_more, episode_order: order}.to_json
+      {
+        episodes:        items,
+        has_more:        has_more,
+        episode_order:   order,
+        delivery_mode:   delivery_mode,
+        new_episode_ids: new_ids,
+        # Premium status drives the chip's mp3 gating (skip cycle, show
+        # upsell banner on attempt). Returning it here keeps the per-feed
+        # view self-contained — no coupling to the player JSON fetch.
+        is_premium:      user.subscribed?,
+      }.to_json
     end
 
     # Get player data for a single episode
