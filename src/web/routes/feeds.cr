@@ -1,4 +1,5 @@
 require "json"
+require "../../models/user_feed"
 
 module Web::Routes::Feeds
   def self.register
@@ -99,6 +100,43 @@ module Web::Routes::Feeds
 
       feed_id = env.params.url["id"].to_i64
       Feed.unsubscribe(user.id, feed_id)
+
+      env.response.status_code = 204
+      nil
+    end
+
+    patch "/feeds/:id/delivery_mode" do |env|
+      user = Auth.current_user(env)
+      halt env, status_code: 401, response: "Unauthorized" unless user
+
+      feed_id = env.params.url["id"].to_i64?
+      halt env, status_code: 400, response: %({"error":"bad_feed_id"}) unless feed_id
+
+      body = env.request.body.try(&.gets_to_end) || "{}"
+      data = JSON.parse(body) rescue halt env, status_code: 400, response: %({"error":"invalid_json"})
+      mode = data["mode"]?.try(&.as_s?) || ""
+
+      unless UserFeed::VALID_DELIVERY_MODES.includes?(mode)
+        env.response.status_code = 400
+        env.response.content_type = "application/json"
+        next %({"error":"invalid_mode","allowed":["off","notify","mp3"]})
+      end
+
+      # Premium gate for mp3 mode — matches the manual Send-to-Chat gate at
+      # POST /episodes/:id/send. Without this, auto-delivery would trivially
+      # bypass the existing manual-feature premium gate.
+      if mode == "mp3" && !user.subscribed?
+        env.response.status_code = 402
+        env.response.content_type = "application/json"
+        next %({"error":"premium_required"})
+      end
+
+      updated = UserFeed.set_delivery_mode(user.id, feed_id, mode)
+      unless updated
+        env.response.status_code = 404
+        env.response.content_type = "application/json"
+        next %({"error":"not_subscribed"})
+      end
 
       env.response.status_code = 204
       nil
