@@ -132,6 +132,68 @@ struct DubbedEpisode
     )
   end
 
+  # Projection used by GET /inbox/dubbed and the widget renderer.
+  # `is_new` is server-computed (completed_at > NOW() - 24h) so the client
+  # doesn't have to do any time math.
+  record DubbedRecent,
+    episode_id   : Int64,
+    feed_id      : Int64,
+    feed_title   : String,
+    feed_image   : String?,
+    ep_title     : String,
+    ep_image     : String?,
+    duration_sec : Int32?,
+    source_lang  : String?,
+    target_lang  : String,
+    completed_at : Time,
+    subscribed   : Bool,
+    is_new       : Bool do
+    include JSON::Serializable
+  end
+
+  def self.recent_for_inbox(user_id : Int64, limit : Int32 = 12) : Array(DubbedRecent)
+    out = [] of DubbedRecent
+    AppDB.pool.query_each(
+      <<-SQL,
+        SELECT
+          e.id AS episode_id,
+          e.feed_id, f.title AS feed_title, f.image_url AS feed_image,
+          e.title AS ep_title, e.image_url AS ep_image, e.duration_sec,
+          e.original_language AS source_lang,
+          de.language         AS target_lang,
+          de.completed_at,
+          EXISTS (
+            SELECT 1 FROM user_feeds uf
+            WHERE uf.user_id = $1 AND uf.feed_id = e.feed_id
+          ) AS subscribed,
+          (de.completed_at > NOW() - INTERVAL '24 hours') AS is_new
+        FROM dubbed_episodes de
+        JOIN episodes e ON e.id = de.episode_id
+        JOIN feeds    f ON f.id = e.feed_id
+        WHERE de.status = 'done' AND de.completed_at IS NOT NULL
+        ORDER BY subscribed DESC, de.completed_at DESC NULLS LAST
+        LIMIT $2
+      SQL
+      user_id, limit
+    ) do |rs|
+      out << DubbedRecent.new(
+        episode_id:   rs.read(Int64),
+        feed_id:      rs.read(Int64),
+        feed_title:   rs.read(String),
+        feed_image:   rs.read(String?),
+        ep_title:     rs.read(String),
+        ep_image:     rs.read(String?),
+        duration_sec: rs.read(Int32?),
+        source_lang:  rs.read(String?),
+        target_lang:  rs.read(String),
+        completed_at: rs.read(Time),
+        subscribed:   rs.read(Bool),
+        is_new:       rs.read(Bool),
+      )
+    end
+    out
+  end
+
   # Returns a map of language → {status, step, r2_url?, translation?} for all dubs of an episode.
   def self.statuses_for_episode(episode_id : Int64)
     rows = AppDB.pool.query_all(
