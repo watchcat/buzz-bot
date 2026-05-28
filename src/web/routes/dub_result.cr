@@ -1,4 +1,5 @@
 require "json"
+require "../../bot/mini_app_link"
 require "../../models/dubbed_episode"
 require "../../models/dub_segment"
 require "../../models/episode"
@@ -130,7 +131,6 @@ module Web::Routes::DubResult
     feed        = episode.try { |ep| Feed.find(ep.feed_id) }
     ep_title    = episode.try(&.title) || "Episode"
     feed_title  = feed.try(&.title)
-    app_url     = "#{Config.base_url}/app?episode=#{episode_id}"
 
     text = if feed_title
       "🎙 *#{feed_title}*\n#{ep_title}\n\nDubbed to #{language.upcase} and ready to play."
@@ -143,10 +143,7 @@ module Web::Routes::DubResult
       text,
       parse_mode: Tourmaline::ParseMode::Markdown,
       reply_markup: Tourmaline::InlineKeyboardMarkup.new([[
-        Tourmaline::InlineKeyboardButton.new(
-          text: "▶️ Open Episode",
-          web_app: Tourmaline::WebAppInfo.new(url: app_url)
-        )
+        MiniAppLink.episode_button(episode_id)
       ]])
     )
   rescue ex
