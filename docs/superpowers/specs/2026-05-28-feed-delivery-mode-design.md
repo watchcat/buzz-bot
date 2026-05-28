@@ -26,6 +26,43 @@ simplified and a "NEW" badge for unseen episodes.
 - No bot-side commands to change the mode (Mini App UI only).
 - No push-notification path outside Telegram.
 
+## Alignment with existing features
+
+Two existing features overlap with this work; both confirmed during spec
+review (2026-05-28):
+
+1. **Dub-finished notifications** (`src/web/routes/dub_result.cr#notify_user`)
+   already construct a Mini-App-button reply markup with the label
+   `"▶️ Open Episode"`. The new `Delivery::Notify` uses the same button text;
+   both routes share a `MiniAppLink.episode_button(episode_id)` helper
+   (introduced as part of this work) so the convention can't drift.
+
+2. **Manual Send-to-Chat** (`POST /episodes/:id/send` → `AudioSender.send_to_user`)
+   is **premium-gated** (`unless user.subscribed? → 402 premium_required`).
+   The new `mp3` delivery mode inherits the same gate — see "Premium gating"
+   below — otherwise auto-delivery would be a trivial bypass of the manual
+   feature's gate.
+
+## Premium gating
+
+`mp3` mode requires `user.subscribed?` (matches the manual Send-to-Chat
+gate). `off` and `notify` are free for all users.
+
+- **Server**: `PATCH /feeds/:id/delivery_mode` returns
+  `402 {"error":"premium_required"}` when `mode = "mp3"` and the caller is
+  not premium. The DB row is not updated.
+- **Client (tap-cycle)**: For non-premium users the cycle order shortens to
+  `off ↔ notify` — tap on `notify` returns to `off` instead of advancing
+  to `mp3`. Implemented in `buzz-bot.delivery/next-mode` via an optional
+  `premium?` arg.
+- **Client (long-press popup)**: All three buttons remain visible. The
+  `mp3` button is labeled `"Send MP3 (Premium)"`. If a non-premium user
+  picks it, the optimistic update reverts and the upsell banner appears.
+- **Upsell banner**: Reuses the visual treatment from the player's
+  Send-to-Chat upsell (`.send-result.upsell` rule already in `app.css`).
+  Text: `"⭐ Premium feature. Auto-deliver MP3s to your Telegram chat with
+  a Buzz-Bot subscription."` Dismisses on tap.
+
 ## Data model
 
 ### Schema migration `019_feed_delivery_mode.sql`
@@ -84,8 +121,9 @@ Already returns `{episodes, has_more, episode_order}`. Add:
   "episodes":      [...],
   "has_more":      bool,
   "episode_order": "desc" | "asc",
-  "delivery_mode": "off" | "notify" | "mp3",   // NEW
-  "new_episode_ids": [123, 456]                // NEW — ids with published_at > last_viewed_at
+  "delivery_mode":   "off" | "notify" | "mp3",   // NEW
+  "new_episode_ids": [123, 456],                 // NEW — ids with published_at > last_viewed_at
+  "is_premium":      bool                        // NEW — drives the chip's mp3 gating UI
 }
 ```
 
@@ -176,11 +214,8 @@ text = "*#{feed.title}* · new episode\n" \
        "#{ep.title}\n" \
        "#{fmt_date(ep.published_at)}#{ep.duration_sec ? " · #{fmt_dur(ep.duration_sec)}" : ""}"
 
-button = Tourmaline::InlineKeyboardButton.new(
-  text:    "▶ Listen",
-  web_app: Tourmaline::WebAppInfo.new(url: "#{Config.base_url}/app?episode=#{ep.id}"),
-)
-markup = Tourmaline::InlineKeyboardMarkup.new([[button]])
+# Standard Mini-App button shared with dub-finished notifications.
+markup = Tourmaline::InlineKeyboardMarkup.new([[MiniAppLink.episode_button(ep.id)]])
 
 if (img = feed.image_url)
   begin
@@ -194,7 +229,7 @@ if (img = feed.image_url)
   rescue
     # send_photo can fail if Telegram can't fetch the cover (bad URL,
     # upstream 404, etc.) — degrade to a plain text card with the same
-    # title/date/duration and the Listen button.
+    # title/date/duration and the Open Episode button.
     BotClient.client.send_message(
       user.telegram_id, text,
       parse_mode: Tourmaline::ParseMode::Markdown, reply_markup: markup,
@@ -212,17 +247,55 @@ Use the photo URL directly — no `/img-proxy` indirection. The proxy exists
 only to satisfy the Mini App's strict img-src CSP; Telegram's server
 fetches the photo on its own.
 
+`MiniAppLink.episode_button(episode_id)` is a new shared helper (see
+*Shared Mini-App button helper* below) used by both this notification
+and the refactored `dub_result.cr#notify_user`.
+
 ### `mp3` mode
 
-Direct call to `AudioSender.send_to_user(user.telegram_id, ep, feed)` — same
-code path used today by the *Send to Chat* button in the player. No new
-infrastructure; we inherit URL-fast-path / download-fallback / 50 MB limit
-handling. `caption` already comes out as title + performer via the existing
-`sendAudio` payload.
+Direct call to `AudioSender.send_to_user(user.telegram_id, ep, feed, caption: caption)`
+where `caption = "#{feed.title} · #{fmt_date(ep.published_at)}"` — same code
+path used today by the *Send to Chat* button in the player. The fast (URL)
+and slow (download+upload) paths both already exist; the only
+infrastructure change is **adding an optional `caption: String?` parameter**
+to `AudioSender.send_to_user` (defaults to nil so the existing
+`/episodes/:id/send` caller's behavior is unchanged).
+
+When `caption` is non-nil it's threaded into both the fast-path JSON payload
+and the slow-path multipart form as the `caption` field on Telegram's
+`sendAudio` — that renders as a text line below the audio bubble.
 
 If the audio is over the upload limit (~50 MB without local Bot API server,
 2 GB with one), `AudioSender` already messages the user with a size error —
 that's acceptable behavior; we don't silently drop.
+
+## Shared Mini-App button helper
+
+Both `Delivery::Notify` (new) and `dub_result.cr#notify_user` (existing)
+build an inline keyboard with a Mini-App-launching button to a specific
+episode. Today the dub side constructs it inline; the new feature would
+duplicate that. Instead, extract a single helper that both call:
+
+```crystal
+# src/bot/mini_app_link.cr (new)
+require "tourmaline"
+require "../config"
+
+module MiniAppLink
+  # Standard "open this episode in the Mini App" inline button. Used by
+  # all bot-side notifications so the label and URL convention can't drift
+  # between callers.
+  def self.episode_button(episode_id : Int64) : Tourmaline::InlineKeyboardButton
+    Tourmaline::InlineKeyboardButton.new(
+      text:    "▶️ Open Episode",
+      web_app: Tourmaline::WebAppInfo.new(url: "#{Config.base_url}/app?episode=#{episode_id}"),
+    )
+  end
+end
+```
+
+`dub_result.cr#notify_user` is refactored as part of this work to use
+the helper — same button, single source of truth.
 
 ## UI — Mini App Feed detail screen
 
@@ -401,20 +474,35 @@ next RSS refresh produces new episodes).
            :delivery-mode    :off    ; NEW
            :new-episode-ids  #{}     ; NEW
            :delivery-pending nil     ; NEW — last optimistic mode while PATCH in flight
+           :delivery-upsell? false   ; NEW — non-premium tried mp3; show banner
            :loading?         false}
 ```
 
 New events (`events.cljs`):
 
-- `::cycle-delivery-mode feed-id` — pure DB update + PATCH dispatch.
-- `::set-delivery-mode feed-id mode` — used by the long-press menu.
+- `::cycle-delivery-mode feed-id` — reads `:user/premium?` and calls
+  `buzz-bot.delivery/next-mode` with the appropriate premium flag so the
+  cycle skips `mp3` for non-premium users.
+- `::set-delivery-mode feed-id mode` — used by the long-press menu. Performs
+  the premium check client-side too: if `mode = :mp3` and not premium, set
+  `:delivery-upsell? true` and skip the PATCH.
 - `::delivery-patch-ok` / `::delivery-patch-err` — clear `:delivery-pending`;
-  on err, revert to the prior mode and surface a transient inline message.
+  on err, revert to the prior mode. If err carries a `premium_required`
+  signal (HTTP 402), also set `:delivery-upsell? true`.
+- `::dismiss-delivery-upsell` — clears `:delivery-upsell?`.
 - `::mark-feed-viewed feed-id` — fires the `POST /feeds/:id/viewed` and clears
   `:new-episode-ids` locally so a re-render doesn't keep the badges.
 
 `::fetch-episodes` already exists; the response handler is extended to seed
 `:delivery-mode` and `:new-episode-ids`.
+
+The `:user/premium?` sub already exists in the player flow (`is_premium`
+returned from `/episodes/:id/player`). For the per-feed-list view it must
+also be available — exposed via the player endpoint response *or* via a
+small extension to `/episodes` that includes the user's premium status in
+the response root. Implementation favors the latter (one keyword field
+alongside `delivery_mode`) to avoid coupling list rendering to the player
+fetch.
 
 ## Acceptance checklist
 
@@ -432,10 +520,24 @@ New events (`events.cljs`):
       `FeedRefresher#refresh` after the upsert loop.
 - [ ] Fanout filter: `delivery_mode IN ('notify','mp3') AND
       user_feeds.created_at < ep.published_at`.
-- [ ] `notify` mode posts a photo (or text-only fallback) with a *Listen*
-      Mini App inline button.
-- [ ] `mp3` mode calls `AudioSender.send_to_user`. Failures (size-cap etc.)
-      surface via the existing failure-notification path.
+- [ ] `notify` mode posts a photo (or text-only fallback) with the standard
+      `MiniAppLink.episode_button` (label `▶️ Open Episode`).
+- [ ] `dub_result.cr#notify_user` refactored to use
+      `MiniAppLink.episode_button` — single source of truth for the button.
+- [ ] `AudioSender.send_to_user` gains an optional `caption: String?` arg
+      (default nil); the existing `/episodes/:id/send` caller passes nil
+      so its behavior is unchanged.
+- [ ] `mp3` mode calls `AudioSender.send_to_user(..., caption: "...")` with
+      `"feed_title · pub_date"`. Failures (size-cap etc.) surface via the
+      existing failure-notification path.
+- [ ] `PATCH /feeds/:id/delivery_mode` returns 402 `premium_required` if
+      `mode = "mp3"` and `!user.subscribed?`.
+- [ ] CLJS `next-mode` shortens the cycle to `off ↔ notify` for non-premium
+      users so tap-cycle never lands on mp3 without entitlement.
+- [ ] Long-press popup labels the mp3 button `"Send MP3 (Premium)"` for
+      non-premium users; tapping it surfaces the upsell banner.
+- [ ] Upsell banner reuses the `.send-result.upsell` visual treatment from
+      the player's Send-to-Chat flow.
 - [ ] Header collapses to a single row: back-link · title · `⋯`.
 - [ ] `⋯` menu contains *Copy RSS link* and *Refresh now*.
 - [ ] Delivery chip: 140 px fixed width, icon + label + chevron, three visual
