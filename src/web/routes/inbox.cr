@@ -1,5 +1,6 @@
 require "json"
 require "http/client"
+require "../../models/dubbed_episode"
 
 module Web::Routes::Inbox
   def self.register
@@ -17,6 +18,20 @@ module Web::Routes::Inbox
 
       env.response.content_type = "application/json"
       {episodes: items, has_more: has_more}.to_json
+    end
+
+    # Recently-completed dubs — drives the "Latest dubbed" widget at the
+    # top of the inbox. Empty array when there are no done dubs; the client
+    # hides the entire widget in that case.
+    get "/inbox/dubbed" do |env|
+      user = Auth.current_user(env)
+      halt env, status_code: 401, response: "Unauthorized" unless user
+
+      limit = (env.params.query["limit"]?.try(&.to_i32) || 12).clamp(1, 50)
+      items = DubbedEpisode.recent_for_inbox(user.id, limit)
+
+      env.response.content_type = "application/json"
+      {items: items}.to_json
     end
 
     get "/inbox/search" do |env|
