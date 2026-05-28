@@ -305,6 +305,243 @@ git commit -m "model(episode): upsert returns UpsertResult{episode, was_inserted
 
 ---
 
+## Task 3a — Shared Mini-App-button helper + refactor `dub_result.cr`
+
+Both the existing dub-finished notification and the new `Delivery::Notify`
+build the same kind of inline button (label + Mini-App URL pointing at a
+specific episode). Extract a single helper so the convention can't drift.
+
+**Files:**
+- Create: `src/bot/mini_app_link.cr`
+- Create: `spec/bot/mini_app_link_spec.cr`
+- Modify: `src/web/routes/dub_result.cr:126-154` (`notify_user`)
+
+- [ ] **Step 1: Write the failing spec**
+
+```crystal
+# spec/bot/mini_app_link_spec.cr
+require "../spec_helper"
+require "../../src/bot/mini_app_link"
+
+describe MiniAppLink do
+  describe ".episode_button" do
+    it "uses the standard '▶️ Open Episode' label" do
+      btn = MiniAppLink.episode_button(123_i64)
+      btn.text.should eq "▶️ Open Episode"
+    end
+
+    it "targets the Mini App's episode-specific deep link" do
+      btn = MiniAppLink.episode_button(456_i64)
+      url = btn.web_app.try(&.url) || ""
+      url.should contain("/app?episode=456")
+    end
+
+    it "uses the configured base_url so prod vs staging stays correct" do
+      btn = MiniAppLink.episode_button(789_i64)
+      url = btn.web_app.try(&.url) || ""
+      url.should start_with(Config.base_url)
+    end
+  end
+end
+```
+
+- [ ] **Step 2: Run the spec to confirm it fails**
+
+Run: `nix-shell -p crystal -p shards --run 'crystal spec spec/bot/mini_app_link_spec.cr'`
+Expected: `Error: can't find file 'src/bot/mini_app_link'`.
+
+- [ ] **Step 3: Create the helper**
+
+```crystal
+# src/bot/mini_app_link.cr
+require "tourmaline"
+require "../config"
+
+# MiniAppLink — single source of truth for inline buttons that open the
+# Mini App at a specific destination. Keeps bot-side notification code
+# from duplicating the label/URL convention.
+module MiniAppLink
+  # Standard "open this episode in the Mini App" inline button. Used by
+  # all bot-side notifications (dub-finished, new-episode delivery, ...).
+  def self.episode_button(episode_id : Int64) : Tourmaline::InlineKeyboardButton
+    Tourmaline::InlineKeyboardButton.new(
+      text:    "▶️ Open Episode",
+      web_app: Tourmaline::WebAppInfo.new(url: "#{Config.base_url}/app?episode=#{episode_id}"),
+    )
+  end
+end
+```
+
+- [ ] **Step 4: Re-run the spec to confirm it passes**
+
+Run: `nix-shell -p crystal -p shards --run 'crystal spec spec/bot/mini_app_link_spec.cr'`
+Expected: `3 examples, 0 failures`.
+
+- [ ] **Step 5: Refactor `dub_result.cr#notify_user` to use the helper**
+
+In `src/web/routes/dub_result.cr`, locate `private def self.notify_user`
+(line ~126). Replace the `reply_markup:` keyword argument inside the
+`send_message` call:
+
+Find:
+```crystal
+    reply_markup: Tourmaline::InlineKeyboardMarkup.new([[
+      Tourmaline::InlineKeyboardButton.new(
+        text: "▶️ Open Episode",
+        web_app: Tourmaline::WebAppInfo.new(url: app_url)
+      )
+    ]])
+```
+
+Replace with:
+```crystal
+    reply_markup: Tourmaline::InlineKeyboardMarkup.new([[
+      MiniAppLink.episode_button(episode_id)
+    ]])
+```
+
+Also delete the now-unused local `app_url` line (`app_url = "#{Config.base_url}/app?episode=#{episode_id}"`) immediately above — its work is done inside the helper.
+
+Add the require near the top of the file (alphabetical with other bot requires):
+```crystal
+require "../../bot/mini_app_link"
+```
+
+- [ ] **Step 6: Type-check + re-run all specs**
+
+Run: `nix-shell -p crystal -p shards --run 'crystal build src/buzz_bot.cr --no-codegen && crystal spec'`
+Expected: build completes silently; spec output reports the new 3 examples plus pre-existing examples, all passing.
+
+- [ ] **Step 7: Commit**
+
+```
+git add src/bot/mini_app_link.cr spec/bot/mini_app_link_spec.cr src/web/routes/dub_result.cr
+git commit -m "bot: MiniAppLink.episode_button — shared by dub-result + delivery notify"
+```
+
+---
+
+## Task 3b — Extend `AudioSender.send_to_user` with optional `caption:`
+
+The new `mp3` delivery mode wants a one-line caption ("Feed · pub-date") under
+the audio bubble. The existing manual Send-to-Chat caller passes nil and
+keeps its current behavior unchanged.
+
+**Files:**
+- Modify: `src/bot/audio_sender.cr`
+
+- [ ] **Step 1: Add the parameter to `send_to_user`**
+
+In `src/bot/audio_sender.cr`, change the public signature (around line 23):
+
+From:
+```crystal
+  def self.send_to_user(telegram_id : Int64, episode : Episode, feed : Feed?, override_url : String? = nil)
+    audio_url = override_url || episode.audio_url
+    if try_url_send(telegram_id, episode, feed, audio_url)
+```
+
+To:
+```crystal
+  def self.send_to_user(telegram_id : Int64, episode : Episode, feed : Feed?,
+                        override_url : String? = nil, caption : String? = nil)
+    audio_url = override_url || episode.audio_url
+    if try_url_send(telegram_id, episode, feed, audio_url, caption)
+```
+
+And in the same method, update the fallback `download_and_upload` call site:
+```crystal
+    download_and_upload(telegram_id, episode, feed, audio_url, caption)
+```
+
+- [ ] **Step 2: Thread `caption` through the fast path**
+
+Replace `private def self.try_url_send` (the JSON-payload fast path around
+lines 51–70). New signature + payload:
+
+```crystal
+  private def self.try_url_send(telegram_id : Int64, episode : Episode, feed : Feed?,
+                                 audio_url : String, caption : String?) : Bool
+    body = JSON.build do |j|
+      j.object do
+        j.field "chat_id", telegram_id
+        j.field "audio",   audio_url
+        j.field "title",   episode.title
+        j.field "performer", feed.try(&.title) || ""
+        episode.duration_sec.try { |d| j.field "duration", d }
+        caption.try { |c| j.field "caption", c unless c.empty? }
+      end
+    end
+
+    uri    = URI.parse("#{TELEGRAM_API}/sendAudio")
+    client = HTTP::Client.new(uri)
+    client.read_timeout = URL_SEND_TIMEOUT
+    resp = client.post(uri.path, headers: HTTP::Headers{"Content-Type" => "application/json"}, body: body)
+    JSON.parse(resp.body)["ok"]?.try(&.as_bool?) || false
+  rescue ex
+    Log.warn { "AudioSender URL send failed: #{ex.message}" }
+    false
+  end
+```
+
+- [ ] **Step 3: Thread `caption` through the slow path**
+
+Update `private def self.download_and_upload` signature (around line 75):
+```crystal
+  private def self.download_and_upload(telegram_id : Int64, episode : Episode,
+                                        feed : Feed?, audio_url : String,
+                                        caption : String?)
+```
+
+And the `upload_multipart` invocation inside its body (the `rewind` block):
+```crystal
+      tempfile.rewind
+      upload_multipart(telegram_id, episode, feed, tempfile, caption)
+```
+
+Then update `upload_multipart` signature + form-data field (around line 117):
+```crystal
+  private def self.upload_multipart(telegram_id : Int64, episode : Episode,
+                                     feed : Feed?, file : File,
+                                     caption : String?)
+    boundary = "BuzzBot#{Random::Secure.hex(10)}"
+    tmp = File.tempfile("buzz-multipart", ".bin")
+    begin
+      builder = HTTP::FormData::Builder.new(tmp, boundary)
+      builder.field("chat_id",   telegram_id.to_s)
+      builder.field("title",     episode.title)
+      builder.field("performer", feed.try(&.title) || "")
+      episode.duration_sec.try { |d| builder.field("duration", d.to_s) }
+      caption.try { |c| builder.field("caption", c) unless c.empty? }
+      builder.file(
+        "audio", file,
+        HTTP::FormData::FileMetadata.new(filename: "episode.mp3"),
+        HTTP::Headers{"Content-Type" => "audio/mpeg"}
+      )
+      builder.finish
+      # … rest unchanged
+```
+
+- [ ] **Step 4: Type-check the whole tree**
+
+Run: `nix-shell -p crystal -p shards --run 'crystal build src/buzz_bot.cr --no-codegen'`
+Expected: completes with no output.
+
+- [ ] **Step 5: Verify the existing /episodes/:id/send caller is untouched**
+
+Run: `grep -n 'AudioSender.send_to_user' src/web/routes/episodes.cr`
+Expected: one match, with `override_url` keyword (no caption). The nil-default
+preserves identical behavior at this call site.
+
+- [ ] **Step 6: Commit**
+
+```
+git add src/bot/audio_sender.cr
+git commit -m "bot(audio_sender): optional caption param (nil default; existing caller unchanged)"
+```
+
+---
+
 ## Task 4 — Notify-mode formatter
 
 Pure-ish formatter that wraps the Telegram `send_photo` call. Caption building is split out as a pure helper so it can be unit-tested.
@@ -386,6 +623,7 @@ Expected: `Error: can't find file 'src/delivery/notify'` (or `undefined constant
 # src/delivery/notify.cr
 require "tourmaline"
 require "../bot/client"
+require "../bot/mini_app_link"
 require "../config"
 require "../models/feed"
 require "../models/episode"
@@ -423,11 +661,10 @@ module Delivery::Notify
       duration_sec:  episode.duration_sec,
     )
 
+    # Standard inline button — shared with dub-result notifications via
+    # MiniAppLink (introduced in Task 3a).
     markup = Tourmaline::InlineKeyboardMarkup.new([[
-      Tourmaline::InlineKeyboardButton.new(
-        text:    "▶ Listen",
-        web_app: Tourmaline::WebAppInfo.new(url: "#{Config.base_url}/app?episode=#{episode.id}"),
-      ),
+      MiniAppLink.episode_button(episode.id),
     ]])
 
     if (img = feed.image_url)
@@ -700,9 +937,25 @@ In `src/delivery/dispatch.cr`, *after* the `eligible_targets` method (still insi
         when "notify"
           Delivery::Notify.send(sub.telegram_id, feed, ep)
         when "mp3"
-          AudioSender.send_to_user(sub.telegram_id, ep, feed)
+          # Caption appears as a text line below the audio bubble.
+          # AudioSender's title/performer fields already populate the
+          # bubble itself; the caption adds the publish date.
+          caption = build_mp3_caption(feed, ep)
+          AudioSender.send_to_user(sub.telegram_id, ep, feed, caption: caption)
         end
       end
+    end
+  end
+
+  # Pure helper — extracted so it could be tested if desired. Format:
+  # "Feed Title · May 28, 2026" (date omitted when published_at is nil).
+  private MP3_MONTHS = %w[Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec]
+  private def self.build_mp3_caption(feed : Feed, ep : Episode) : String?
+    title = feed.title || "Podcast"
+    if (pub = ep.published_at)
+      "#{title} · #{MP3_MONTHS[pub.month - 1]} #{pub.day}, #{pub.year}"
+    else
+      title
     end
   end
 end
@@ -814,6 +1067,15 @@ Inside `Web::Routes::Feeds.register`, after the existing routes but before the c
         env.response.status_code = 400
         env.response.content_type = "application/json"
         next %({"error":"invalid_mode","allowed":["off","notify","mp3"]})
+      end
+
+      # Premium gate for mp3 mode — matches the manual Send-to-Chat gate at
+      # POST /episodes/:id/send. Without this, auto-delivery would trivially
+      # bypass the existing manual-feature premium gate.
+      if mode == "mp3" && !user.subscribed?
+        env.response.status_code = 402
+        env.response.content_type = "application/json"
+        next %({"error":"premium_required"})
       end
 
       updated = UserFeed.set_delivery_mode(user.id, feed_id, mode)
@@ -929,6 +1191,10 @@ In `src/web/routes/episodes.cr`, replace lines 88–91 (the end of the `get "/ep
         episode_order:   order,
         delivery_mode:   delivery_mode,
         new_episode_ids: new_ids,
+        # Premium status drives the chip's mp3 gating (skip cycle, show
+        # upsell banner on attempt). Returning it here keeps the per-feed
+        # view self-contained — no coupling to the player JSON fetch.
+        is_premium:      user.subscribed?,
       }.to_json
 ```
 
@@ -972,7 +1238,9 @@ Find the `:episodes` map inside the default app-db (search for `:episodes {`). A
               ;; NEW — delivery feature
               :delivery-mode    :off
               :new-episode-ids  #{}
-              :delivery-pending nil}
+              :delivery-pending nil
+              :delivery-upsell? false   ; non-premium tried mp3; show banner
+              :is-premium?      false}  ; seeded from /episodes response
 ```
 
 (If the existing literal differs in field order or includes other keys, leave them; just append the three new ones.)
@@ -1007,14 +1275,23 @@ Pure ClojureScript helpers used by the chip, badge, and event handlers. Tests-fi
   (:require [cljs.test :refer [deftest is testing]]
             [buzz-bot.delivery :as d]))
 
-(deftest next-mode-cycles-off-notify-mp3-off
-  (is (= :notify (d/next-mode :off)))
-  (is (= :mp3    (d/next-mode :notify)))
-  (is (= :off    (d/next-mode :mp3))))
+(deftest next-mode-cycles-off-notify-mp3-off-for-premium
+  (is (= :notify (d/next-mode :off    true)))
+  (is (= :mp3    (d/next-mode :notify true)))
+  (is (= :off    (d/next-mode :mp3    true))))
+
+(deftest next-mode-skips-mp3-for-non-premium
+  ;; cycle shortens to off ↔ notify so tap-cycle never lands on mp3
+  ;; without entitlement (matches the Send-to-Chat premium gate).
+  (is (= :notify (d/next-mode :off    false)))
+  (is (= :off    (d/next-mode :notify false)))
+  ;; if state somehow holds :mp3 (e.g. premium expired), cycle back to off
+  (is (= :off    (d/next-mode :mp3    false))))
 
 (deftest next-mode-defaults-unknown-to-off
-  (is (= :off (d/next-mode nil)))
-  (is (= :off (d/next-mode :anything-else))))
+  (is (= :off (d/next-mode nil           true)))
+  (is (= :off (d/next-mode nil           false)))
+  (is (= :off (d/next-mode :anything-else true))))
 
 (deftest mode-label-matches-spec
   (is (= "In-app only" (d/mode->label :off)))
@@ -1052,14 +1329,16 @@ Expected: `Could not find resource buzz_bot.delivery` or test compile error.
    icon-key mapping, NEW-badge predicate. No re-frame, no DOM, no Telegram
    SDK; safe to unit-test under shadow-cljs :node-test.")
 
-(def ^:private cycle-order [:off :notify :mp3])
-
 (defn next-mode
-  "Cycle off → notify → mp3 → off. Unknown / nil input → :off."
-  [mode]
+  "Cycle off → notify → mp3 → off (premium) or off ↔ notify (non-premium).
+   Unknown / nil input → :off. The premium-aware variant matches the
+   Send-to-Chat premium gate so tap-cycle never advances to mp3 without
+   entitlement; the long-press popup is the only path that surfaces the
+   mp3 option (and shows an upsell when picked without premium)."
+  [mode premium?]
   (case mode
     :off    :notify
-    :notify :mp3
+    :notify (if premium? :mp3 :off)
     :mp3    :off
     :off))
 
@@ -1095,7 +1374,7 @@ Expected: `Could not find resource buzz_bot.delivery` or test compile error.
 - [ ] **Step 4: Re-run the tests to confirm they pass**
 
 Run: `nix-shell -p jdk21_headless --run 'npm test'`
-Expected: `Ran N tests containing M assertions. 0 failures, 0 errors.` (N grows by 6 from the previous run; M grows by 11.)
+Expected: `Ran N tests containing M assertions. 0 failures, 0 errors.` (N grows by 7 from the previous run; M grows by 16 — 3 premium / 3 non-premium / 3 unknown-defaults / 3 mode-label / 3 mode-icon-key / 4 new? cases.)
 
 - [ ] **Step 5: Commit**
 
@@ -1125,6 +1404,14 @@ Find the existing `::episodes-*` subs (search for `:buzz-bot.subs/episodes-list`
 (rf/reg-sub ::delivery-pending
   :<- [::episodes]
   (fn [e _] (:delivery-pending e)))
+
+(rf/reg-sub ::delivery-upsell?
+  :<- [::episodes]
+  (fn [e _] (boolean (:delivery-upsell? e))))
+
+(rf/reg-sub ::is-premium?
+  :<- [::episodes]
+  (fn [e _] (boolean (:is-premium? e))))
 
 (rf/reg-sub ::new-episode-ids
   :<- [::episodes]
@@ -1160,23 +1447,36 @@ Append (anywhere — convention is near the other `:episodes` events; search for
 
 ```clojure
 ;; Cycle delivery mode for the current feed. Optimistic UI: write the new
-;; mode immediately to db, fire PATCH; on err revert and surface inline.
+;; mode immediately to db, fire PATCH; on err revert. The premium flag
+;; shortens the cycle to off↔notify for non-premium users so tap-cycle
+;; never lands on mp3 without entitlement (matches Send-to-Chat gate).
 (rf/reg-event-fx
  ::cycle-delivery-mode
  (fn [{:keys [db]} [_ feed-id]]
-   (let [current (or (get-in db [:episodes :delivery-mode]) :off)
-         next-m  (buzz-bot.delivery/next-mode current)]
+   (let [current   (or (get-in db [:episodes :delivery-mode]) :off)
+         premium?  (boolean (get-in db [:episodes :is-premium?]))
+         next-m    (buzz-bot.delivery/next-mode current premium?)]
      {:dispatch [::set-delivery-mode feed-id next-m]})))
 
 (rf/reg-event-fx
  ::set-delivery-mode
  (fn [{:keys [db]} [_ feed-id mode]]
-   (let [prior (or (get-in db [:episodes :delivery-mode]) :off)]
-     (if (= prior mode)
+   (let [prior     (or (get-in db [:episodes :delivery-mode]) :off)
+         premium?  (boolean (get-in db [:episodes :is-premium?]))]
+     (cond
+       (= prior mode)
        {}
+
+       ;; Non-premium user picked mp3 from the long-press popup → no
+       ;; optimistic write, no PATCH; just surface the upsell banner.
+       (and (= mode :mp3) (not premium?))
+       {:db (assoc-in db [:episodes :delivery-upsell?] true)}
+
+       :else
        {:db (-> db
                 (assoc-in [:episodes :delivery-mode]    mode)
-                (assoc-in [:episodes :delivery-pending] prior))
+                (assoc-in [:episodes :delivery-pending] prior)
+                (assoc-in [:episodes :delivery-upsell?] false))
         ::buzz-bot.fx/http-fetch
         {:method :patch
          :url    (str "/feeds/" feed-id "/delivery_mode")
@@ -1191,13 +1491,22 @@ Append (anywhere — convention is near the other `:episodes` events; search for
 
 (rf/reg-event-db
  ::delivery-patch-err
- (fn [db [_ _err]]
-   ;; Revert to the prior mode and clear the pending marker. We don't show
-   ;; a toast — the chip's visual state is the feedback (it snaps back).
-   (let [prior (get-in db [:episodes :delivery-pending])]
+ (fn [db [_ err]]
+   ;; Revert to the prior mode and clear pending. If err is HTTP 402
+   ;; (premium_required — e.g. premium expired between fetch and PATCH),
+   ;; also flip the upsell banner on.
+   (let [prior  (get-in db [:episodes :delivery-pending])
+         402?   (and (string? err) (clojure.string/includes? err "402"))]
      (-> db
          (assoc-in [:episodes :delivery-mode]    (or prior :off))
-         (assoc-in [:episodes :delivery-pending] nil)))))
+         (assoc-in [:episodes :delivery-pending] nil)
+         (cond-> 402?
+           (assoc-in [:episodes :delivery-upsell?] true))))))
+
+(rf/reg-event-db
+ ::dismiss-delivery-upsell
+ (fn [db _]
+   (assoc-in db [:episodes :delivery-upsell?] false)))
 
 ;; Bump last_viewed_at server-side and clear local NEW marks. Fire-and-forget;
 ;; failure is silent — the badge will just reappear on next fetch.
@@ -1219,7 +1528,10 @@ If `::noop` is already defined elsewhere in the file, drop the last line.
 Also ensure the require block at the top of `src/cljs/buzz_bot/events.cljs` includes:
 ```clojure
 [buzz-bot.delivery]
+[clojure.string :as str]   ;; for the 402 substring check
 ```
+(If `clojure.string` is already aliased elsewhere in the file, swap the
+`clojure.string/includes?` call above to `(str/includes? err "402")`.)
 
 - [ ] **Step 2: Verify the http-fetch fx supports :patch**
 
@@ -1262,12 +1574,14 @@ Locate the existing `::episodes-loaded` reg-event-* (it's `reg-event-fx`, around
          server-order (some-> (:episode_order resp) keyword)
          delivery     (some-> (:delivery_mode resp) keyword)
          new-ids      (set (:new_episode_ids resp))
+         premium?     (boolean (:is_premium resp))
          db'        (-> db
                         (assoc-in [:episodes :list]            (:episodes resp))
                         (assoc-in [:episodes :has-more?]       (:has_more resp))
                         (assoc-in [:episodes :loading?]        false)
                         (assoc-in [:episodes :restore-to-id]   nil)
                         (assoc-in [:episodes :new-episode-ids] new-ids)
+                        (assoc-in [:episodes :is-premium?]     premium?)
                         (cond-> server-order
                           (assoc-in [:episodes :order] server-order))
                         (cond-> delivery
@@ -1428,6 +1742,24 @@ Append to `public/css/app.css`:
 .overflow-menu__item + .overflow-menu__item {
   border-top: 1px solid var(--border-lt);
 }
+
+/* ── Delivery upsell banner ─────────────────────────────────────── */
+
+/* Mirrors the player's .send-result.upsell visual treatment for
+   consistency. Appears under the chips row when a non-premium user
+   tries to enable mp3 delivery. Tap-to-dismiss. */
+.delivery-upsell {
+  margin: 0 var(--gap) 12px;
+  padding: 10px 12px;
+  background: var(--accent-13);
+  border: 1px solid var(--accent-33);
+  border-radius: var(--radius);
+  color: var(--text-color);
+  font: 500 13px/1.35 inherit;
+  cursor: pointer;
+}
+.delivery-upsell strong { font-weight: 700; }
+.delivery-upsell:active { opacity: 0.7; }
 ```
 
 - [ ] **Step 3: Commit**
@@ -1494,9 +1826,12 @@ Form-2 component with the long-press timer pattern from `views/topics.cljs`. Ren
 
 ;; Mode picker — prefer Telegram.WebApp.showPopup (native sheet); fall back
 ;; to window.confirm-style sequential prompt when SDK doesn't expose it.
-(defn- open-picker! [feed-id current-mode]
+;; The mp3 button is labeled "(Premium)" for non-premium users; the
+;; ::set-delivery-mode handler enforces the gate (no PATCH; banner instead).
+(defn- open-picker! [feed-id current-mode premium?]
   (let [tg     (some-> js/window .-Telegram .-WebApp)
-        popup? (and tg (.-showPopup tg))]
+        popup? (and tg (.-showPopup tg))
+        mp3-label (if premium? "Send MP3" "Send MP3 (Premium)")]
     (if popup?
       (.showPopup tg
         #js{:title   "Delivery for this feed"
@@ -1506,13 +1841,13 @@ Form-2 component with the long-press timer pattern from `views/topics.cljs`. Ren
                           "• Send MP3 — The audio file lands in your Telegram chat. Listen anywhere.")
             :buttons #js[#js{:id "off"    :type "default" :text "In-app only"}
                          #js{:id "notify" :type "default" :text "Notify me"}
-                         #js{:id "mp3"    :type "default" :text "Send MP3"}]}
+                         #js{:id "mp3"    :type "default" :text mp3-label}]}
         (fn [chosen-id]
           (when (and chosen-id (not= chosen-id (name current-mode)))
             (rf/dispatch [::events/set-delivery-mode feed-id (keyword chosen-id)]))))
       ;; Fallback — desktop / older WebViews
       (let [next-m (cond
-                     (js/confirm "Send MP3 to chat for new episodes?") :mp3
+                     (and premium? (js/confirm "Send MP3 to chat for new episodes?")) :mp3
                      (js/confirm "Notify in Telegram when a new episode drops?") :notify
                      :else :off)]
         (when (not= next-m current-mode)
@@ -1521,20 +1856,24 @@ Form-2 component with the long-press timer pattern from `views/topics.cljs`. Ren
 (defn delivery-chip
   "Reagent form-2 — outer accepts (and discards) the args Reagent passes at
    mount; inner re-binds them per render. Long-press = 500 ms; identical
-   threshold to views/topics.cljs hide-topic gesture."
-  [_initial-feed-id _initial-mode]
+   threshold to views/topics.cljs hide-topic gesture.
+
+   Args (inner): feed-id, mode (keyword), premium? (bool). The premium flag
+   gates the long-press popup's mp3 label and the cycle's next-mode (the
+   cycle is computed in ::cycle-delivery-mode using db's :is-premium?)."
+  [_initial-feed-id _initial-mode _initial-premium?]
   (let [timer        (r/atom nil)
         long-pressed (r/atom false)
         cancel!      (fn []
                        (when @timer (js/clearTimeout @timer) (reset! timer nil)))]
-    (fn [feed-id mode]
+    (fn [feed-id mode premium?]
       (let [active? (not= mode :off)]
         [:button.delivery-chip
          {:class             (when active? "delivery-chip--active")
           :on-context-menu   (fn [e]
                                (.preventDefault e)
                                (reset! long-pressed true)
-                               (open-picker! feed-id mode))
+                               (open-picker! feed-id mode premium?))
           :on-pointer-down   (fn [_]
                                (reset! long-pressed false)
                                (reset! timer
@@ -1542,7 +1881,7 @@ Form-2 component with the long-press timer pattern from `views/topics.cljs`. Ren
                                         (fn []
                                           (reset! timer nil)
                                           (reset! long-pressed true)
-                                          (open-picker! feed-id mode))
+                                          (open-picker! feed-id mode premium?))
                                         500)))
           :on-pointer-up     cancel!
           :on-pointer-leave  cancel!
@@ -1675,6 +2014,8 @@ Replace the file's content with:
               playing-id      @(rf/subscribe [::subs/audio-episode-id])
               cached-ids      @(rf/subscribe [::subs/cached-ids])
               delivery-mode   @(rf/subscribe [::subs/delivery-mode])
+              premium?        @(rf/subscribe [::subs/is-premium?])
+              upsell?         @(rf/subscribe [::subs/delivery-upsell?])
               new-ids         @(rf/subscribe [::subs/new-episode-ids])
               {:keys [feed-id feed-url feed-title]} @(rf/subscribe [:buzz-bot.subs/view-params])]
 
@@ -1703,11 +2044,18 @@ Replace the file's content with:
            ;; ── Chips row ──
            (when feed-id
              [:div.feed-chips-row
-              [delivery-chip feed-id delivery-mode]
+              [delivery-chip feed-id delivery-mode premium?]
               [:button.sort-chip
                {:on-click #(rf/dispatch [::events/set-order (if (= order :asc) :desc :asc)])}
                [:span (if (= order :asc) "↑" "↕")]
                (if (= order :asc) "Oldest" "Newest")]])
+
+           ;; ── Upsell banner — non-premium tried mp3 ──
+           (when upsell?
+             [:div.delivery-upsell
+              {:on-click #(rf/dispatch [::events/dismiss-delivery-upsell])}
+              "⭐ " [:strong "Premium feature."]
+              " Auto-deliver MP3s to your Telegram chat with a Buzz-Bot subscription."])
 
            ;; ── Body ──
            (cond
@@ -1805,17 +2153,24 @@ After `k8s/deploy.sh`:
 |---|---|
 | Migration 019 with check-constraint + partial index | 1 |
 | Episode.upsert returns UpsertResult | 3 |
-| GET /episodes includes delivery_mode + new_episode_ids | 10 |
+| GET /episodes includes delivery_mode + new_episode_ids + is_premium | 10 |
 | PATCH /feeds/:id/delivery_mode validates + persists | 8 |
+| PATCH returns 402 when mp3 + !user.subscribed? | 8 |
 | POST /feeds/:id/viewed bumps last_viewed_at | 9 |
 | DeliveryDispatch.fanout called from FeedRefresher | 7 |
 | Backfill filter (subscribed_at < published_at) | 5 |
-| notify-mode photo card with text fallback | 4 |
-| mp3-mode reuses AudioSender | 6 |
+| Shared MiniAppLink.episode_button helper | **3a** |
+| dub_result.cr#notify_user refactored to use the helper | **3a** |
+| notify-mode photo card with text fallback + helper button | 4 |
+| AudioSender.send_to_user optional caption: param | **3b** |
+| mp3-mode reuses AudioSender with caption | 6 |
 | One-row header | 18 |
 | ⋯ menu with Copy RSS + Refresh | 18 |
 | Delivery chip — 140 px, icon, label, chevron, three states | 16 + 17 + 18 |
-| Tap cycles off→notify→mp3→off; optimistic + rollback | 14 + 17 |
+| Tap cycle skips mp3 for non-premium | 12 + 14 |
+| Long-press popup labels mp3 "(Premium)" for non-premium | 17 |
+| Upsell banner on non-premium mp3 attempt; dismissible | 14 + 16 + 18 |
+| Tap cycles off→notify→mp3→off (premium); optimistic + rollback | 14 + 17 |
 | Long-press → Telegram.WebApp.showPopup | 17 |
 | Sort chip toggles Newest↔Oldest server-side | 18 |
 | NEW badge gated by new_episode_ids; cleared on view | 12 + 18 |
@@ -1826,10 +2181,12 @@ After `k8s/deploy.sh`:
 
 **Type consistency:** Confirmed identifiers used across tasks:
 - `UpsertResult{episode, was_inserted}` defined Task 3; consumed Task 3 (refresher) — exact match.
+- `MiniAppLink.episode_button` defined Task 3a; consumed Task 3a (dub refactor) + Task 4 (Notify formatter) — exact match.
+- `AudioSender.send_to_user(..., caption:)` signature defined Task 3b; consumed Task 6 (fanout passes caption); existing `/episodes/:id/send` caller unchanged (nil default).
 - `Delivery::Dispatch::{Subscriber, EpisodeRef, Target}` defined Task 5; used Task 6 — exact match.
 - `UserFeed.{set_delivery_mode, get_delivery_mode, touch_viewed, last_viewed_at, delivery_subscribers_for, VALID_DELIVERY_MODES}` defined Task 2; consumed Tasks 6, 8, 9, 10 — exact match.
 - `Delivery::Notify.{build_caption, send}` defined Task 4; consumed Task 6 — exact match.
-- CLJS `buzz-bot.delivery/{next-mode, mode->label, mode->icon-key, new?}` defined Task 12; consumed Tasks 14, 17, 18 — exact match.
-- CLJS event names (`::cycle-delivery-mode`, `::set-delivery-mode`, `::delivery-patch-ok`, `::delivery-patch-err`, `::mark-feed-viewed`) defined Task 14; consumed Task 17 + 18 — exact match.
-- CLJS sub names (`::delivery-mode`, `::new-episode-ids`) defined Task 13; consumed Task 18 — exact match.
-- CSS classes (`.delivery-chip{,--active,__chevron}`, `.sort-chip`, `.episode-new-badge`, `.overflow-anchor`, `.overflow-trigger`, `.overflow-menu{,__item}`, `.feed-chips-row`) defined Task 16; consumed Tasks 17 + 18 — exact match.
+- CLJS `buzz-bot.delivery/{next-mode, mode->label, mode->icon-key, new?}` defined Task 12; consumed Tasks 14, 17, 18. `next-mode` arity is `[mode premium?]` everywhere — exact match.
+- CLJS event names (`::cycle-delivery-mode`, `::set-delivery-mode`, `::delivery-patch-ok`, `::delivery-patch-err`, `::dismiss-delivery-upsell`, `::mark-feed-viewed`) defined Task 14; consumed Task 17 + 18 — exact match.
+- CLJS sub names (`::delivery-mode`, `::delivery-pending`, `::delivery-upsell?`, `::is-premium?`, `::new-episode-ids`) defined Task 13; consumed Task 18 — exact match.
+- CSS classes (`.delivery-chip{,--active,__chevron}`, `.sort-chip`, `.episode-new-badge`, `.overflow-anchor`, `.overflow-trigger`, `.overflow-menu{,__item}`, `.feed-chips-row`, `.delivery-upsell`) defined Task 16; consumed Tasks 17 + 18 — exact match.
