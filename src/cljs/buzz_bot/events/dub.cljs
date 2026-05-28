@@ -37,14 +37,25 @@
                                 statuses))
          done-lang (first (keep (fn [[lang {:keys [status]}]]
                                   (when (= :done status) lang))
-                                statuses))]
+                                statuses))
+         ;; Card click in views/inbox_dubbed.cljs sets :dub-lang in view-params
+         ;; via ::events/navigate :player {... :dub-lang "<target>"}. If that
+         ;; language's status is :done now, auto-activate it so the dubbed
+         ;; audio loads instead of the original.
+         nav-lang  (some-> (get-in db [:view-params :dub-lang]) name)
+         auto-lang (when (and nav-lang
+                              (= :done (get-in statuses [nav-lang :status])))
+                     nav-lang)
+         dispatches (cond-> []
+                      ;; Preload translation text with original-audio timing (audio_lang=nil).
+                      ;; User starts on original audio; timing will be refetched if they switch to dubbed.
+                      done-lang (conj [:buzz-bot.events/fetch-subtitles episode-id done-lang])
+                      auto-lang (conj [::language-tapped episode-id auto-lang]))]
      (cond-> {:db (assoc-in db [:dub :statuses] statuses)}
        in-flight
        (assoc ::fx/open-dub-sse {:episode-id episode-id :lang in-flight})
-       ;; Preload translation text with original-audio timing (audio_lang=nil).
-       ;; User starts on original audio; timing will be refetched if they switch to dubbed.
-       done-lang
-       (assoc :dispatch [:buzz-bot.events/fetch-subtitles episode-id done-lang])))))
+       (seq dispatches)
+       (assoc :dispatch-n dispatches)))))
 
 ;; Main entry point: tap a language chip.
 (rf/reg-event-fx
