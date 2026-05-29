@@ -50,18 +50,26 @@
                       ;; Preload translation text with original-audio timing (audio_lang=nil).
                       ;; User starts on original audio; timing will be refetched if they switch to dubbed.
                       done-lang (conj [:buzz-bot.events/fetch-subtitles episode-id done-lang])
-                      auto-lang (conj [::language-tapped episode-id auto-lang]))]
+                      ;; Arriving via inbox-dubbed widget: switch to the dubbed
+                      ;; track silently so the player opens on the dubbed audio,
+                      ;; but don't autoplay — the user clicked the card to land
+                      ;; on the episode, not to start playback.
+                      auto-lang (conj [::language-tapped episode-id auto-lang false]))]
      (cond-> {:db (assoc-in db [:dub :statuses] statuses)}
        in-flight
        (assoc ::fx/open-dub-sse {:episode-id episode-id :lang in-flight})
        (seq dispatches)
        (assoc :dispatch-n dispatches)))))
 
-;; Main entry point: tap a language chip.
+;; Main entry point: tap a language chip. The optional 4th arg `autoplay?`
+;; defaults to true (manual chip taps in the player UI start playback).
+;; The init-statuses auto-tap from the inbox-dubbed widget passes false so
+;; landing on the player from the card click doesn't start playback.
 (rf/reg-event-fx
  ::language-tapped
- (fn [{:keys [db]} [_ episode-id lang]]
-   (let [lang-state   (get-in db [:dub :statuses lang])
+ (fn [{:keys [db]} [_ episode-id lang autoplay?]]
+   (let [autoplay?    (if (nil? autoplay?) true autoplay?)
+         lang-state   (get-in db [:dub :statuses lang])
          status       (:status lang-state)
          active       (get-in db [:dub :active-lang])
          episode      (get-in db [:player :data :episode])
@@ -79,7 +87,7 @@
                 ::fx/audio-cmd {:op        :load
                                 :src       (:audio_url episode)
                                 :start     start
-                                :autoplay? true
+                                :autoplay? autoplay?
                                 :title     (:title episode)
                                 :artist    (:feed_title episode)
                                 :artwork   (:feed_image_url episode)}}
@@ -94,7 +102,7 @@
                 ::fx/audio-cmd {:op        :load
                                 :src       (:r2-url lang-state)
                                 :start     start
-                                :autoplay? true
+                                :autoplay? autoplay?
                                 :title     (str (:title episode) " [" (clojure.string/upper-case lang) "]")
                                 :artist    (:feed_title episode)
                                 :artwork   (:feed_image_url episode)}}
