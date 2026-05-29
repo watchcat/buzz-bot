@@ -2046,7 +2046,7 @@ body:has(.now-playing-bar) main { padding-bottom: 84px; }
 .dubbed-header__label {
   font: 700 11px/1 inherit;
   letter-spacing: 0.6px;
-  color: var(--hint-color);
+  color: var(--warn);
   text-transform: uppercase;
   display: inline-flex;
   align-items: center;
@@ -2054,20 +2054,6 @@ body:has(.now-playing-bar) main { padding-bottom: 84px; }
   white-space: nowrap;
   flex: 0 1 auto;
   min-width: 0;
-}
-
-.dubbed-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  background: var(--warn-13);
-  color: var(--warn);
-  border: 1px solid var(--warn-33);
-  padding: 1px 6px;
-  border-radius: 999px;
-  font: 700 9px/1 inherit;
-  letter-spacing: 0.6px;
-  text-transform: uppercase;
 }
 
 .see-all-link {

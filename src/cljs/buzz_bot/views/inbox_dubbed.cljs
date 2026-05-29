@@ -74,7 +74,7 @@
       [:div.dubbed-section
        [:div.dubbed-header
         [:span.dubbed-header__label
-         [:span.dubbed-pill (dubbed-icon 9) "Dubbed"]
+         (dubbed-icon 11)
          "Latest dubbed"]
         [:span {:style {:flex 1}}]
         [:button.see-all-link
