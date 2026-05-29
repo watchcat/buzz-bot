@@ -969,9 +969,23 @@ main {
   cursor: pointer;
   transition: background 0.15s;
   -webkit-tap-highlight-color: transparent;
+  /* Staggered reveal — --rec-i is set inline per item (0..N-1).
+     animation-fill-mode: both holds the start opacity:0 during the delay
+     so items appear one after another instead of all at once. */
+  animation: rec-fade-in 280ms ease-out both;
+  animation-delay: calc(var(--rec-i, 0) * 70ms);
 }
 
 .rec-item:active { background: color-mix(in srgb, var(--text-color) 10%, transparent); }
+
+@keyframes rec-fade-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rec-item { animation: none; }
+}
 
 .rec-info {
   flex: 1;

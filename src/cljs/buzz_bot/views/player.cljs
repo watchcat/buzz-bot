@@ -138,16 +138,17 @@
       [:div.recs-section
        [:div.recs-header
         {:style {:display "flex" :justify-content "space-between" :align-items "center"}}
-        [:h3.recs-title "Listeners also liked"]
+        [:h3.recs-title "Similar and recommended"]
         [:span.recs-scores-toggle
          {:on-click #(swap! show-scores? not)
           :style {:cursor "pointer" :font-size "0.75rem" :opacity 0.5}}
          (if @show-scores? "Hide scores" "Show scores")]]
        [:ul.recs-list
-        (for [rec recs]
+        (for [[i rec] (map-indexed vector recs)]
           ^{:key (:id rec)}
           [:li.rec-item
-           {:on-click #(rf/dispatch [::events/navigate :player {:episode-id (:id rec) :from "inbox"}])}
+           {:style    {"--rec-i" i}
+            :on-click #(rf/dispatch [::events/navigate :player {:episode-id (:id rec) :from "inbox"}])}
            [:div.rec-info
             [:span.rec-feed  (:feed_title rec)]
             [:span.rec-title (:title rec)]
