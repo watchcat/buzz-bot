@@ -467,22 +467,48 @@
                          (assoc-in [:audio :artwork] (:feed_image_url episode))))]
      (let [autoplay?    (get-in db [:view-params :autoplay?])
            dub-statuses (:dub_statuses resp)
-           init-dub     (when dub-statuses [[::dub-events/init-statuses new-id dub-statuses]])]
+           init-dub     (when dub-statuses [[::dub-events/init-statuses new-id dub-statuses]])
+           ;; Recs split out of /player — fire the fetch now so audio can
+           ;; start while the (expensive) HNSW kNN runs in parallel.
+           fetch-recs   [[::fetch-recs new-id]]]
        (cond
          (pb/should-skip-reload? {:same-episode? (= cur-id new-id)
                                   :was-playing?  was-playing?})
          {:db         (assoc-in db' [:audio :pending?] false)
-          :dispatch-n (conj (vec init-dub) [::audio-download-start new-id])}
+          :dispatch-n (into (vec init-dub) (into fetch-recs [[::audio-download-start new-id]]))}
 
          (and was-playing? (not= cur-id new-id))
          {:db         db'
           :dispatch-n (into [[::audio-queue-pending]
-                             [::audio-download-start new-id]] init-dub)}
+                             [::audio-download-start new-id]] (into init-dub fetch-recs))}
 
          :else
          {:db         db'
           :dispatch-n (into [[::audio-load {:autoplay? (boolean autoplay?)}]
-                             [::audio-download-start new-id]] init-dub)})))))
+                             [::audio-download-start new-id]] (into init-dub fetch-recs))})))))
+
+(rf/reg-event-fx
+ ::fetch-recs
+ (fn [_ [_ episode-id]]
+   {::buzz-bot.fx/http-fetch {:method :get
+                              :url    (str "/episodes/" episode-id "/recs")
+                              :on-ok  [::recs-loaded episode-id]
+                              :on-err [::recs-err]}}))
+
+(rf/reg-event-db
+ ::recs-loaded
+ (fn [db [_ episode-id resp]]
+   ;; Defensive: if the user navigated to a different episode mid-flight,
+   ;; drop the stale response rather than writing it into the new player.
+   (if (= (str episode-id) (str (get-in db [:player :data :episode :id])))
+     (assoc-in db [:player :data :recs] (:recs resp))
+     db)))
+
+(rf/reg-event-db
+ ::recs-err
+ ;; Silent — recs are non-critical; the "Listeners also liked" section just
+ ;; stays hidden if the fetch fails.
+ (fn [db _] db))
 
 ;; ── Bookmarks ────────────────────────────────────────────────────────────────
 
