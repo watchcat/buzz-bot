@@ -117,23 +117,33 @@ module Web::Routes::Episodes
 
     # Get player data for a single episode
     get "/episodes/:id/player" do |env|
+      t0 = Time.instant
       user = Auth.current_user(env)
+      t_auth = Time.instant
       halt env, status_code: 401, response: "Unauthorized" unless user
 
       episode_id = env.params.url["id"].to_i64
       episode = Episode.find(episode_id)
+      t_ep = Time.instant
       halt env, status_code: 404, response: %({"error":"Episode not found"}) unless episode
 
       feed = Feed.find(episode.feed_id)
+      t_feed = Time.instant
       user_episode = UserEpisode.find(user.id, episode_id)
+      t_ue = Time.instant
       order = env.params.query["order"]? == "asc" ? "asc" : "desc"
       next_id = Episode.next_in_feed(episode.feed_id, episode_id, order)
+      t_next = Time.instant
       next_title = next_id ? Episode.find(next_id).try(&.title) : nil
+      t_next_title = Time.instant
       is_subscribed = Feed.subscribed?(user.id, episode.feed_id)
+      t_sub = Time.instant
       is_premium = user.subscribed?
       recs_raw = Episode.recommended_for_episode(episode_id)
+      t_recs = Time.instant
 
       rec_feeds = Feed.find_many(recs_raw.map(&.episode.feed_id).uniq)
+      t_rec_feeds = Time.instant
       recs = recs_raw.map { |r|
         ft = rec_feeds[r.episode.feed_id]?.try(&.title) || ""
         Web::RecJson.new(r, ft)
@@ -147,10 +157,12 @@ module Web::Routes::Episodes
       )
 
       dub_statuses      = DubbedEpisode.statuses_for_episode(episode_id)
+      t_dub = Time.instant
       original_language = Episode.original_language(episode_id)
+      t_orig = Time.instant
 
       env.response.content_type = "application/json"
-      {
+      body = {
         episode:           ep_json,
         feed:              feed,
         user_episode:      user_episode,
@@ -162,6 +174,26 @@ module Web::Routes::Episodes
         dub_statuses:      dub_statuses,
         original_language: original_language,
       }.to_json
+      t_end = Time.instant
+
+      ms = ->(a : Time::Instant, b : Time::Instant) { ((b - a).total_milliseconds).round(1) }
+      Log.info {
+        "player_timing ep=#{episode_id} " \
+        "auth=#{ms.call(t0, t_auth)} " \
+        "ep=#{ms.call(t_auth, t_ep)} " \
+        "feed=#{ms.call(t_ep, t_feed)} " \
+        "ue=#{ms.call(t_feed, t_ue)} " \
+        "next=#{ms.call(t_ue, t_next)} " \
+        "next_title=#{ms.call(t_next, t_next_title)} " \
+        "sub=#{ms.call(t_next_title, t_sub)} " \
+        "recs=#{ms.call(t_sub, t_recs)} " \
+        "rec_feeds=#{ms.call(t_recs, t_rec_feeds)} " \
+        "dub=#{ms.call(t_rec_feeds, t_dub)} " \
+        "orig=#{ms.call(t_dub, t_orig)} " \
+        "json=#{ms.call(t_orig, t_end)} " \
+        "total=#{ms.call(t0, t_end)}"
+      }
+      body
     end
 
     # Save progress
