@@ -162,11 +162,14 @@
                         (assoc-in [:dub :statuses lang :synth-pct] (:pct data))
                         (cond-> (= status :done)
                           (-> (assoc-in [:dub :statuses lang :r2-url]      (:r2_url data))
-                              (assoc-in [:dub :statuses lang :translation] (:translation data))))
+                              (assoc-in [:dub :statuses lang :translation] (:translation data))
+                              ;; Dub finished — the inbox "Latest dubbed" widget is now stale.
+                              (assoc-in [:inbox-dubbed :loaded?] false)))
                         (cond-> (= status :failed)
                           (assoc-in [:dub :statuses lang :error] (:error data))))}
          (= status :done)
-         (assoc :dispatch [:buzz-bot.events/fetch-subtitles episode-id lang])
+         (assoc :dispatch-n [[:buzz-bot.events/fetch-subtitles   episode-id lang]
+                             [:buzz-bot.events/fetch-inbox-dubbed true]])
          ;; Terminal — stop any reconnect/poll machinery
          (#{:done :failed} status)
          (assoc ::fx/stop-dub-poll nil))))))

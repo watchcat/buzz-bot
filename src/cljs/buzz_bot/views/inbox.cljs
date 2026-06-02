@@ -117,7 +117,8 @@
              :on-click (fn [_]
                          (when @debounce (js/clearTimeout @debounce))
                          (reset! query-atom "")
-                         (rf/dispatch [::events/fetch-inbox]))}
+                         (rf/dispatch [::events/fetch-inbox])
+                         (rf/dispatch [::events/fetch-inbox-dubbed true]))}
             "↻"]
            [:div.section-controls
             [:label.filter-label
