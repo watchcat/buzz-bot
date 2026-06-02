@@ -70,7 +70,11 @@ body {
 }
 
 .tab-btn {
-  flex: 1;
+  flex: 0 1 auto;            /* inactive tabs shrink to their icon */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  white-space: nowrap;       /* never wrap to a second line */
   padding: 11px 12px 10px;
   border: none;
   background: transparent;
@@ -84,8 +88,23 @@ body {
 }
 
 .tab-btn.active {
+  flex: 1 1 auto;            /* active tab grows to fit icon + label */
   color: var(--button-color);
   border-bottom-color: var(--button-color);
+}
+
+.tab-label {
+  max-width: 0;
+  opacity: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  transition: max-width 0.18s, opacity 0.18s, margin-left 0.18s;
+}
+
+.tab-btn.active .tab-label {
+  max-width: 7rem;           /* comfortably fits the longest label ("Bookmarks") */
+  opacity: 1;
+  margin-left: 4px;          /* icon↔label gap only when the label is shown */
 }
 
 /* ── Main Content ───────────────────────────────────────────────────────── */

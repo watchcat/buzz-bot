@@ -10,21 +10,22 @@
             [buzz-bot.views.bookmarks :as bookmarks]
             [buzz-bot.views.topics :as topics]))
 
-(defn- tab-btn [label view-kw current-view]
+(defn- tab-btn [icon label view-kw current-view]
   [:button.tab-btn
    {:class    (when (= current-view view-kw) "active")
     :on-click #(rf/dispatch [::events/navigate view-kw])}
-   label])
+   [:span.tab-icon icon]
+   [:span.tab-label label]])
 
 (defn root []
   (let [view @(rf/subscribe [::subs/view])]
     [:div.app-root
      [:div.app-container
       [:nav.tab-bar
-       [tab-btn "📥 Inbox"     :inbox     view]
-       [tab-btn "📻 Feeds"     :feeds     view]
-       [tab-btn "🔖 Bookmarks" :bookmarks view]
-       [tab-btn "🏷 Topics"    :topics    view]]
+       [tab-btn "📥" "Inbox"     :inbox     view]
+       [tab-btn "📻" "Feeds"     :feeds     view]
+       [tab-btn "🔖" "Bookmarks" :bookmarks view]
+       [tab-btn "🏷" "Topics"    :topics    view]]
       [:main#content
        (case view
          :inbox     [inbox/view]
