@@ -102,17 +102,25 @@
 
 ;; Latest-dubbed widget — fetched on first inbox entry; replaces items
 ;; on success; silent failure (widget just stays hidden).
+(defn dubbed-fetch
+  "Effect map for (re)fetching the inbox 'Latest dubbed' widget.
+   When force? is false and the list is already loaded, returns {} (no-op,
+   preserving lazy caching on Inbox navigation). force? = true (the ↻ button
+   and the dub-complete path) bypasses the loaded? guard and always refetches."
+  [db force?]
+  (if (and (not force?) (get-in db [:inbox-dubbed :loaded?]))
+    {}
+    {:db (assoc-in db [:inbox-dubbed :loading?] true)
+     ::buzz-bot.fx/http-fetch
+     {:method :get
+      :url    "/inbox/dubbed"
+      :on-ok  [::inbox-dubbed-loaded]
+      :on-err [::inbox-dubbed-err]}}))
+
 (rf/reg-event-fx
  ::fetch-inbox-dubbed
- (fn [{:keys [db]} _]
-   (if (get-in db [:inbox-dubbed :loaded?])
-     {}
-     {:db (assoc-in db [:inbox-dubbed :loading?] true)
-      ::buzz-bot.fx/http-fetch
-      {:method :get
-       :url    "/inbox/dubbed"
-       :on-ok  [::inbox-dubbed-loaded]
-       :on-err [::inbox-dubbed-err]}})))
+ (fn [{:keys [db]} [_ force?]]
+   (dubbed-fetch db force?)))
 
 (rf/reg-event-db
  ::inbox-dubbed-loaded

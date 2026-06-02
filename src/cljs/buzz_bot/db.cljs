@@ -26,7 +26,8 @@
    :player      {:data nil :loading? false :send-status nil}
    :bookmarks   {:list [] :loading? false :query ""}
    :topics    {:tags [] :episodes [] :loading? false :selected-tag nil :has-more-tags? false :tag-offset 0
-               :cloud-hint-dismissed? (= "1" (.getItem js/localStorage "topics-cloud-hint-dismissed"))}
+               :cloud-hint-dismissed? (and (exists? js/localStorage)
+                                           (= "1" (.getItem js/localStorage "topics-cloud-hint-dismissed")))}
    :search      {:query "" :results [] :loading? false :subscribed-urls #{}}
    :audio       {:episode-id nil :title "" :artist "" :artwork ""
                  :src "" :playing? false :current-time 0 :duration 0

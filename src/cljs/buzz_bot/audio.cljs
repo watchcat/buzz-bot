@@ -3,9 +3,14 @@
             [re-frame.db]
             [buzz-bot.playback :as pb]))
 
+;; Guard construction so the namespace is loadable outside a browser (e.g. the
+;; shadow-cljs :node-test build). In a browser js/Audio always exists and the
+;; behaviour is unchanged; under Node the element is nil and never dereferenced
+;; because no playback runs in tests.
 (defonce ^:private audio-atom
-  (volatile! (doto (js/Audio.)
-               (aset "preload" "metadata"))))
+  (volatile! (when (exists? js/Audio)
+               (doto (js/Audio.)
+                 (aset "preload" "metadata")))))
 
 (defn- el [] @audio-atom)
 
