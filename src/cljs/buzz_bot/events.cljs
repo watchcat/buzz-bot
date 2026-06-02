@@ -134,6 +134,8 @@
  ::inbox-dubbed-err
  (fn [db [_ _err]]
    ;; Silent: widget just stays empty/hidden. Inbox proper renders fine.
+   ;; Marking :loaded? true stops the lazy navigation path from retrying; a
+   ;; manual ↻ (force? true) or a dub-complete refetch still bypasses it.
    (-> db
        (assoc-in [:inbox-dubbed :loading?] false)
        (assoc-in [:inbox-dubbed :loaded?]  true))))

@@ -259,12 +259,15 @@
                        (assoc-in [:dub :statuses lang :step]   (:step dub-status-raw))
                        (cond-> (= status :done)
                          (-> (assoc-in [:dub :statuses lang :r2-url]      (:r2_url dub-status-raw))
-                             (assoc-in [:dub :statuses lang :translation] (:translation dub-status-raw)))))]
+                             (assoc-in [:dub :statuses lang :translation] (:translation dub-status-raw))
+                             ;; Dub finished — the inbox "Latest dubbed" widget is now stale.
+                             (assoc-in [:inbox-dubbed :loaded?] false))))]
            (cond-> {:db db'}
              (#{:done :failed} status)
              (assoc ::fx/stop-dub-poll nil)
              (= status :done)
-             (assoc :dispatch [:buzz-bot.events/fetch-subtitles episode-id lang]))))))))
+             (assoc :dispatch-n [[:buzz-bot.events/fetch-subtitles   episode-id lang]
+                                 [:buzz-bot.events/fetch-inbox-dubbed true]]))))))))
 
 (rf/reg-event-db
  ::poll-err
