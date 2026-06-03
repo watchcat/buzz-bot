@@ -899,7 +899,7 @@ main {
   line-height: 1;
   cursor: pointer;
   box-shadow: 0 4px 20px color-mix(in srgb, var(--button-color) 45%, transparent);
-  transition: transform 0.12s, box-shadow 0.12s;
+  transition: transform 0.12s var(--ease-out), box-shadow 0.12s var(--ease-out);
   -webkit-tap-highlight-color: transparent;
 }
 
@@ -920,12 +920,12 @@ main {
   color: var(--text-color);
   cursor: pointer;
   gap: 2px;
-  transition: background 0.12s, transform 0.12s;
+  transition: background 0.12s var(--ease-out), transform 0.12s var(--ease-out);
   -webkit-tap-highlight-color: transparent;
 }
 
 .btn-seek:active {
-  transform: scale(0.88);
+  transform: scale(0.90);   /* match the play button's press depth */
   background: color-mix(in srgb, var(--text-color) 14%, transparent);
 }
 
@@ -1707,7 +1707,9 @@ body:has(.now-playing-bar) main { padding-bottom: 84px; }
   text-align: center;
   color: var(--text-color);
   opacity: 0.28;
-  transition: opacity 0.3s ease, font-size 0.3s ease, font-weight 0.3s ease;
+  /* font-weight is not continuously interpolable (it snaps), so it's not in
+     the transition — only opacity and size ease. */
+  transition: opacity 0.3s ease, font-size 0.3s ease;
 }
 
 .subtitle-cue-line.current {
@@ -1718,6 +1720,18 @@ body:has(.now-playing-bar) main { padding-bottom: 84px; }
 }
 
 .subtitle-cue-line.no-cue { opacity: 0.18; }
+
+/* Motion sensitivity across the player: keep opacity/colour cues (they aid
+   comprehension), drop movement — button press-scales, the subtitle size
+   morph, the transcript slide, and the looping dub pulses. */
+@media (prefers-reduced-motion: reduce) {
+  .btn-play-pause-large:active,
+  .btn-seek:active            { transform: none; }
+  .subtitle-cue-line          { transition: opacity 0.3s ease; }
+  .transcript-modal           { animation: none; }
+  .dub-lang-chip--pending,
+  .dub-progress-fill          { animation: none; }
+}
 
 
 .subtitle-lang-chips {
@@ -1739,7 +1753,9 @@ body:has(.now-playing-bar) main { padding-bottom: 84px; }
   letter-spacing: 0.04em;
   cursor: pointer;
   line-height: 1.4;
-  transition: opacity 0.15s;
+  /* Include the active-state colours so selecting a language eases in
+     instead of snapping. */
+  transition: opacity 0.15s, color 0.15s ease, background-color 0.15s ease, border-color 0.15s ease;
   -webkit-tap-highlight-color: transparent;
 }
 
