@@ -34,6 +34,10 @@
   /* Monospace family for the dubbed lang-flow chip. System fallbacks
      render well without bundling a webfont. */
   --font-mono: ui-monospace, "JetBrains Mono", "SF Mono", Menlo, monospace;
+
+  /* Strong ease-out for UI reveals/press feedback — punchier than the
+     built-in `ease`, and front-loads movement so it feels responsive. */
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
 }
 
 * {
@@ -82,9 +86,14 @@ body {
   font-size: 13px;
   font-weight: 500;
   cursor: pointer;
-  transition: color 0.18s;
+  transition: color 0.18s ease, transform 0.16s var(--ease-out);
   border-bottom: 2px solid transparent;
   letter-spacing: 0.01em;
+}
+
+/* Instant press feedback — the tap is acknowledged before navigation runs. */
+.tab-btn:active {
+  transform: scale(0.97);
 }
 
 .tab-btn.active {
@@ -98,13 +107,25 @@ body {
   opacity: 0;
   overflow: hidden;
   white-space: nowrap;
-  transition: max-width 0.18s, opacity 0.18s, margin-left 0.18s;
+  margin-left: 0;
+  /* ease-out front-loads the reveal (snappy) and buries the 7rem overshoot in
+     the decelerating tail, so collapse has no visible dead period. margin-left
+     is set instantly (not tweened) to avoid animating a layout property. */
+  transition: max-width 0.18s var(--ease-out), opacity 0.16s var(--ease-out);
 }
 
 .tab-btn.active .tab-label {
   max-width: 7rem;           /* comfortably fits the longest label ("Bookmarks") */
   opacity: 1;
   margin-left: 4px;          /* icon↔label gap only when the label is shown */
+}
+
+/* Motion sensitivity: keep the opacity fade (aids comprehension), drop the
+   width growth and press scale (movement). */
+@media (prefers-reduced-motion: reduce) {
+  .tab-btn { transition: color 0.18s ease; }
+  .tab-btn:active { transform: none; }
+  .tab-label { transition: opacity 0.16s ease; }
 }
 
 /* ── Main Content ───────────────────────────────────────────────────────── */
