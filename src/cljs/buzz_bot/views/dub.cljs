@@ -5,16 +5,17 @@
             [buzz-bot.events.dub :as dub-events]))
 
 ;; Pipeline step → progress percentage and human label.
-(defn- step->pct [step]
+(defn- step->progress [step]
+  ;; 0..1 fraction driving the progress fill's scaleX.
   (case step
-    "queued"                "5%"
-    "separating"            "15%"
-    "transcribing"          "30%"
-    "translating"           "50%"
-    "synthesizing"          "70%"
-    "assembling"            "90%"
-    ("mixing" "uploading")  "95%"
-    "5%"))   ; unknown → minimal fill
+    "queued"                0.05
+    "separating"            0.15
+    "transcribing"          0.30
+    "translating"           0.50
+    "synthesizing"          0.70
+    "assembling"            0.90
+    ("mixing" "uploading")  0.95
+    0.05))   ; unknown → minimal fill
 
 (defn- step->label [step]
   (case step
@@ -93,7 +94,7 @@
            [:div.dub-progress
             {:key code}
             [:div.dub-progress-track
-             [:div.dub-progress-fill {:style {:width (step->pct step)}}]]
+             [:div.dub-progress-fill {:style {:transform (str "scaleX(" (step->progress step) ")")}}]]
             [:span.dub-progress-label label]]))
 
        ;; Active-dub controls shown below the chips row

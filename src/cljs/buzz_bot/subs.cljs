@@ -143,6 +143,7 @@
 (rf/reg-sub ::subtitle-ep-id     :<- [::subtitles] (fn [s _] (:ep-id s)))
 (rf/reg-sub ::subtitle-source-lang :<- [::subtitles] (fn [s _] (:source-lang s)))
 (rf/reg-sub ::subtitle-transcript? :<- [::subtitles] (fn [s _] (:transcript? s)))
+(rf/reg-sub ::subtitle-transcript-closing? :<- [::subtitles] (fn [s _] (:transcript-closing? s)))
 (rf/reg-sub ::subtitles-available?
   :<- [::subtitle-cues]
   (fn [cues _] (pos? (count cues))))

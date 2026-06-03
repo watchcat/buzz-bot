@@ -1577,9 +1577,13 @@ body:has(.now-playing-bar) main { padding-bottom: 84px; }
 }
 .dub-progress-fill    {
   height: 100%;
+  width: 100%;
   border-radius: 2px;
   background: var(--button-color);
-  transition: width 1s ease;
+  /* Fill via scaleX (GPU) instead of animating width (layout). The fraction
+     is set inline per step; origin-left grows it left→right. */
+  transform-origin: left;
+  transition: transform 1s ease;
   animation: dub-progress-shimmer 1.8s ease-in-out infinite;
 }
 @keyframes dub-progress-shimmer { 0%,100% { opacity: 1 } 50% { opacity: .5 } }
@@ -1707,14 +1711,16 @@ body:has(.now-playing-bar) main { padding-bottom: 84px; }
   text-align: center;
   color: var(--text-color);
   opacity: 0.28;
-  /* font-weight is not continuously interpolable (it snaps), so it's not in
-     the transition — only opacity and size ease. */
-  transition: opacity 0.3s ease, font-size 0.3s ease;
+  transform: scale(1);
+  /* Highlight the current line with transform + opacity (GPU-composited, no
+     reflow) rather than font-size. font-weight isn't in the transition — it's
+     not continuously interpolable and snaps regardless. */
+  transition: opacity 0.3s ease, transform 0.3s ease;
 }
 
 .subtitle-cue-line.current {
   font-weight: 700;
-  font-size: 15px;
+  transform: scale(1.15);   /* ~15px from the 13px base, composited */
   opacity: 1;
   letter-spacing: -0.01em;
 }
@@ -1728,7 +1734,8 @@ body:has(.now-playing-bar) main { padding-bottom: 84px; }
   .btn-play-pause-large:active,
   .btn-seek:active            { transform: none; }
   .subtitle-cue-line          { transition: opacity 0.3s ease; }
-  .transcript-modal           { animation: none; }
+  .transcript-modal,
+  .transcript-modal--closing  { animation: none; }
   .dub-lang-chip--pending,
   .dub-progress-fill          { animation: none; }
 }
@@ -1797,6 +1804,16 @@ body:has(.now-playing-bar) main { padding-bottom: 84px; }
 @keyframes transcript-up {
   from { transform: translateY(100%); opacity: 0.6; }
   to   { transform: translateY(0);    opacity: 1; }
+}
+
+/* Exit: slide back down, faster than the enter (Emil: exit snappier). */
+.transcript-modal--closing {
+  animation: transcript-down 0.24s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes transcript-down {
+  from { transform: translateY(0);    opacity: 1; }
+  to   { transform: translateY(100%); opacity: 0.6; }
 }
 
 .transcript-modal__header {

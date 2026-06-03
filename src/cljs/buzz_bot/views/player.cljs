@@ -75,8 +75,10 @@
           current-idx @(rf/subscribe [::subs/subtitle-current-idx])
           lang        @(rf/subscribe [::subs/subtitle-lang])
           source-lang @(rf/subscribe [::subs/subtitle-source-lang])
-          done-langs  @(rf/subscribe [::subs/dub-done-langs])]
+          done-langs  @(rf/subscribe [::subs/dub-done-langs])
+          closing?    @(rf/subscribe [::subs/subtitle-transcript-closing?])]
       [:div.transcript-modal
+       {:class (when closing? "transcript-modal--closing")}
        [:div.transcript-modal__header
         [:div.transcript-modal__chips
          [:button.sub-lang-chip

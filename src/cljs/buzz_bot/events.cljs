@@ -650,17 +650,37 @@
        (or timing-stale? text-stale?)
        (assoc :dispatch [::fetch-subtitles episode-id text-lang])))))
 
-(rf/reg-event-db
+(rf/reg-event-fx
  ::toggle-transcript
+ (fn [{:keys [db]} _]
+   (if (get-in db [:subtitles :transcript?])
+     ;; Closing: flag it so the modal plays its exit animation, then unmount
+     ;; once the animation has finished.
+     {:db (assoc-in db [:subtitles :transcript-closing?] true)
+      :dispatch-later [{:ms 240 :dispatch [::end-transcript]}]}
+     ;; Opening
+     {:db (-> db
+              (assoc-in [:subtitles :transcript?] true)
+              (assoc-in [:subtitles :transcript-closing?] false))})))
+
+(rf/reg-event-db
+ ::end-transcript
  (fn [db _]
-   (update-in db [:subtitles :transcript?] not)))
+   ;; Guard against a reopen during the exit window: only unmount if we're
+   ;; still closing (a fresh open clears the flag and no-ops this stale timer).
+   (if (get-in db [:subtitles :transcript-closing?])
+     (-> db
+         (assoc-in [:subtitles :transcript?] false)
+         (assoc-in [:subtitles :transcript-closing?] false))
+     db)))
 
 (rf/reg-event-db
  ::clear-subtitles
  (fn [db _]
    (assoc db :subtitles {:ep-id nil :cues [] :lang :off
                          :loaded-text-lang nil :loaded-audio-lang nil
-                         :source-lang nil :transcript? false})))
+                         :source-lang nil :transcript? false
+                         :transcript-closing? false})))
 
 ;; ── Audio state ──────────────────────────────────────────────────────────────
 
