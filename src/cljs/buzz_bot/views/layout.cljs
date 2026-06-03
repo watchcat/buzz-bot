@@ -26,7 +26,8 @@
        [tab-btn "📥" "Inbox"     :inbox     view]
        [tab-btn "📻" "Feeds"     :feeds     view]
        [tab-btn "🔖" "Bookmarks" :bookmarks view]
-       [tab-btn "🏷" "Topics"    :topics    view]]
+       [tab-btn "🏷" "Topics"    :topics    view]
+       [tab-btn "🎙" "Dubbed"    :dubbed    view]]
       [:main#content
        (case view
          :inbox     [inbox/view]

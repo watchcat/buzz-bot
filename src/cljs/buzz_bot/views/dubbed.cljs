@@ -91,9 +91,14 @@
       [:div.episodes-container
        [:div.section-header
         [:div.section-header-row
-         [:button.btn-back
-          {:on-click #(rf/dispatch [::events/navigate :inbox])}
-          "← Dubbed"]]]
+         [:h2 "Dubbed"]
+         [:button.btn-icon
+          {:title      "Refresh"
+           :aria-label "Refresh dubbed"
+           :aria-busy  (when loading? "true")
+           :class      (when loading? "btn-icon--spinning")
+           :on-click   #(rf/dispatch [::events/fetch-dubbed true])}
+          "↻"]]]
        (when (seq languages)
          [lang-filter languages selected])
        (cond
