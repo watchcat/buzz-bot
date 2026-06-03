@@ -274,8 +274,8 @@ main {
 
 .compact-expand-btn {
   width: 100%;
-  margin-top: 6px;
-  padding: 4px 0;
+  margin-top: 2px;
+  padding: 10px 0;
   background: none;
   border: none;
   font-size: 12px;
@@ -345,6 +345,13 @@ main {
   border: none;
   color: var(--hint-color);
   cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  /* 40px touch target (glyph stays 16px). Coarse-pointer comfort floor;
+     well clear of WCAG 2.5.8's 24px minimum. */
+  min-width: 40px;
+  min-height: 40px;
   padding: 6px;
   font-size: 16px;
   border-radius: 50%;
@@ -709,6 +716,10 @@ main {
   cursor: pointer;
   user-select: none;
   flex-shrink: 0;
+  /* Lift the ~20px switch to a 40px tap target; block-axis only so the
+     header row height and the margin-left:auto push are untouched. */
+  padding-block: 10px;
+  margin-block: -10px;
 }
 
 .section-header-row > .filter-label { margin-left: auto; }
@@ -1650,8 +1661,12 @@ body:has(.now-playing-bar) main { padding-bottom: 84px; }
   background: none;
   border: none;
   cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 40px;
+  min-height: 40px;
   font-size: 16px;
-  padding: 4px 8px;
   opacity: 0.6;
   transition: opacity 0.15s;
 }
@@ -2190,7 +2205,10 @@ body:has(.now-playing-bar) main { padding-bottom: 84px; }
   gap: 4px;
   white-space: nowrap;
   flex: 0 0 auto;
-  padding: 0;
+  /* Grow the tap area to ~35px without moving the link: padding expands the
+     hit box, equal negative margin collapses the visual footprint back. */
+  padding: 12px 10px;
+  margin: -12px -10px;
 }
 .see-all-link:active { opacity: 0.6; }
 
