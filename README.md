@@ -30,7 +30,7 @@
 | Progress tracking | Listening position saved every 5 seconds; offline saves queued and replayed on reconnect |
 | Offline caching | Episode audio downloaded in background; seamless switch to local copy on network loss |
 | Bookmarks | Bookmark episodes with a single tap; search saved episodes |
-| Semantic search | Search your inbox by meaning — episodes re-ranked by vector similarity to your query |
+| Semantic search | Search your inbox by meaning — episodes re-ranked by vector similarity to your query — [details](docs/semantic-search.md) |
 | Topic cloud | Browse episodes by auto-extracted topics, clustered nightly across languages (EN/RU/NL) so synonyms collapse into one tag; tap a tag to filter your library — [details](docs/RECOMMENDATIONS.md) |
 | Smart recommendations | Hybrid semantic + collaborative filtering with explainable topic matching — [details](docs/RECOMMENDATIONS.md) |
 | Share & send | Share any episode via Telegram's share sheet, or send the audio file directly to your own chat |
