@@ -32,6 +32,24 @@
     (and (not (and hide-listened? (:listened ep)))
          (not (contains? excluded-feeds (str (:feed_id ep)))))))
 
+(defn- nav-to-player [ep]
+  (rf/dispatch [::events/navigate :player {:episode-id (:id ep) :from "inbox"}]))
+
+(defn- play-label [ep]
+  (str "Play " (:title ep)
+       (when (:feed_title ep) (str " from " (:feed_title ep)))))
+
+(defn- on-activate-key
+  "Returns an on-key-down handler that runs `f` on Enter/Space. Guards on
+   target == currentTarget so key events bubbling up from a nested control
+   (the compact row's expand button) don't also trigger the row's action."
+  [f]
+  (fn [e]
+    (when (and (contains? #{"Enter" " "} (.-key e))
+               (= (.-target e) (.-currentTarget e)))
+      (.preventDefault e)
+      (f))))
+
 (defn- episode-item [ep playing-id cached-ids]
   [:li.episode-item
    {:class           (cond-> ""
@@ -40,8 +58,11 @@
                        (contains? cached-ids (str (:id ep))) (str " cached"))
     :data-episode-id (str (:id ep))
     :data-feed-id    (str (:feed_id ep))
-    :on-click        #(rf/dispatch [::events/navigate :player
-                                    {:episode-id (:id ep) :from "inbox"}])}
+    :role            "button"
+    :tab-index       0
+    :aria-label      (play-label ep)
+    :on-click        #(nav-to-player ep)
+    :on-key-down     (on-activate-key #(nav-to-player ep))}
    (when-let [img (:episode_image_url ep)]
      [:img.episode-thumb {:src      (img-proxy img)
                           :alt      ""
@@ -70,8 +91,11 @@
                              (contains? cached-ids (str (:id (first eps))))  (str " cached"))
           :data-episode-id (str (:id (first eps)))
           :data-feed-id    (str feed-id)
-          :on-click        #(rf/dispatch [::events/navigate :player
-                                          {:episode-id (:id (first eps)) :from "inbox"}])}
+          :role            "button"
+          :tab-index       0
+          :aria-label      (play-label (first eps))
+          :on-click        #(nav-to-player (first eps))
+          :on-key-down     (on-activate-key #(nav-to-player (first eps)))}
          (when-let [img (:feed_image_url (first eps))]
            [:img.episode-thumb {:src      (img-proxy img)
                                 :alt      ""
@@ -85,9 +109,11 @@
           [episode-meta (first eps)]]
          [:span.episode-play-icon "▶"]
          [:button.compact-expand-btn
-          {:on-click (fn [e]
-                       (.stopPropagation e)
-                       (swap! expanded-feeds-atom conj feed-id))}
+          {:aria-label (str "Show " (dec (count eps)) " more episodes from "
+                            (:feed_title (first eps)))
+           :on-click   (fn [e]
+                         (.stopPropagation e)
+                         (swap! expanded-feeds-atom conj feed-id))}
           (str "+" (dec (count eps)) " more")]]))))
 
 (defn view []
@@ -108,12 +134,15 @@
            [:h2 "Inbox"]
            (when (seq cached-ids)
              [:button.btn-clear-cache
-              {:title    "Clear cached audio"
-               :on-click #(rf/dispatch [::events/audio-cache-clear-all])}
+              {:title      "Clear cached audio"
+               :aria-label "Clear cached audio"
+               :on-click   #(rf/dispatch [::events/audio-cache-clear-all])}
               "🗑"])
            [:button.btn-icon
-            {:title    "Refresh"
-             :class    (when loading? "btn-icon--spinning")
+            {:title      "Refresh"
+             :aria-label "Refresh inbox"
+             :aria-busy  (when loading? "true")
+             :class      (when loading? "btn-icon--spinning")
              :on-click (fn [_]
                          (when @debounce (js/clearTimeout @debounce))
                          (reset! query-atom "")
@@ -127,6 +156,7 @@
                           (rf/dispatch [::events/toggle-hide-listened]))}
              [:input.filter-checkbox
               {:type      "checkbox"
+               :role      "switch"
                :checked   hide-listened?
                :read-only true}]
              [:span.filter-switch]
@@ -138,6 +168,7 @@
                           (rf/dispatch [::events/toggle-compact]))}
              [:input.filter-checkbox
               {:type      "checkbox"
+               :role      "switch"
                :checked   compact?
                :read-only true}]
              [:span.filter-switch]
