@@ -36,6 +36,14 @@
   --warn:    #E78A4E;
   --warn-13: color-mix(in srgb, var(--warn) 13%, transparent);
   --warn-33: color-mix(in srgb, var(--warn) 33%, transparent);
+  /* Amber AS TEXT: the raw amber is only ~2.6:1 on a light bg. Mixing 34%
+     toward ink deepens it on light themes (→ ~4.8:1 on the card surface,
+     ~4.9 on bg) and keeps it bright amber on dark (~7.5:1), so "dubbed"
+     stays recognizably amber while clearing AA on both surfaces. */
+  --warn-text: color-mix(in srgb, var(--warn) 66%, var(--text-color));
+  /* Dark ink for text sitting ON the amber fill (the "New" badge); white
+     was only ~2.6:1. This is the darkest stop of the amber ramp (~5.9:1). */
+  --warn-ink:  #3a1f0c;
 
   /* Monospace family for the dubbed lang-flow chip. System fallbacks
      render well without bundling a webfont. */
@@ -2161,7 +2169,7 @@ body:has(.now-playing-bar) main { padding-bottom: 84px; }
 .dubbed-header__label {
   font: 700 11px/1 inherit;
   letter-spacing: 0.6px;
-  color: var(--warn);
+  color: var(--warn-text);
   text-transform: uppercase;
   display: inline-flex;
   align-items: center;
@@ -2234,7 +2242,7 @@ body:has(.now-playing-bar) main { padding-bottom: 84px; }
   top: -3px;
   right: -3px;
   background: var(--warn);
-  color: #fff;
+  color: var(--warn-ink);
   font: 800 8px/1 inherit;
   letter-spacing: 0.3px;
   padding: 1px 4px;
@@ -2252,16 +2260,16 @@ body:has(.now-playing-bar) main { padding-bottom: 84px; }
   display: flex;
   align-items: center;
   gap: 5px;
-  color: var(--warn);
+  color: var(--warn-text);
 }
 
 .dubbed-langflow__pair {
-  font: 700 8px/1 var(--font-mono);
+  font: 700 9px/1 var(--font-mono);
 }
 
 .dubbed-langflow__when {
-  color: var(--hint-color);
-  font-size: 9px;
+  color: var(--text-muted);
+  font-size: 10px;
 }
 
 .dubbed-card__title {
@@ -2277,8 +2285,8 @@ body:has(.now-playing-bar) main { padding-bottom: 84px; }
 }
 
 .dubbed-card__meta {
-  font-size: 9px;
-  color: var(--hint-color);
+  font-size: 10px;
+  color: var(--text-muted);
   margin-top: 2px;
   overflow: hidden;
   text-overflow: ellipsis;
