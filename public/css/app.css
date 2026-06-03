@@ -1149,6 +1149,39 @@ main {
 }
 .empty-state p { margin-bottom: 16px; }
 
+/* Base styling for the bare-text empty states across feeds / episodes /
+   topics / bookmarks. The class was referenced everywhere but never defined,
+   so these rendered as unstyled left-aligned body text. */
+.empty-msg {
+  text-align: center;
+  padding: 40px 20px;
+  color: var(--text-muted);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+/* Rich inbox empty state (first-use / filtered / no-search-match). */
+.empty-state__glyph {
+  display: block;
+  margin: 0 auto 14px;
+  color: var(--text-muted);
+  opacity: 0.5;
+}
+.empty-state__title {
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--text-color);
+  margin-bottom: 6px;
+}
+.empty-state__body {
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-muted);
+  max-width: 32ch;
+  margin: 0 auto 18px;
+}
+
 .error-msg {
   text-align: center;
   padding: 40px 20px;

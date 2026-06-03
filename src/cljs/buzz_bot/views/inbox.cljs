@@ -32,6 +32,48 @@
     (and (not (and hide-listened? (:listened ep)))
          (not (contains? excluded-feeds (str (:feed_id ep)))))))
 
+(defn- tray-glyph []
+  ;; Calm outline tray — quiet visual interest, not a loud emoji.
+  [:svg.empty-state__glyph
+   {:width 44 :height 44 :viewBox "0 0 24 24" :fill "none"
+    :stroke "currentColor" :stroke-width "1.4"
+    :stroke-linecap "round" :stroke-linejoin "round" :aria-hidden "true"}
+   [:path {:d "M5 13 V6 a2 2 0 0 1 2 -2 h10 a2 2 0 0 1 2 2 v7"}]
+   [:path {:d "M3 13 h5 l2 3 h4 l2 -3 h5 v5 a2 2 0 0 1 -2 2 H5 a2 2 0 0 1 -2 -2 z"}]])
+
+(defn- inbox-empty-state
+  "The inbox empties for three different reasons; each gets its own message
+   and a CTA that fixes *that* situation. Showing 'subscribe to feeds' when
+   the user already has feeds (just filtered/searched them away) is the bug
+   this replaces."
+  [{:keys [searching? no-episodes? query clear-search]}]
+  (cond
+    searching?
+    [:div.empty-state
+     [tray-glyph]
+     [:div.empty-state__title "No matches"]
+     [:div.empty-state__body (str "Nothing in your inbox matches “" query "”.")]
+     [:button.btn-secondary {:on-click clear-search} "Clear search"]]
+
+    no-episodes?
+    [:div.empty-state
+     [tray-glyph]
+     [:div.empty-state__title "Your inbox is empty"]
+     [:div.empty-state__body
+      "New episodes from podcasts you follow show up here automatically."]
+     [:button.btn-primary
+      {:on-click #(rf/dispatch [::events/navigate :feeds])}
+      "Browse feeds"]]
+
+    :else
+    [:div.empty-state
+     [tray-glyph]
+     [:div.empty-state__title "Nothing to show"]
+     [:div.empty-state__body "Your filters are hiding every episode."]
+     [:button.btn-secondary
+      {:on-click #(rf/dispatch [::events/clear-inbox-filters])}
+      "Show all episodes"]]))
+
 (defn- nav-to-player [ep]
   (rf/dispatch [::events/navigate :player {:episode-id (:id ep) :from "inbox"}]))
 
@@ -191,7 +233,14 @@
                                    300)))))}]]
          (cond
            loading?         [:div.loading "Loading..."]
-           (empty? visible) [:div.empty-msg "No episodes. Subscribe to some feeds!"]
+           (empty? visible) [inbox-empty-state
+                             {:searching?   (seq @query-atom)
+                              :no-episodes? (empty? episodes)
+                              :query        @query-atom
+                              :clear-search (fn []
+                                              (when @debounce (js/clearTimeout @debounce))
+                                              (reset! query-atom "")
+                                              (rf/dispatch [::events/fetch-inbox]))}]
            :else
            [:ul#episode-list.episode-list
             (if compact?

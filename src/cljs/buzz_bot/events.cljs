@@ -914,6 +914,15 @@
  (fn [db _]
    (update-in db [:inbox :filters :compact?] not)))
 
+;; Reset the two *hiding* filters (hide-listened + per-feed exclusions) so a
+;; filtered-empty inbox can recover in one tap. Leaves :compact? alone — that's
+;; a display preference, not a filter that can hide everything.
+(rf/reg-event-db
+ ::clear-inbox-filters
+ (fn [db _]
+   (update-in db [:inbox :filters]
+              assoc :hide-listened? false :excluded-feeds #{})))
+
 ;; ── Error handling ───────────────────────────────────────────────────────────
 
 (rf/reg-event-db
