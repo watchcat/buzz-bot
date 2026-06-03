@@ -33,8 +33,17 @@
                        (:listened ep)                       (str " listened")
                        (= (str (:id ep)) (str playing-id)) (str " is-playing"))
     :data-episode-id (str (:id ep))
+    :role            "button"
+    :tab-index       0
+    :aria-label      (str "Play " (:title ep)
+                          (when (:feed_title ep) (str " from " (:feed_title ep))))
     :on-click        #(rf/dispatch [::events/navigate :player
-                                    {:episode-id (:id ep) :from "topics"}])}
+                                    {:episode-id (:id ep) :from "topics"}])
+    :on-key-down     (fn [e]
+                       (when (contains? #{"Enter" " "} (.-key e))
+                         (.preventDefault e)
+                         (rf/dispatch [::events/navigate :player
+                                       {:episode-id (:id ep) :from "topics"}])))}
    (when-let [img (:episode_image_url ep)]
      [:img.episode-thumb {:src      (img-proxy img)
                           :alt      ""
@@ -63,6 +72,9 @@
     (fn [{:keys [tag count selected?]} thresholds episode-count]
       [:span.tag-cloud-item
        {:class             (when selected? "tag-cloud-item--active")
+        :role              "button"
+        :tab-index         0
+        :aria-pressed      (if selected? "true" "false")
         :style             (when-not selected? (tc/tag-style count thresholds))
         :ref               (when selected?
                              (fn [el]
@@ -76,6 +88,12 @@
                              (if selected?
                                (rf/dispatch [::events/clear-tag])
                                (rf/dispatch [::events/select-tag tag])))
+        :on-key-down       (fn [e]
+                             (when (contains? #{"Enter" " "} (.-key e))
+                               (.preventDefault e)
+                               (if selected?
+                                 (rf/dispatch [::events/clear-tag])
+                                 (rf/dispatch [::events/select-tag tag]))))
         :on-pointer-down   (fn [_e]
                              (reset! timer
                                      (js/setTimeout
@@ -108,7 +126,8 @@
          episode-count])]
      (when-not hint-dismissed?
        [:button.tag-cloud-hint
-        {:on-click #(rf/dispatch [::events/dismiss-tag-cloud-hint])}
+        {:aria-label "Dismiss hint"
+         :on-click   #(rf/dispatch [::events/dismiss-tag-cloud-hint])}
         "Tap to filter · long-press to hide · ×"])
      (when has-more-tags?
        [:button.tag-cloud-toggle
@@ -129,9 +148,11 @@
         [:div.section-header-row
          [:h2 "Topics"]
          [:button.btn-icon
-          {:title    "Refresh"
-           :class    (when loading? "btn-icon--spinning")
-           :on-click #(rf/dispatch [::events/fetch-topics])}
+          {:title      "Refresh"
+           :aria-label "Refresh topics"
+           :aria-busy  (when loading? "true")
+           :class      (when loading? "btn-icon--spinning")
+           :on-click   #(rf/dispatch [::events/fetch-topics])}
           "↻"]]]
        (when (seq tags)
          [tag-cloud tags selected-tag has-more-tags? hint-dismissed?
