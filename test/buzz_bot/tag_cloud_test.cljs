@@ -39,10 +39,10 @@
       (is (= 0.7 (:opacity s))))))
 
 (deftest tag-style-bottom-tier-test
-  (testing "count < q1 → bottom tier (400/0.5)"
+  (testing "count < q1 → bottom tier (400/0.6)"
     (let [s (tc/tag-style 5 [10 20 40])]
       (is (= 400 (:font-weight s)))
-      (is (= 0.5 (:opacity s))))))
+      (is (= 0.6 (:opacity s))))))
 
 (deftest tag-style-boundary-inclusive-test
   (testing "count equal to a threshold lands in the higher tier"

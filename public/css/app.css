@@ -12,6 +12,7 @@
   --radius:    10px;
   --radius-sm:  7px;
   --radius-lg: 14px;
+  --radius-pill: 999px;
   --gap:       12px;
 
   /* Surfaces — uses text-color so they flip correctly in dark mode */
@@ -19,6 +20,11 @@
   --border-lt: color-mix(in srgb, var(--text-color) 5%, transparent);
   --card-bg:   var(--secondary-bg);
   --overlay:   color-mix(in srgb, var(--text-color) 6%, transparent);
+
+  /* Readable muted text — derived from ink so it always clears AA (~6:1),
+     unlike --hint-color (the Telegram theme hint, often ~3:1). Use this for
+     secondary text users actually read; keep --hint-color for icons/decoration. */
+  --text-muted: color-mix(in srgb, var(--text-color) 62%, transparent);
 
   /* Accent tint */
   --accent-tint: color-mix(in srgb, var(--button-color) 12%, transparent);
@@ -630,7 +636,7 @@ main {
   display: flex;
   gap: 10px;
   font-size: 11px;
-  color: var(--hint-color);
+  color: var(--text-muted);
   margin-bottom: 3px;
 }
 
@@ -661,7 +667,6 @@ main {
   overflow: hidden;
   text-overflow: ellipsis;
   letter-spacing: 0.03em;
-  opacity: 0.85;
 }
 
 /* Listened */
@@ -671,12 +676,11 @@ main {
   font-size: 14px;
 }
 
-/* Currently playing */
+/* Currently playing — marked by the accent tint + a full accent border
+   (no side-stripe; the tint and border already read clearly). */
 .episode-item.is-playing {
   background: var(--accent-tint);
-  border-color: color-mix(in srgb, var(--button-color) 35%, transparent);
-  border-left: 3px solid var(--button-color);
-  padding-left: calc(12px - 2px);
+  border-color: color-mix(in srgb, var(--button-color) 45%, transparent);
 }
 
 /* ── Filter toggle — toggle switch ──────────────────────────────────────── */
@@ -1147,7 +1151,7 @@ main {
 .loading {
   text-align: center;
   padding: 40px;
-  color: var(--hint-color);
+  color: var(--text-muted);
 }
 
 .htmx-indicator { display: none; }
@@ -1942,7 +1946,7 @@ body:has(.now-playing-bar) main { padding-bottom: 84px; }
 
 .tag-cloud-item--active {
   padding: 1px 10px;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: var(--button-color);
   color: var(--button-text-color);
   opacity: 1;
@@ -1964,7 +1968,7 @@ body:has(.now-playing-bar) main { padding-bottom: 84px; }
   padding: 6px 0;
   background: none;
   border: none;
-  color: var(--hint-color);
+  color: var(--text-muted);
   font-size: 11px;
   text-align: center;
   cursor: pointer;
@@ -1981,7 +1985,7 @@ body:has(.now-playing-bar) main { padding-bottom: 84px; }
   padding: 6px 0;
   background: none;
   border: none;
-  color: var(--hint-color);
+  color: var(--text-muted);
   font-size: 11px;
   text-align: center;
   cursor: pointer;

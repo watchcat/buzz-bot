@@ -9,7 +9,9 @@
 (def ^:private tier-styles
   "Index 0 = bottom 25% of the distribution, index 3 = top 25%.
    Heavier weight + higher opacity reads as visually 'louder'."
-  [{:font-weight 400 :opacity 0.5}
+  ;; Bottom-tier opacity floored at 0.6 so even the faintest tag clears WCAG AA
+  ;; (~6:1) against the theme background; 0.5 fell to ~3.95:1.
+  [{:font-weight 400 :opacity 0.6}
    {:font-weight 500 :opacity 0.7}
    {:font-weight 700 :opacity 0.9}
    {:font-weight 800 :opacity 1.0}])
