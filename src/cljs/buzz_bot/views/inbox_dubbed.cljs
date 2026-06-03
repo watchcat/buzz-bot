@@ -78,7 +78,7 @@
          "Latest dubbed"]
         [:span {:style {:flex 1}}]
         [:button.see-all-link
-         {:on-click #(rf/dispatch [::events/see-all-dubbed-stub])}
+         {:on-click #(rf/dispatch [::events/navigate :dubbed])}
          "See all" (chevron-right 9)]]
        [:div.dubbed-cards
         (for [item items]

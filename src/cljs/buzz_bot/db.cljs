@@ -10,6 +10,13 @@
    :inbox-dubbed {:items    []
                   :loading? false
                   :loaded?  false}
+   :dubbed       {:items [] :languages [] :loading? false :loaded? false}
+   ;; Persisted language filter (set of lowercase codes) shared by the Dubbed
+   ;; page and the inbox bar. Empty set = all languages.
+   :dubbed-filter {:langs (if (exists? js/localStorage)
+                            (let [raw (or (.getItem js/localStorage "buzz-dubbed-langs") "")]
+                              (into #{} (remove empty? (.split raw ","))))
+                            #{})}
    :feeds       {:list [] :loading? false}
    :episodes    {:feed-id          nil
                  :list             []

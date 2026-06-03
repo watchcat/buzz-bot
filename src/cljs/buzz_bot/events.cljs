@@ -45,6 +45,7 @@
                        :player    [::fetch-player (:episode-id params)]
                        :bookmarks [::fetch-bookmarks]
                        :topics    [::fetch-topics]
+                       :dubbed    [::fetch-dubbed]
                        :episodes  [::fetch-episodes (:feed-id params)]
                        nil)]
      (let [restore-id (when (and (= view :episodes) (= cur-view :player))
@@ -100,6 +101,15 @@
                               :url    (str "/inbox/search?q=" (js/encodeURIComponent query))
                               :on-ok  [::inbox-loaded] :on-err [::fetch-error]}}))
 
+(defn dubbed-langs-qs
+  "Query-string fragment for the dubbed language filter; \"\" when none are
+   selected, else `<sep>langs=en,ru` (sorted, comma-joined). `sep` is `?` or
+   `&` depending on whether the URL already has a query string."
+  [langs sep]
+  (if (seq langs)
+    (str sep "langs=" (str/join "," (sort langs)))
+    ""))
+
 ;; Latest-dubbed widget — fetched on first inbox entry; replaces items
 ;; on success; silent failure (widget just stays hidden).
 (defn dubbed-fetch
@@ -113,7 +123,8 @@
     {:db (assoc-in db [:inbox-dubbed :loading?] true)
      ::buzz-bot.fx/http-fetch
      {:method :get
-      :url    "/inbox/dubbed"
+      :url    (str "/inbox/dubbed"
+                   (dubbed-langs-qs (get-in db [:dubbed-filter :langs]) "?"))
       :on-ok  [::inbox-dubbed-loaded]
       :on-err [::inbox-dubbed-err]}}))
 
@@ -140,12 +151,59 @@
        (assoc-in [:inbox-dubbed :loading?] false)
        (assoc-in [:inbox-dubbed :loaded?]  true))))
 
-;; v1 stub — "See all →" routes here but does nothing yet. Wired up so
-;; the button has a real dispatch and the design isn't lying about a
-;; nav target; future work replaces this with a navigate to /dubbed.
+;; ── Dubbed page (full list + language filter) ────────────────────────────────
+
+(rf/reg-event-fx
+ ::fetch-dubbed
+ (fn [{:keys [db]} [_ force?]]
+   (if (and (not force?) (get-in db [:dubbed :loaded?]))
+     {}
+     {:db (assoc-in db [:dubbed :loading?] true)
+      ::buzz-bot.fx/http-fetch
+      {:method :get
+       :url    (str "/dubbed?limit=100"
+                    (dubbed-langs-qs (get-in db [:dubbed-filter :langs]) "&"))
+       :on-ok  [::dubbed-loaded]
+       :on-err [::dubbed-err]}})))
+
 (rf/reg-event-db
- ::see-all-dubbed-stub
- (fn [db _] db))
+ ::dubbed-loaded
+ (fn [db [_ resp]]
+   (-> db
+       (assoc-in [:dubbed :items]     (vec (:items resp)))
+       (assoc-in [:dubbed :languages] (vec (:languages resp)))
+       (assoc-in [:dubbed :loaded?]   true)
+       (assoc-in [:dubbed :loading?]  false))))
+
+(rf/reg-event-db
+ ::dubbed-err
+ (fn [db [_ _err]]
+   ;; Silent, like the inbox widget: page shows its empty state.
+   (-> db
+       (assoc-in [:dubbed :loading?] false)
+       (assoc-in [:dubbed :loaded?]  true))))
+
+(defn- persist-dubbed-langs! [langs]
+  (when (exists? js/localStorage)
+    (.setItem js/localStorage "buzz-dubbed-langs" (str/join "," (sort langs)))))
+
+;; Toggling a language re-fetches both surfaces (server-side filter) so the
+;; page list and the inbox bar both reflect the new selection.
+(rf/reg-event-fx
+ ::toggle-dubbed-lang
+ (fn [{:keys [db]} [_ lang]]
+   (let [cur  (get-in db [:dubbed-filter :langs] #{})
+         next ((if (contains? cur lang) disj conj) cur lang)]
+     (persist-dubbed-langs! next)
+     {:db         (assoc-in db [:dubbed-filter :langs] next)
+      :dispatch-n [[::fetch-dubbed true] [::fetch-inbox-dubbed true]]})))
+
+(rf/reg-event-fx
+ ::clear-dubbed-langs
+ (fn [{:keys [db]} _]
+   (persist-dubbed-langs! #{})
+   {:db         (assoc-in db [:dubbed-filter :langs] #{})
+    :dispatch-n [[::fetch-dubbed true] [::fetch-inbox-dubbed true]]}))
 
 ;; ── Topics ──────────────────────────────────────────────────────────────────
 

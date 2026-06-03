@@ -25,6 +25,12 @@
 (rf/reg-sub ::inbox-dubbed-items
   (fn [db _] (get-in db [:inbox-dubbed :items])))
 
+;; Dubbed page (server already language-filters the items).
+(rf/reg-sub ::dubbed-items          (fn [db _] (get-in db [:dubbed :items])))
+(rf/reg-sub ::dubbed-languages      (fn [db _] (get-in db [:dubbed :languages])))
+(rf/reg-sub ::dubbed-loading?       (fn [db _] (get-in db [:dubbed :loading?])))
+(rf/reg-sub ::dubbed-selected-langs (fn [db _] (get-in db [:dubbed-filter :langs] #{})))
+
 ;; Feeds
 (rf/reg-sub ::feeds-list     (fn [db _] (get-in db [:feeds :list])))
 (rf/reg-sub ::feeds-loading? (fn [db _] (get-in db [:feeds :loading?])))

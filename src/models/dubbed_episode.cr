@@ -151,47 +151,87 @@ struct DubbedEpisode
     include JSON::Serializable
   end
 
-  def self.recent_for_inbox(user_id : Int64, limit : Int32 = 12) : Array(DubbedRecent)
+  # Shared column list + JOINs for the DubbedRecent projection. $1 = user_id
+  # (drives the `subscribed` flag), $3 = optional text[] language filter.
+  DUBBED_RECENT_SELECT = <<-SQL
+    SELECT
+      e.id AS episode_id,
+      e.feed_id, f.title AS feed_title, f.image_url AS feed_image,
+      e.title AS ep_title, e.image_url AS ep_image, e.duration_sec,
+      e.original_language AS source_lang,
+      de.language         AS target_lang,
+      de.completed_at,
+      EXISTS (
+        SELECT 1 FROM user_feeds uf
+        WHERE uf.user_id = $1 AND uf.feed_id = e.feed_id
+      ) AS subscribed,
+      (de.completed_at > NOW() - INTERVAL '24 hours') AS is_new
+    FROM dubbed_episodes de
+    JOIN episodes e ON e.id = de.episode_id
+    JOIN feeds    f ON f.id = e.feed_id
+    WHERE de.status = 'done' AND de.completed_at IS NOT NULL
+      AND ($3::text[] IS NULL OR de.language = ANY($3))
+    SQL
+
+  private def self.read_recent(rs) : DubbedRecent
+    DubbedRecent.new(
+      episode_id:   rs.read(Int64),
+      feed_id:      rs.read(Int64),
+      feed_title:   rs.read(String),
+      feed_image:   rs.read(String?),
+      ep_title:     rs.read(String),
+      ep_image:     rs.read(String?),
+      duration_sec: rs.read(Int32?),
+      source_lang:  rs.read(String?),
+      target_lang:  rs.read(String),
+      completed_at: rs.read(Time),
+      subscribed:   rs.read(Bool),
+      is_new:       rs.read(Bool),
+    )
+  end
+
+  # Inbox "Latest dubbed" widget: subscribed-first, then most recent. `langs`
+  # (when present) restricts to those target languages before the limit, so a
+  # selected language always surfaces its latest dub.
+  def self.recent_for_inbox(user_id : Int64, limit : Int32 = 12, langs : Array(String)? = nil) : Array(DubbedRecent)
     out = [] of DubbedRecent
     AppDB.pool.query_each(
+      "#{DUBBED_RECENT_SELECT}\nORDER BY subscribed DESC, de.completed_at DESC NULLS LAST\nLIMIT $2",
+      user_id, limit, langs
+    ) do |rs|
+      out << read_recent(rs)
+    end
+    out
+  end
+
+  # Full dubbed history for the dedicated Dubbed page: pure recency, optional
+  # `langs` filter. Same DubbedRecent shape as the inbox widget.
+  def self.all_for_user(user_id : Int64, limit : Int32 = 100, langs : Array(String)? = nil) : Array(DubbedRecent)
+    out = [] of DubbedRecent
+    AppDB.pool.query_each(
+      "#{DUBBED_RECENT_SELECT}\nORDER BY de.completed_at DESC NULLS LAST\nLIMIT $2",
+      user_id, limit, langs
+    ) do |rs|
+      out << read_recent(rs)
+    end
+    out
+  end
+
+  # Distinct target languages across all done dubs whose episode + feed still
+  # exist — drives the Dubbed page's filter chips (unfiltered, so the chip row
+  # is stable regardless of the current selection).
+  def self.distinct_done_languages : Array(String)
+    AppDB.pool.query_all(
       <<-SQL,
-        SELECT
-          e.id AS episode_id,
-          e.feed_id, f.title AS feed_title, f.image_url AS feed_image,
-          e.title AS ep_title, e.image_url AS ep_image, e.duration_sec,
-          e.original_language AS source_lang,
-          de.language         AS target_lang,
-          de.completed_at,
-          EXISTS (
-            SELECT 1 FROM user_feeds uf
-            WHERE uf.user_id = $1 AND uf.feed_id = e.feed_id
-          ) AS subscribed,
-          (de.completed_at > NOW() - INTERVAL '24 hours') AS is_new
+        SELECT DISTINCT de.language
         FROM dubbed_episodes de
         JOIN episodes e ON e.id = de.episode_id
         JOIN feeds    f ON f.id = e.feed_id
         WHERE de.status = 'done' AND de.completed_at IS NOT NULL
-        ORDER BY subscribed DESC, de.completed_at DESC NULLS LAST
-        LIMIT $2
+        ORDER BY de.language
       SQL
-      user_id, limit
-    ) do |rs|
-      out << DubbedRecent.new(
-        episode_id:   rs.read(Int64),
-        feed_id:      rs.read(Int64),
-        feed_title:   rs.read(String),
-        feed_image:   rs.read(String?),
-        ep_title:     rs.read(String),
-        ep_image:     rs.read(String?),
-        duration_sec: rs.read(Int32?),
-        source_lang:  rs.read(String?),
-        target_lang:  rs.read(String),
-        completed_at: rs.read(Time),
-        subscribed:   rs.read(Bool),
-        is_new:       rs.read(Bool),
-      )
-    end
-    out
+      as: String
+    )
   end
 
   # Returns a map of language → {status, step, r2_url?, translation?} for all dubs of an episode.

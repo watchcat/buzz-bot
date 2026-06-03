@@ -22,16 +22,32 @@ module Web::Routes::Inbox
 
     # Recently-completed dubs — drives the "Latest dubbed" widget at the
     # top of the inbox. Empty array when there are no done dubs; the client
-    # hides the entire widget in that case.
+    # hides the entire widget in that case. `langs` (comma-separated codes)
+    # restricts to those target languages before the limit.
     get "/inbox/dubbed" do |env|
       user = Auth.current_user(env)
       halt env, status_code: 401, response: "Unauthorized" unless user
 
       limit = (env.params.query["limit"]?.try(&.to_i32) || 12).clamp(1, 50)
-      items = DubbedEpisode.recent_for_inbox(user.id, limit)
+      items = DubbedEpisode.recent_for_inbox(user.id, limit, parse_langs(env))
 
       env.response.content_type = "application/json"
       {items: items}.to_json
+    end
+
+    # Full dubbed history for the dedicated Dubbed page. Returns the (optionally
+    # language-filtered) list plus the unfiltered set of languages the user has
+    # dubs in, so the filter chips stay stable regardless of the selection.
+    get "/dubbed" do |env|
+      user = Auth.current_user(env)
+      halt env, status_code: 401, response: "Unauthorized" unless user
+
+      limit     = (env.params.query["limit"]?.try(&.to_i32) || 100).clamp(1, 200)
+      items     = DubbedEpisode.all_for_user(user.id, limit, parse_langs(env))
+      languages = DubbedEpisode.distinct_done_languages
+
+      env.response.content_type = "application/json"
+      {items: items, languages: languages}.to_json
     end
 
     get "/inbox/search" do |env|
@@ -68,5 +84,14 @@ module Web::Routes::Inbox
       env.response.content_type = "application/json"
       {episodes: items, has_more: has_more}.to_json
     end
+  end
+
+  # Parse the `langs` query param ("en,ru") into a normalised Array(String),
+  # or nil when absent/empty (nil = no language filter).
+  private def self.parse_langs(env) : Array(String)?
+    raw = env.params.query["langs"]?
+    return nil unless raw
+    langs = raw.split(',').map(&.strip.downcase).reject(&.empty?)
+    langs.empty? ? nil : langs
   end
 end

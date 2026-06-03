@@ -2349,3 +2349,45 @@ body:has(.now-playing-bar) main { padding-bottom: 84px; }
   background: var(--border);
   margin: 6px 16px 12px;
 }
+
+/* ── Dubbed page: language filter chips ─────────────────────────────────── */
+.lang-filter {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 16px 12px;
+  border-bottom: 1px solid var(--border-lt);
+}
+
+.lang-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 12px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  transition: color 0.15s ease, background-color 0.15s ease,
+              border-color 0.15s ease, opacity 0.15s;
+}
+.lang-chip:active { opacity: 0.6; }
+.lang-chip:focus-visible {
+  outline: 2px solid var(--button-color);
+  outline-offset: 2px;
+}
+.lang-chip--active {
+  border-color: var(--button-color);
+  background: var(--button-color);
+  color: var(--button-text-color);
+}
+.lang-chip--reset {
+  border-style: dashed;
+  letter-spacing: 0;
+}

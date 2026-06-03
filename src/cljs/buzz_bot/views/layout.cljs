@@ -8,7 +8,8 @@
             [buzz-bot.views.episodes :as episodes]
             [buzz-bot.views.player :as player]
             [buzz-bot.views.bookmarks :as bookmarks]
-            [buzz-bot.views.topics :as topics]))
+            [buzz-bot.views.topics :as topics]
+            [buzz-bot.views.dubbed :as dubbed]))
 
 (defn- tab-btn [icon label view-kw current-view]
   [:button.tab-btn
@@ -34,5 +35,6 @@
          :player    [player/view]
          :bookmarks [bookmarks/view]
          :topics    [topics/view]
+         :dubbed    [dubbed/view]
          [:div.loading "Loading..."])]]
      [miniplayer/bar]]))
