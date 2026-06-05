@@ -1,0 +1,25 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: telegram-bot-api
+  namespace: buzz-bot
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    traefik.ingress.kubernetes.io/service.servertransport: buzz-bot-long-streaming-transport@kubernetescrd
+spec:
+  ingressClassName: traefik
+  rules:
+    - host: api.buzz-bot.top
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: telegram-bot-api
+                port:
+                  number: 8081
+  tls:
+    - hosts:
+        - api.buzz-bot.top
+      secretName: telegram-bot-api-tls

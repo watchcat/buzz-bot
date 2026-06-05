@@ -14,6 +14,10 @@ bin/
 # Claude project config
 .claude/
 
+# Local agent / skill tooling (not project content)
+.agents/
+.superpowers/
+
 # Cloudflare tunnel credentials (contain auth tokens)
 *.json
 !package.json
