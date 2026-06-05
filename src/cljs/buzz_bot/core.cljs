@@ -51,24 +51,48 @@
     (when ep-id
       (rf/dispatch-sync [::events/init-audio-meta ep-id meta rate auto?]))))
 
-(defn- forward-deep-link!
-  "Send deep link to the running instance via BroadcastChannel, then close."
-  []
-  (when-let [ep-id (extract-episode-id)]
-    (let [ch (js/BroadcastChannel. "buzz-bot")]
-      (.postMessage ch #js{:type "navigate" :episodeId ep-id})
-      (.close ch)))
-  (.close (tg)))
+(declare mount!)
 
 (defn- listen-deep-links!
-  "Listen for navigation requests from new instances that couldn't acquire the lock."
+  "Listen for navigation requests from new instances that couldn't acquire the
+   lock, and acknowledge them so the sender knows a live instance took over."
   []
   (let [ch (js/BroadcastChannel. "buzz-bot")]
     (set! (.-onmessage ch)
       (fn [e]
         (let [data (js->clj (.-data e) :keywordize-keys true)]
           (when (and (= (:type data) "navigate") (:episodeId data))
+            (.postMessage ch #js{:type "navigate-ack" :episodeId (:episodeId data)})
             (rf/dispatch [::events/navigate :player {:episode-id (:episodeId data)}])))))))
+
+(defn- forward-deep-link!
+  "Hand the deep link to the instance holding the lock — but only yield to it if
+   it actually answers. A held lock proves *some* instance exists, not that it is
+   awake: on Telegram Android a minimized/backgrounded Mini App keeps the lock
+   while its JS is frozen, so a blind post-and-close drops the navigation and the
+   player never opens. Post the episode, wait briefly for an ack; if none arrives,
+   mount here so the deep link always lands."
+  []
+  (if-let [ep-id (extract-episode-id)]
+    (let [ch       (js/BroadcastChannel. "buzz-bot")
+          settled? (atom false)
+          finish   (fn [done]
+                     (when-not @settled?
+                       (reset! settled? true)
+                       (.close ch)
+                       (done)))]
+      (set! (.-onmessage ch)
+        (fn [e]
+          (let [data (js->clj (.-data e) :keywordize-keys true)]
+            (when (and (= (:type data) "navigate-ack")
+                       (= (str (:episodeId data)) (str ep-id)))
+              ;; A live instance owns it — let that one show the player.
+              (finish #(.close (tg)))))))
+      (.postMessage ch #js{:type "navigate" :episodeId ep-id})
+      ;; No ack ⇒ the lock-holder is frozen/gone: open the player ourselves.
+      (js/setTimeout #(finish mount!) 400))
+    ;; Re-opened with no deep link while already running elsewhere — nothing to do.
+    (.close (tg))))
 
 (defn- error-boundary []
   (let [err (r/atom nil)]
