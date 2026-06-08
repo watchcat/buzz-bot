@@ -1,6 +1,7 @@
 require "json"
 require "http/client"
 require "uri"
+require "../dub_dispatch"
 
 module Web::Routes::Dub
   def self.register
@@ -60,29 +61,46 @@ module Web::Routes::Dub
         bg_volume     = data["bg_volume"]?.try(&.as_f?) || 0.15
         job_id        = Random::Secure.hex(16)
         callback_base = Config.dub_callback_base
-        payload = {
-          job_id:       job_id,
-          dub_id:       dub_id,
-          episode_id:   episode_id,
-          audio_url:    episode.audio_url,
-          language:     language,
-          bg_volume:    bg_volume,
-          callback_url: "#{callback_base}/internal/dub_result",
-        }.to_json
-        runpod_payload = {input: JSON.parse(payload)}.to_json
-        runpod_client = HTTP::Client.new(URI.parse("https://api.runpod.ai"))
-        runpod_client.connect_timeout = 5.seconds
-        runpod_client.read_timeout = 10.seconds
-        response = runpod_client.post(
-          "/v2/#{Config.runpod_endpoint_id}/run",
-          headers: HTTP::Headers{
-            "Authorization" => "Bearer #{Config.runpod_api_key}",
-            "Content-Type"  => "application/json"
-          },
-          body: runpod_payload
-        )
-        raise "RunPod API error: #{response.status_code} #{response.body}" unless response.success?
-        Log.info { "Dub[#{dub_id}]: job #{job_id} submitted to RunPod (episode #{episode_id} → #{language})" }
+
+        if FeatureFlags.enabled?("dub_orchestrator")
+          dispatch_body = Web::DubDispatch.dub_payload(
+            job_id, dub_id, episode_id, episode.audio_url, language, bg_volume,
+            "#{callback_base}/internal/dub_result")
+          orch = HTTP::Client.new(URI.parse(Config.orch_base_url))
+          orch.connect_timeout = 5.seconds
+          orch.read_timeout = 10.seconds
+          response = orch.post("/dispatch",
+            headers: HTTP::Headers{
+              "X-Dispatch-Token" => Config.orch_dispatch_secret,
+              "Content-Type"     => "application/json"},
+            body: dispatch_body)
+          raise "Orchestrator dispatch error: #{response.status_code} #{response.body}" unless response.success?
+          Log.info { "Dub[#{dub_id}]: dispatched to orchestrator (episode #{episode_id} → #{language})" }
+        else
+          payload = {
+            job_id:       job_id,
+            dub_id:       dub_id,
+            episode_id:   episode_id,
+            audio_url:    episode.audio_url,
+            language:     language,
+            bg_volume:    bg_volume,
+            callback_url: "#{callback_base}/internal/dub_result",
+          }.to_json
+          runpod_payload = {input: JSON.parse(payload)}.to_json
+          runpod_client = HTTP::Client.new(URI.parse("https://api.runpod.ai"))
+          runpod_client.connect_timeout = 5.seconds
+          runpod_client.read_timeout = 10.seconds
+          response = runpod_client.post(
+            "/v2/#{Config.runpod_endpoint_id}/run",
+            headers: HTTP::Headers{
+              "Authorization" => "Bearer #{Config.runpod_api_key}",
+              "Content-Type"  => "application/json"
+            },
+            body: runpod_payload
+          )
+          raise "RunPod API error: #{response.status_code} #{response.body}" unless response.success?
+          Log.info { "Dub[#{dub_id}]: job #{job_id} submitted to RunPod (episode #{episode_id} → #{language})" }
+        end
       rescue ex
         Log.error { "Dub[#{dub_id}]: failed to enqueue — #{ex.message}" }
         DubbedEpisode.set_failed(dub_id, "Failed to enqueue job: #{ex.message}")
