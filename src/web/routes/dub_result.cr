@@ -9,7 +9,9 @@ require "../../models/feed"
 module Web::Routes::DubResult
   private struct Result
     include JSON::Serializable
-    getter job_id          : String
+    # Nilable: RunPod sends job_id; the orchestrator scopes by run_id/dub_id and
+    # omits it. Used only for logging below.
+    getter job_id          : String?
     getter dub_id          : Int64
     getter episode_id      : Int64?
     getter language        : String?
