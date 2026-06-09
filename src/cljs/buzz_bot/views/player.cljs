@@ -109,15 +109,22 @@
         lang        @(rf/subscribe [::subs/subtitle-lang])
         source-lang @(rf/subscribe [::subs/subtitle-source-lang])
         done-langs  @(rf/subscribe [::subs/dub-done-langs])
-        transcript? @(rf/subscribe [::subs/subtitle-transcript?])]
+        transcript? @(rf/subscribe [::subs/subtitle-transcript?])
+        pending?    @(rf/subscribe [::subs/transcribe-pending?])]
     [:<>
      [:div.subtitle-panel
       [:div.subtitle-panel__cues
-       (if (seq window)
+       (cond
+         (seq window)
          (for [{:keys [cue role]} window]
            ^{:key (:idx cue)}
            [:div.subtitle-cue-line {:class (name role)} (cue-text cue lang)])
-         [:div.subtitle-cue-line.no-cue "…"])]
+         pending?
+         [:div.subtitle-cue-line.no-cue "Generating transcript…"]
+         :else
+         [:button.sub-generate-transcript
+          {:on-click #(rf/dispatch [::events/request-transcript episode-id])}
+          "Generate transcript"])]
       [:div.subtitle-lang-chips
        [:button.sub-lang-chip
         {:class    (when (= lang :original) "sub-lang-chip--active")
