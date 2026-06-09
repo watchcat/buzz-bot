@@ -296,3 +296,12 @@
  ::clear-audio-cache
  (fn [_]
    (.delete js/caches "buzz-audio-v1")))
+
+;; ── ::schedule-poll ──────────────────────────────────────────────────────────
+;; Schedules a one-shot re-frame dispatch after :ms milliseconds.
+;; Used by ::transcript-poll-tick to retry subtitle fetches until cues arrive.
+
+(rf/reg-fx
+ ::schedule-poll
+ (fn [{:keys [ms event]}]
+   (js/setTimeout #(rf/dispatch event) ms)))

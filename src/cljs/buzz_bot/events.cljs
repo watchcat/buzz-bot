@@ -641,6 +641,8 @@
 ;;
 ;; This is why both are separate params on the backend endpoint.
 
+(defn transcribe-url [ep-id] (str "/episodes/" ep-id "/transcribe"))
+
 (defn- subtitle-url [ep-id text-lang audio-lang]
   (let [params (cond-> []
                  text-lang  (conj (str "language=" text-lang))
@@ -738,7 +740,36 @@
    (assoc db :subtitles {:ep-id nil :cues [] :lang :off
                          :loaded-text-lang nil :loaded-audio-lang nil
                          :source-lang nil :transcript? false
-                         :transcript-closing? false})))
+                         :transcript-closing? false
+                         :transcribe-pending? false})))
+
+(rf/reg-event-fx
+ ::request-transcript
+ (fn [{:keys [db]} [_ episode-id]]
+   {:db (assoc-in db [:subtitles :transcribe-pending?] true)
+    ::buzz-bot.fx/http-fetch
+    {:method :post
+     :url    (transcribe-url episode-id)
+     :on-ok  [::transcript-poll-tick episode-id 0]
+     :on-err [::transcript-failed]}}))
+
+(rf/reg-event-fx
+ ::transcript-poll-tick
+ (fn [{:keys [db]} [_ episode-id attempt]]
+   (let [cues (get-in db [:subtitles :cues])]
+     (cond
+       (pos? (count cues))
+       {:db (assoc-in db [:subtitles :transcribe-pending?] false)}
+       (>= attempt 40)
+       {:db (assoc-in db [:subtitles :transcribe-pending?] false)}
+       :else
+       {:dispatch [::fetch-subtitles episode-id nil]
+        ::buzz-bot.fx/schedule-poll
+        {:ms 3000 :event [::transcript-poll-tick episode-id (inc attempt)]}}))))
+
+(rf/reg-event-db
+ ::transcript-failed
+ (fn [db _] (assoc-in db [:subtitles :transcribe-pending?] false)))
 
 ;; ── Audio state ──────────────────────────────────────────────────────────────
 
