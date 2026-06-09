@@ -5,6 +5,7 @@ module FeatureFlags
     "img_proxy"       => true,
     "dub_translation" => true,
     "dub_synthesis"   => true,
+    "dub_orchestrator" => false,
   }
 
   @@flags : Hash(String, Bool) = DEFAULTS.dup

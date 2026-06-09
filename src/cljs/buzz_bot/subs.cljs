@@ -144,6 +144,7 @@
 
 ;; Subtitles
 (rf/reg-sub ::subtitles          (fn [db _] (:subtitles db)))
+(rf/reg-sub ::transcribe-pending? :<- [::subtitles] (fn [s _] (:transcribe-pending? s)))
 (rf/reg-sub ::subtitle-cues      :<- [::subtitles] (fn [s _] (:cues s)))
 (rf/reg-sub ::subtitle-lang      :<- [::subtitles] (fn [s _] (:lang s)))
 (rf/reg-sub ::subtitle-ep-id     :<- [::subtitles] (fn [s _] (:ep-id s)))

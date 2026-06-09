@@ -1,5 +1,6 @@
 require "kemal"
 require "./routes/dub_result"
+require "./routes/transcript_result"
 require "./routes/dub_progress"
 require "./routes/embeddings"
 require "./routes/topics"
@@ -41,9 +42,11 @@ module WebServer
     Web::Routes::Search.register
     Web::Routes::Discover.register
     Web::Routes::Dub.register
+    Web::Routes::Transcribe.register
     Web::Routes::Subtitles.register
     Web::Routes::Flags.register
     Web::Routes::DubResult.register
+    Web::Routes::TranscriptResult.register
     Web::Routes::DubProgress.register
     Web::Routes::Embeddings.register
     Web::Routes::Topics.register

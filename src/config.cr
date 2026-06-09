@@ -46,6 +46,14 @@ module Config
     ENV["RUNPOD_ENDPOINT_ID"]? || raise "RUNPOD_ENDPOINT_ID not set"
   end
 
+  def self.orch_base_url : String
+    ENV["ORCH_BASE_URL"]? || raise "ORCH_BASE_URL not set"
+  end
+
+  def self.orch_dispatch_secret : String
+    ENV["ORCH_DISPATCH_SECRET"]? || raise "ORCH_DISPATCH_SECRET not set"
+  end
+
   def self.dub_callback_base : String
     ENV.fetch("DUB_CALLBACK_BASE", base_url)
   end
